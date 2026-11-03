@@ -1,0 +1,9 @@
+#!/bin/bash
+# Canonical env for cannbench work on Ascend950PR.
+#
+# Routes through cnb-npu-lock so no invocation can put a second kernel on the
+# single card: concurrent NPU work is what hangs this machine. Nested calls are
+# safe because cnb-npu-lock detects the inherited lock descriptor.
+source /home/developer/Ascend/cann-9.3.0/set_env.sh >/dev/null 2>&1
+export PATH=/workspace/cannbench/evalenv/bin:/workspace/cannbench/bin:$PATH
+exec /workspace/cannbench/bin/cnb-npu-lock "$@"
