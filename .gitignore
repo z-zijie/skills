@@ -1,0 +1,4 @@
+# Raw captures are ~99MB; see data/README.md for how to regenerate them.
+data/*.csv
+data/*.json
+data/*.txt
