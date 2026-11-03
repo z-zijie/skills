@@ -70,7 +70,7 @@ python -m kernel_eval.cli eval-child \
 - **整算子分对得上**：`swi_glu` 20 个用例逐用例跑完得 58.58，官方全量 harness 记录 58.36（差 0.2，profiler 噪声量级）。逐用例不是"另算一套分"。
 - 聚合公式对得上：把全量 harness 的 per-case `perf_score` 代入 `5 + 20·通过率 + 70·均值 + 5`，复算结果与官方 `overall_score` 差 1.4e-14。
 - 单用例也对得上：`swi_glu` case 1 全量 6.04 µs / 0.523，逐用例 5.98 µs / 0.527。
-- 评测入口串行：两个 `evaluate.sh` 同时起、以及两个 `cnb-env python` 同时起，都严格排队，零重叠（实测 `A` 23:22:39–45、`B` 23:22:46–52）。
+- 评测入口串行：两个 `evaluate.sh` 同时起，第二个在 `npu.lock` 排队，等第一个整段（含编译与全部用例）跑完才开始；实测零重叠。
 
 ## 4. 注意
 

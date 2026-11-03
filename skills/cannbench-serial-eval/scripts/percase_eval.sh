@@ -18,10 +18,10 @@
 # path so accuracy, timing and the per-case Eq.3 score all come from the harness
 # itself rather than a lookalike metric.
 #
-# Run this through bin/cnb-npu-lock (bin/cnb-env does it for you): the lock is
-# held across the build and every case, so nothing else can reach the card while
-# a sweep is in progress. Prints one JSON line per case plus one aggregate line,
-# and appends every case record to state/percase_cases.jsonl.
+# The lock is held across the build and every case (see the preamble below), so
+# nothing else can reach the card while a sweep is in progress. Prints one JSON
+# line per case plus one aggregate line, and appends every case record to
+# state/percase_cases.jsonl.
 set -uo pipefail
 # Hold the single NPU lock for the whole run (build -> install -> profile).
 # Re-exec once under bin/cnb-npu-lock; the child sees CNB_NPU_LOCK_HELD and runs
@@ -99,7 +99,9 @@ for r in json.load(open(sys.argv[1] + "/results.json")):
     print(json.dumps(r, ensure_ascii=False))
 PY2
 fi
-sort -u "$RUN/cases.jsonl" -o "$RUN/cases.jsonl"
+# Dedupe (percase.out and results.json overlap) without reordering: the loop
+# reads these in case order.
+awk '!seen[$0]++' "$RUN/cases.jsonl" > "$RUN/cases.dedup" && mv "$RUN/cases.dedup" "$RUN/cases.jsonl"
 cat "$RUN/cases.jsonl" 2>/dev/null
 grep -E '^\{"op"' "$OUT" 2>/dev/null | tail -1 | tee "$RUN/projection.json"
 echo
