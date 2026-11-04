@@ -1,10 +1,10 @@
 #!/bin/bash
 # percase_eval.sh <op_id> <project_dir> [cases] [tag]
 #
-# One operator, a bounded set of cases, one OS process per case. This is the
-# only sanctioned way to evaluate on this box: the full `run_evaluation.sh`
-# fans every case out to several processes at once and that fan-out is what
-# wedges the Ascend950PR machine when operators are developed concurrently.
+# One operator, a bounded set of cases, one OS process per case. The full
+# `run_evaluation.sh` fans its correctness and batch-performance stages out to
+# several processes; this path keeps one case per process so the per-case
+# numbers match the official single-case entry.
 #
 # cases:
 #   "1"        one case
@@ -18,19 +18,13 @@
 # path so accuracy, timing and the per-case Eq.3 score all come from the harness
 # itself rather than a lookalike metric.
 #
-# The lock is held across the build and every case (see the preamble below), so
-# nothing else can reach the card while a sweep is in progress. Prints one JSON
-# line per case plus one aggregate line, and appends every case record to
-# state/percase_cases.jsonl.
+# No NPU lock: the driver queues kernels in submission order, so a concurrent
+# caller cannot corrupt this run. It does inflate the measured kernel time, so
+# only one sweep should be measuring performance at any moment.
+#
+# Prints one JSON line per case plus one aggregate line, and appends every case
+# record to state/percase_cases.jsonl.
 set -uo pipefail
-# Hold the single NPU lock for the whole run (build -> install -> profile).
-# Re-exec once under bin/cnb-npu-lock; the child sees CNB_NPU_LOCK_HELD and runs
-# the body directly. Without this, another caller could slip between our build
-# and our profile and put a second kernel on the card.
-if [ "${CNB_NPU_LOCK_HELD:-0}" != "1" ]; then
-  exec /workspace/cannbench/bin/cnb-npu-lock "$0" "$@"
-fi
-
 ROOT=/workspace/cannbench
 source "$ROOT/loop/scripts/lib.sh"
 

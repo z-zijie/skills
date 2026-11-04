@@ -3,11 +3,11 @@
 
 Why this exists
 ---------------
-`scripts/run_evaluation.sh` is the full benchmark entry. It fans every case of
-the requested task directory out to several worker processes at once. On this
-single-card Ascend950PR box that fan-out is what wedges the machine: concurrent
-operator development plus multi-process profiling exhausts the container and
-the box stops responding. So the full script is off-limits for day-to-day work.
+`scripts/run_evaluation.sh` is the full benchmark entry. Its correctness stage
+fans the requested task directory out to several worker processes at once, and
+its performance stage can merge many cases into one profiler session. Neither
+is what a one-change-one-measure loop wants, so day-to-day work uses the
+single-case entry instead.
 
 The harness already carries a single-process, single-case entry point:
 `python -m kernel_eval.cli eval-child`, which takes one cases JSON and runs
