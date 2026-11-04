@@ -195,3 +195,66 @@ CANN 自带 `analysis/common_func/constant.py` 的 `AI_CORE_CALCULATION_FORMULA`
 ## dfx_region_map.txt 的生命周期
 
 `dfx_region_map.txt`（pc→pipe/opcode）由 `msopprof` 在采集阶段写出，但**后续解析步骤会把它删掉**。实测：同一 capture 在采集刚结束时存在，几分钟后再看已消失。工具在 `run_msopprof` 返回后立即把它和 `pc_start_addr.txt` 复制到 `capture/probe/`，指令级分析优先读这个副本。
+
+## 双 DIE 与跨 die 通路（2026-11-04 16:3x）
+
+platform_config 里 `[DieInfo] io_die_num=2`，确认 Ascend950PR 是双 die。L2 跨 die 交织，访问对端
+L2 走 SIO。
+
+`visualize_data.bin` 的 `core_memory_map[].memory_unit[]` 在不同 kernel 上暴露出不同的 `memory_path` 集合：
+
+| 出现场景 | path id |
+|---|---|
+| vector 算子（vector_add） | 0, 1, 12, 13, 14, 15, 48, 52, 54 |
+| cube 算子（matmul mxfp4） | 0, 1, 2, 6, 7, 8, 37, 38, 39, 40, 41 |
+
+cube kernel 实测：
+
+| path | 带宽 GB/s | 请求数 | 判定 |
+|---:|---:|---:|---|
+| 8 | 36.188 | 91 | 跨 die（推断） |
+| 40 | 24.208 | 487 | GM 读（cube 侧） |
+| 2 | 3.330 | 67 | 跨 die（推断） |
+| 0 | 3.281 | 66 | GM 读（本 die） |
+| 1 | 3.032 | 61 | GM 写（本 die） |
+| 38 | 2.585 | 26 | 跨 die（推断） |
+| 6 | 2.262 | 91 | 跨 die（推断） |
+| 37 | 1.392 | 14 | 跨 die（推断） |
+| 7 | 1.292 | 13 | 跨 die（推断） |
+| 39, 41 | 0.000 | 0 | 恒 0，保留 |
+
+跨 die 合计 47.05 GB/s，片内 30.52 GB/s，**跨 die 占 60.6%**。
+
+vector 算子上这组跨 die path 几乎不出流量（<3.3 GB/s），说明影子取决于访存模式而非芯片固定行为。
+
+**path id 含义 CANN 未公开文档**。命名依据：0/1 与 GM↔UB 主流量吻合；12–15 与逐核 `UB` 表的四向带宽
+逐字节相同；39/41 在所有采集里恒 0；2/6/7/8/37/38 只在 cube kernel 出现且有流量。因此这些名字是
+**推断**，工具的置信度给 C 而非 A。
+
+## sector / coalescing / outstanding / snoop 的可用性
+
+对 `msopprof`、`libmsprofiler.so`、各 profiler 插件逐个 strings 检索：
+
+| 概念 | 结论 |
+|---|---|
+| `sector` / coalescing 效率 | 无任何计数器或字符串 |
+| `outstanding` / `inflight` | `visualize_data.bin` 全文 0 命中 |
+| `snoop` | 无 |
+| `instr_popped`（Load/Store 占比） | **存在于 msopprof**，但 `--dump=true` 要求 `--aic-metrics=TimelineDetail`，而后者在 dav-3510 上报错 `Unexpected argument --dump, maybe in wrong soc platform` |
+
+## Scalar Story 与 simd_vf_story 的观测项对照
+
+读 `cann-samples/Samples/2_Performance/scalar_story` 与 `simd_vf_story` 后，逐条对照本工具：
+
+| story 提到的观测点 | 本工具 | 说明 |
+|---|---|---|
+| 各流水 cycle 分布 | ✅ | PipeUtilization |
+| Scalar 占比 | ✅ | scalar_ratio |
+| icache miss（PC-Cycle 图） | ✅ 部分 | InstrTimeline 的 pc_addr+ts 可画；需 `--with-instructions` |
+| dcache miss | ✅ | DCache 表（本次新增） |
+| Load/Store 指令占比 | ❌ | 需 instr_popped dump，上板不可用 |
+| 寄存器 spill | ❌ | 同上，由 Load/Store 占比间接推断 |
+| 软件头开销 (cycle) | ⚠️ | 只能从 scalar 时间间接看 |
+| VF count / PUSHQ VF cycles / RVECEX / RVECLD / RVECSU / PUSH_PB | ❌ | 仅 cannsim trace；上板只有 `aiv_vec_vf_ratio` 汇总 |
+| MTE2/MTE3 sum_cycles | ✅ | 已有 |
+| bank 冲突（vf_data_transform_story） | ✅ | ResourceConflictRatio |

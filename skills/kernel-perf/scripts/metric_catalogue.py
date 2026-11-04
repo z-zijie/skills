@@ -213,6 +213,55 @@ def build_catalogue() -> List[Metric]:
         M("pipe_timeline", "逐流水时间线", "us", "C", "trace.json (PipeTimeline)",
           note="每个流水的忙闲区间", caveat="只覆盖被采集的核；实测常只有 1 个核"),
 
+        # ---- scheduling / block timeline ---------------------------------
+        M("block_timeline", "block 启动/结束时间", "us", "C",
+          "trace.json (PipeTimeline) 的 pid=core<N>.veccore<M> 事件",
+          note="每个 block 的首个活动与最后完成，是分析多核不同步与拖尾的唯一来源",
+          caveat="PipeTimeline 只插桩部分核：56 block 的 kernel 实测只拿到 12 个 subcore，"
+                 "所以 skew 是下界不是全片上真值"),
+        M("launch_skew", "启动偏移", "us", "C", "derived: last_start - first_start",
+          note="这段时间内芯片只有部分核在工作；与流水线优化无关"),
+        M("tail_effect", "拖尾", "us", "C", "derived: last_end - first_end",
+          note="最慢核比最快核晚收工的时间；典型原因是尾块不均或被抢占"),
+
+        # ---- VF (Vector Fusion) ------------------------------------------
+        M("vf_ratio", "VF 占比", "%", "B", "ArithmeticUtilization.csv:aiv_vec_vf_ratio",
+          note="VF（Vector Fusion）在 vector 时间里的占比"),
+        M("simt_vf_ratio", "SIMT VF 占比", "%", "B",
+          "ArithmeticUtilization.csv:aiv_vec_simt_vf_ratio"),
+        M("vf_internal", "VF 内部：PUSHQ/RVECEX/RVECLD/RVECSU/PUSH_PB", "cycle", "C",
+          "不可用（仅 cannsim）",
+          note="cann-samples 的 simd_vf_story 用这些量判断 VF 是否过碎",
+          caveat="这组细分计数只在 cannsim trace 里出现；上板 msopprof 只给 vf_ratio。"
+                 "本 skill 限定只上板实采，故标注不可用而不以仿真值代替"),
+
+        # ---- load/store & icache (scalar story) --------------------------
+        M("load_store_ratio", "Load/Store 指令占比", "%", "C",
+          "不可用（需 instr_popped_log.dump）",
+          note="Scalar Story 判定寄存器 spill 的核心依据，>30% 即疑似 spill",
+          caveat="instr_popped 日志需 --dump=true，而 --dump 要求 TimelineDetail；"
+                 "后者在 dav-3510 上直接失败，故上板取不到"),
+        M("pc_cycle", "PC vs Cycle 曲线（icache miss 诊断）", "-", "C",
+          "trace.json (InstrTimeline) 的 pc_addr + ts",
+          note="PC 长时间不变＝在等 icache 载入；Scalar Story 用它定位 icache miss",
+          caveat="需要 --with-instructions 且 kernel 带 -g"),
+
+        # ---- sector / coalescing / cross-die ------------------------------
+        M("sector_efficiency", "Sector 利用率 / Coalescing", "%", "C",
+          "不可用（无直接计数器）",
+          note="NCU 用 sectors/request 度量合并访存效率；CANN 未暴露该计数",
+          caveat="上板 msopprof 任何 metric 组都不输出 sectors。可用的间接证据是 "
+                 "GM_to_UB_datas(KB) 与实际搬运次数的比值，以及 L2 请求数 vs miss 数"),
+        M("cross_die_bw", "跨 die 流量 (SIO)", "GB/s", "C",
+          "visualize_data.bin 0x08 memory_unit[memory_path in {2,6,7,8,37,38}]",
+          note="双 die 上访问对端 L2 走 SIO，延迟显著高于本 die",
+          caveat="path id 含义 CANN 未公开，跨 die 归属是推断；置信度按推断给"),
+        M("cross_die_pct", "跨 die 流量占比", "%", "C",
+          "derived: cross_die_bw / (cross_die + on_die)",
+          note=">20% 时值得按 GM 地址交织关系调整写分布"),
+        M("die_count", "DIE 数量", "-", "A", "platform_config:DieInfo/io_die_num",
+          note="Ascend950PR 为 2"),
+
         # ---- rock-bottom reliability ------------------------------------
         M("imbalance", "核间离散度", "%", "B", "derived: (max-min)/mean of per-core time",
           note=">30% 说明 tiling 切分不均；短 kernel 上主要是启动开销"),

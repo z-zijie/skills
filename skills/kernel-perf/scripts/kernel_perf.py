@@ -34,6 +34,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -55,6 +56,10 @@ try:
     import instr_profile as IP
 except ImportError:  # pragma: no cover
     IP = None
+try:
+    import layers as LY
+except ImportError:  # pragma: no cover
+    LY = None
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -309,6 +314,12 @@ class Platform:
     @property
     def l2_rate(self) -> Optional[float]:
         return self.get_float("l2_rate")
+
+    @property
+    def io_die_num(self) -> Optional[int]:
+        """Number of dies. 2 on Ascend950PR -- cross-die traffic exists and
+        goes over SIO, so this changes how bandwidth numbers should be read."""
+        return self.get_int("io_die_num")
 
 
 def load_platform_for_soc(soc: str, home: Optional[Path]) -> Optional[Platform]:
@@ -654,16 +665,35 @@ def load_capture(path: Path, home: Optional[Path] = None) -> Capture:
     # Multi-pass collections keep instruction/timeline artefacts in sibling
     # passes (capture/extra/<pass>/). Adopt them when the core pass has none, so
     # a single `analyze` call sees everything that was collected.
-    extra_root = root.parent / "extra"
-    if extra_root.is_dir():
+    extra_candidates = [root.parent / "extra", root.parent.parent / "extra"]
+    for extra_root in extra_candidates:
+        if not extra_root.is_dir():
+            continue
+        # Two layouts occur: extra/<pass>/OPPROF_*/trace.json (what the
+        # collector writes) and extra/<pass> -> OPPROF_* directly (symlinked).
+        # Match both rather than assuming one.
         if not (root / "probe").is_dir():
-            for probe in sorted(extra_root.glob("*/OPPROF_*/probe")):
-                shutil.copytree(probe, root / "probe", dirs_exist_ok=True)
-                break
+            for pattern in ("*/OPPROF_*/probe", "*/probe"):
+                for probe in sorted(extra_root.glob(pattern)):
+                    try:
+                        shutil.copytree(probe, root / "probe", dirs_exist_ok=True)
+                        break
+                    except OSError:
+                        continue
+                if (root / "probe").is_dir():
+                    break
         if not (root / "trace.json").is_file():
-            for trace_file in sorted(extra_root.glob("*/OPPROF_*/trace.json")):
-                shutil.copy2(trace_file, root / "trace.json")
-                break
+            for pattern in ("*/OPPROF_*/trace.json", "*/trace.json"):
+                for trace_file in sorted(extra_root.glob(pattern)):
+                    try:
+                        shutil.copy2(trace_file, root / "trace.json")
+                        break
+                    except OSError:
+                        continue
+                if (root / "trace.json").is_file():
+                    break
+        if (root / "trace.json").is_file() or (root / "probe").is_dir():
+            break
 
     trace = root / "trace.json"
     if trace.is_file():
@@ -1175,6 +1205,19 @@ def analyze(capture: Capture) -> Dict[str, Any]:
         result["confidence"] = {
             m.key: MC.confidence_of(m.key) for m in MC.build_catalogue()
         }
+    if LY is not None:
+        blocks = []
+        if capture.timeline:
+            blocks = LY.blocks_from_trace(capture.timeline, capture.duration_us)
+        schedule = LY.analyse_schedule(blocks, capture.duration_us)
+        result["schedule"] = schedule.as_dict()
+        die_num = capture.platform.io_die_num if capture.platform else None
+        result["soc_paths"] = LY.analyse_paths(
+            capture.viz_cores, die_num).as_dict()
+        result["layers"] = {
+            m.key: LY.layer_of(m.key)
+            for m in (MC.build_catalogue() if MC is not None else [])
+        }
     return result
 
 
@@ -1487,9 +1530,33 @@ def render_markdown(result: Dict[str, Any]) -> str:
                 add(f"- {name}: {int(cycles)} cycles")
         add("")
 
+    schedule = result.get("schedule")
+    if LY is not None and schedule is not None:
+        add("## 7. block 时间轴（调度层）")
+        add("")
+        insight = LY.ScheduleInsight(
+            available=schedule.get("available", False),
+            reason=schedule.get("reason", ""),
+            blocks=schedule.get("blocks", 0),
+            source=schedule.get("source", ""),
+            first_start_us=schedule.get("first_start_us"),
+            last_start_us=schedule.get("last_start_us"),
+            last_end_us=schedule.get("last_end_us"),
+            launch_skew_us=schedule.get("launch_skew_us"),
+            launch_skew_pct=schedule.get("launch_skew_pct"),
+            tail_us=schedule.get("tail_us"),
+            tail_pct=schedule.get("tail_pct"),
+            min_duration_us=schedule.get("min_duration_us"),
+            max_duration_us=schedule.get("max_duration_us"),
+            duration_spread_pct=schedule.get("duration_spread_pct"),
+            slowest_blocks=schedule.get("slowest_blocks") or [],
+            latest_blocks=schedule.get("latest_blocks") or [],
+        )
+        lines.extend(LY.render_schedule(insight))
+
     imbalance_data = result["imbalance"]
     if imbalance_data:
-        add("## 7. 核间负载")
+        add("## 8. 核间负载")
         add("")
         for core_type, block in imbalance_data.items():
             add(f"- {core_type.upper()}: {block['cores']} 核，"
@@ -1497,9 +1564,25 @@ def render_markdown(result: Dict[str, Any]) -> str:
                 f"均值 {block['mean_us']:.3f} us，**离散度 {_fmt(block['spread_pct'], '%')}**")
         add("")
 
+    soc_paths = result.get("soc_paths")
+    if LY is not None and soc_paths and soc_paths.get("available"):
+        add("## 9. 内存通路与跨 DIE 流量")
+        add("")
+        sp = LY.SocPaths(
+            available=soc_paths.get("available", False),
+            reason=soc_paths.get("reason", ""),
+            die_count=soc_paths.get("die_count"),
+            paths=soc_paths.get("paths") or [],
+            cross_die_gbps=soc_paths.get("cross_die_gbps", 0.0),
+            on_die_gbps=soc_paths.get("on_die_gbps", 0.0),
+            cross_die_pct=soc_paths.get("cross_die_pct"),
+            cross_die_requests=soc_paths.get("cross_die_requests", 0),
+        )
+        lines.extend(LY.render_paths(sp))
+
     paths = result["memory_paths"]
     if paths:
-        add("## 8. 内存通路（逐核明细，取核 0）")
+        add("### 9.1 逐通路明细（旧视图）")
         add("")
         add("| 通路 | 带宽 GB/s | 请求数 |")
         add("|---|---:|---:|")
@@ -1510,7 +1593,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     confidence = result.get("confidence") or {}
     if MC is not None and confidence:
-        add("## 9. 置信度分级")
+        add("## 10. 置信度分级")
         add("")
         add("每个指标的置信度按「它是怎么来的」划分，并用 5 次重复采集的变异系数校准。"
             "引用数字前先看这一栏。")
@@ -1536,7 +1619,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
         add("完整目录（含每个指标的产出口径）：`python3 scripts/metric_catalogue.py`")
         add("")
 
-    add("## 10. 逐核明细")
+    add("## 11. 逐核明细")
     add("")
     add("| core | 类型 | 时间 us | 主导流水 | 占比 | GM→UB GB/s | L2 读命中 |")
     add("|---:|---|---:|---|---:|---:|---:|")
@@ -1568,7 +1651,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     subblocks = result.get("subblocks") or []
     if subblocks:
-        add("## 12. 子核活动")
+        add("## 13. 子核活动")
         add("")
         add("| 指标 | 类型 | unit | 核数 | 均值 | 最大值 | 原始计数 |")
         add("|---|---|---:|---:|---:|---:|---:|")
@@ -1581,7 +1664,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     op_detail = result.get("op_detail")
     if op_detail:
-        add("## 13. 逐核吞吐（Occupancy）")
+        add("## 14. 逐核吞吐（Occupancy）")
         add("")
         add(f"- {op_detail['cores']} 个核，其中 {op_detail['cores_with_activity']} 个有活动；"
             f"最大 cycles {op_detail['max_cycles']}")
@@ -1596,7 +1679,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     timeline = result.get("timeline")
     if timeline:
-        add("## 14. 时间线事件")
+        add("## 15. 时间线事件")
         add("")
         add(f"- 事件数 {timeline['event_count']}，来源 `{timeline['source']}`")
         add("")

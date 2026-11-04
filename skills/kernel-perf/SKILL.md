@@ -31,9 +31,58 @@ python3 scripts/metric_catalogue.py
 # 优化前后对比
 python3 scripts/kernel_perf.py diff ./before ./after
 
-# 不需要 NPU 的自测（54 项，含反例）
+# 完整实跑样例（cann-samples vector_add，含真实输出）
+#   → references/example-vector-add.md
+
+# 不需要 NPU 的自测（70+ 项，含反例）
 python3 scripts/selftest.py
 ```
+
+## 信息分层
+
+指标按「描述机器哪一层」组织，报告按这个顺序读——这也是排查的顺序。
+
+| 层 | 内容 | 这一层回答 |
+|---|---|---|
+| **SoC** | 数据搬运带宽、总线、L2、跨 die（SIO）、die 数量 | 算法规格/tiling 总量对不对 |
+| **核内** | MTE2/MTE3/Cube/Vector/Scalar/FixPipe 占用、冲突、UB/L0/L1、iCache/DCache、VF 占比 | 瓶颈是哪个单元 |
+| **调度** | 每个 block 的启动/结束时间、启动偏移、拖尾 | 核有没有一起开工、有没有拖尾 |
+
+`scripts/layers.py` 是这一层的单一事实来源；`kernel_perf.py --json` 的 `layers` 字段给出每个指标的归属。
+
+### 调度层：block 时间轴
+
+Ascend950PR 有 56 个核，每个核是一个 block（含 1 个 AIC subcore 与 2 个 AIV subcore）。用
+`--metrics=...,PipeTimeline` 单独采一趟，从 `trace.json` 的每 `pid`（`core<N>.veccore<M>`）取
+`min(ts)` 与 `max(ts+dur)`，就得到每个 block 的首个活动与最后完成：
+
+```shell
+python3 scripts/kernel_perf.py profile --app ./x --kernel k --out ./o \
+    --metrics=PipeUtilization,...,PipeTimeline
+```
+
+报告第 7 节给出：
+
+- **启动偏移 (launch skew)** = last_start − first_start，占 kernel 时长比例
+- **拖尾 (tail)** = last_end − first_end
+- 最慢 block 列表
+
+实测 vector_add：偏移 0.864 us（20.2%）、拖尾 0.753 us（17.6%）。这两个量在流水线层面完全看不见。
+
+> **覆盖限制**：PipeTimeline 只插桩部分核。56 block 的 kernel 实测只拿到 12 个 subcore，
+> 所以 skew 是**下界**，不是全片真值。报告里固定写出来。
+
+### SoC 层：跨 die 流量
+
+平台 ini 的 `[DieInfo] io_die_num=2` 说明是双 die。L2 跨 die 交织，访问对端 L2 走 SIO。
+`visualize_data.bin` 的 `memory_unit[]` 里 `memory_path` 为 2/6/7/8/37/38 的通路只在 cube
+kernel 上出现且有流量，判定为跨 die：
+
+实测 matmul：跨 die 合计 47.05 GB/s，片内 30.52 GB/s，**跨 die 占 60.6%**（path 8 单项 36.2 GB/s）。
+
+> **path id 含义 CANN 未公开**，命名是推断（依据见 `references/measurements.md`），
+> 所以置信度给 C。跨 die 占比高时，可行方向是按 GM 地址的 L2 交织关系让核只写本 die 的
+> cacheline、减少多核写同一 cacheline、或减少参与同地址写的核数。
 
 ## 采什么
 

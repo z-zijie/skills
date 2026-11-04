@@ -269,7 +269,7 @@ def analyze(capture_root: Path, kernel_us: Optional[float] = None) -> InstrInsig
 
 def render(insight: InstrInsight) -> List[str]:
     """Markdown lines for the instruction-level section."""
-    lines: List[str] = ["## 11. 逐指令耗时（InstrTimeline）", ""]
+    lines: List[str] = ["## 12. 逐指令耗时（InstrTimeline）", ""]
     if not insight.available:
         lines.append(f"不可用：{insight.reason}")
         lines.append("")

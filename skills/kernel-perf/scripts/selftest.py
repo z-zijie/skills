@@ -575,6 +575,77 @@ def test_multipass_planning() -> None:
     check("mergeable metrics stay in one pass", len(single) == 1, str(single))
 
 
+def test_multipass_merge_discovers_artifacts() -> None:
+    print("\n[multipass merge]")
+    # Regression: load_capture uses shutil to adopt trace/probe artefacts from
+    # sibling passes. An earlier "remove unused imports" pass dropped the
+    # import and this path raised NameError only on real multipass captures,
+    # which the unit tests did not exercise.
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "capture"
+        # build_capture creates an OPPROF_* dir INSIDE the path it is given, so
+        # point it at the pass directory and let it produce OPPROF_synthetic.
+        core_pass = base / "pass0_core"
+        core_pass.mkdir(parents=True)
+        core = build_capture(core_pass)
+        extra = base / "pass1_pipe" / "OPPROF_pipe"
+        (extra / "probe").mkdir(parents=True)
+        (extra / "trace.json").write_text(json.dumps({
+            "traceEvents": [
+                {"ph": "X", "pid": "core0.veccore0", "ts": 0.5, "dur": 1.0},
+                {"ph": "X", "pid": "core1.veccore0", "ts": 1.2, "dur": 0.8},
+            ]
+        }))
+        (extra / "probe" / "dfx_region_map.txt").write_text(
+            "region_id=1,pipe=mte2,bb_off=0x0,inst_off=0x0,pc=0x00000010,opcode=GET_BUF\n")
+        # materialise the extra/ view the collector creates
+        (base / "extra").mkdir()
+        (base / "extra" / "pass1_pipe").symlink_to(extra)
+
+        loaded = KP.load_capture(core, None)
+        check("trace adopted from sibling pass",
+              (core / "trace.json").is_file(), "trace not copied")
+        check("probe adopted from sibling pass",
+              (core / "probe" / "dfx_region_map.txt").is_file(), "probe not copied")
+        result = KP.analyze(loaded)
+        sched = result.get("schedule") or {}
+        check("schedule derived from adopted trace",
+              sched.get("available") is True, str(sched.get("reason")))
+        check("skew computed", sched.get("launch_skew_us") == 0.7,
+              str(sched.get("launch_skew_us")))
+
+
+def test_layers() -> None:
+    print("\n[layers]")
+    import layers as LY
+    import metric_catalogue as MC
+    cat = MC.build_catalogue()
+    present = {LY.layer_of(m.key) for m in cat}
+    check("all three layers populated", present == {"soc", "core", "schedule"},
+          str(present))
+    check("schedule layer has block timing",
+          LY.layer_of("block_timeline") == "schedule")
+    check("soc layer holds bandwidth",
+          LY.layer_of("gm_to_ub_gbps") == "soc")
+    check("core layer holds pipes", LY.layer_of("mte2_ratio") == "core")
+
+    # block extraction from a synthetic trace
+    trace = {"traceEvents": [
+        {"ph": "X", "pid": "core0.veccore0", "ts": 1.0, "dur": 2.0},
+        {"ph": "X", "pid": "core0.veccore1", "ts": 0.5, "dur": 1.0},
+        {"ph": "X", "pid": "core1.veccore0", "ts": 2.0, "dur": 0.5},
+    ]}
+    blocks = LY.blocks_from_trace(trace)
+    check("three blocks extracted", len(blocks) == 3, str(len(blocks)))
+    insight = LY.analyse_schedule(blocks, kernel_us=2.5)
+    check("launch skew = 1.5us", insight.launch_skew_us == 1.5, str(insight.launch_skew_us))
+    check("skew pct computed", insight.launch_skew_pct == 60.0, str(insight.launch_skew_pct))
+    # ends are 1.5, 2.5, 3.0 -> earliest end 1.5, last end 3.0, tail 1.5
+    check("tail = last_end - first_end", insight.tail_us == 1.5, str(insight.tail_us))
+    text = "\n".join(LY.render_schedule(insight))
+    check("skew warning rendered", "启动不同步" in text)
+
+
 def test_cli_contracts() -> None:
     print("\n[CLI contracts]")
     import subprocess
@@ -611,6 +682,8 @@ def main() -> int:
     test_metric_catalogue()
     test_key_metrics()
     test_instruction_profile()
+    test_multipass_merge_discovers_artifacts()
+    test_layers()
     test_cache_layers_surfaced()
     test_stability_threshold()
     test_stability_harness()
