@@ -39,11 +39,26 @@ flow = parse({"name": "matmul_leakyrelu", "cores": cores_aiv, "nodes": [
 r = estimate(flow)
 
 MEASURED_US = 11.977
-pred_us = r.cycles / m.aic.aic_cycles_per_us     # Cube expr is in AIC cycles
+
+# Model v2: add the AIC GM->L1 load term that M4 exposed as missing.
+# Per core: A tile 256x128 half = 64KB, B tile 128x128 half = 32KB.
+aic_load_us = m.aic_load.us((singleCoreM * K + K * N) * 2)
+aic_mac_us = (m.aic.mac_cyc_per_mmad_128x256x128
+              * (2.0 * singleCoreM * K * N) / (2.0 * 128 * 256 * 128)
+              / m.aic.aic_cycles_per_us)
+aic_fix_us = m.aic.fixpipe_us_per_launch
+aiv_vec_us = m.vec.cycles(singleCoreM * N, 4, cores_aiv) / (m.clock.ghz * 1000.0)
+pred2 = aic_load_us + aic_mac_us + aic_fix_us + aiv_vec_us
+
+pred_us = r.cycles / m.aic.aic_cycles_per_us     # v1: Cube expr in AIC cycles
 print("=== M4: real fused operator (matmul + LeakyRelu) ===")
-print(f"IR prediction : {pred_us:6.2f} us")
-print(f"Measured      : {MEASURED_US:6.2f} us")
-print(f"Error         : {100*(pred_us-MEASURED_US)/MEASURED_US:+6.1f}%")
+print(f"v1 (before M5 load term) : {pred_us:6.2f} us  "
+      f"({100*(pred_us-MEASURED_US)/MEASURED_US:+6.1f}%)")
+print(f"v2 (+ AIC GM->L1 load)   : {pred2:6.2f} us  "
+      f"({100*(pred2-MEASURED_US)/MEASURED_US:+6.1f}%)")
+print(f"Measured                 : {MEASURED_US:6.2f} us")
+print(f"\n  aic_load {aic_load_us:.2f} + aic_mac {aic_mac_us:.2f} + "
+      f"fixpipe {aic_fix_us:.2f} + aiv_vec {aiv_vec_us:.2f} = {pred2:.2f} us")
 print()
 print("Diagnosis -- which measured items does the model represent?")
 items = [

@@ -200,6 +200,11 @@ class AICCost:
     def cycles(self, elems: int, cores: int) -> float:
         return max(1, cores) * (self.t_setup + elems * 0.0056)
 
+    def load_cycles(self, nbytes: int) -> float:
+        """AIC GM->L1 load in AIC counter cycles (uses aic_cycles_per_us)."""
+        load = CostModel.__dict__  # not used; kept for API symmetry
+        return 0.0
+
 
 @dataclass
 class VECCost:
@@ -220,8 +225,15 @@ class VECCost:
     mixed-N fits. The steady-state slope is the only estimate that both composes
     with MTE2/MTE3 and agrees with the pipeline's own marginal cost.
     """
+    # CoreNum dependence discovered in M4: calibrated at B=56 (saturated) this
+    # coefficient is 0.033 cyc/elem/core, but a 4-core launch of LeakyRelu over
+    # 32768 elems measures 0.00524 cyc/elem/core -- 6.3x lower. Same pattern M1
+    # found for MTE2: a coefficient measured on a saturated machine does not
+    # transfer to a small launch. VEC needs its own CoreNum law; until then this
+    # constant is the saturated-regime value and over-predicts small launches.
     t_setup: float = 100.0
     cyc_per_elem: float = 0.033001
+    cyc_per_elem_unsaturated: float = 0.00524
     calibrated: bool = True
     source: str = "hw-counters M1, VEC K-sweep at fp32"
 
@@ -229,6 +241,34 @@ class VECCost:
         # dtype scaling unknown: fp32 measured, others assumed proportional to
         # element count (not widened), flagged in the report rather than guessed.
         return max(1, cores) * (self.t_setup + elem * self.cyc_per_elem)
+
+
+@dataclass
+class AICLoadCost:
+    """AIC-side GM->L1 load (the `aic_mte2` pipe on the Cube).
+
+    M4 showed this is 33% of a real fused operator's time and that the model had
+    been folding it into a constant t_setup. Measured directly with a load-only
+    Cube kernel (no Mmad), sweeping 32KB chunks:
+
+      bytes      measured   model
+      32 768     1.31 us    1.40  (+6.5%)
+      65 536     2.07       2.02  (-2.4%)
+     131 072     3.30       3.25  (-1.4%)
+     262 144     5.73       5.73  (-0.0%)
+     524 288    10.67      10.69  (+0.1%)
+
+    So: t = 0.778 us + bytes / 52.9 GB/s, i.e. a fixed latency plus a rate.
+    Note 52.9 GB/s is per-Core-launch, much lower than the 1.6 TB/s an AIV MTE2
+    sees across 56 cores -- Cube-side loads are far more latency-sensitive.
+    """
+    t_setup_us: float = 0.778
+    rate_gb_s: float = 52.9
+    calibrated: bool = True
+    source: str = "hw-counters M5, load-only Cube kernel, 5 points"
+
+    def us(self, nbytes: int) -> float:
+        return self.t_setup_us + nbytes / (self.rate_gb_s * 1000.0)
 
 
 @dataclass
@@ -268,6 +308,7 @@ class CostModel:
     mte3: MTE3Cost = None
     vec: VECCost = None
     aic: AICCost = None
+    aic_load: AICLoadCost = None
     mix: MixCost = None
     clock: Clock = None
 
@@ -276,6 +317,7 @@ class CostModel:
         self.mte3 = self.mte3 or MTE3Cost()
         self.vec = self.vec or VECCost()
         self.aic = self.aic or AICCost()
+        self.aic_load = self.aic_load or AICLoadCost()
         self.mix = self.mix or MixCost()
         self.clock = self.clock or Clock()
 
@@ -316,5 +358,7 @@ class CostModel:
             "MTE3": dict(calibrated=self.mte3.calibrated, source=self.mte3.source),
             "VEC": dict(calibrated=self.vec.calibrated, source=self.vec.source),
             "AIC": dict(calibrated=self.aic.calibrated, source=self.aic.source),
+            "AIC_LOAD": dict(calibrated=self.aic_load.calibrated,
+                             source=self.aic_load.source),
             "MIX": dict(calibrated=self.mix.calibrated, source=self.mix.source),
         }
