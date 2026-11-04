@@ -873,6 +873,38 @@ def cache_stats(capture: Capture) -> Dict[str, Any]:
                     rate = _num(values[3])
                     if rate is not None:
                         l2_total.append(rate)
+    # DCache is a separate cache level from L2 and lives only in the per-block
+    # 'DCache' table. It was previously decoded but never surfaced, which is the
+    # kind of silent omission that makes a report look complete while missing a
+    # whole level of the memory hierarchy.
+    dcache: Dict[str, Dict[str, float]] = {}
+    for block in capture.viz_blocks.values():
+        for table in block.get("table_detail") or []:
+            if table.get("table_name") != "DCache":
+                continue
+            header = table.get("header_name") or []
+            for row in table.get("row") or []:
+                values = row.get("value") or []
+                name = str(row.get("name", "?"))
+                entry = dcache.setdefault(name, {})
+                # header is ["", "requests", "throughput(GB/s)"] while value is
+                # [requests, throughput]. The leading blank header names the row
+                # label column, so header index i maps to value i-1.
+                for index, column in enumerate(header):
+                    if index == 0:
+                        continue
+                    value_index = index - 1
+                    if value_index >= len(values):
+                        continue
+                    parsed = _num(values[value_index])
+                    if parsed is not None:
+                        entry.setdefault(column, []).append(parsed)
+    if dcache:
+        result["dcache"] = {
+            name: {column: _mean(vals) for column, vals in cols.items()}
+            for name, cols in dcache.items()
+        }
+
     if icache:
         result["icache_hit_pct"] = _mean(icache)
         result["icache_miss_pct"] = 100.0 - _mean(icache)
@@ -1413,7 +1445,17 @@ def render_markdown(result: Dict[str, Any]) -> str:
             add(f"| iCache miss 率 | {_fmt(cache['icache_miss_pct'], '%')} |")
         if cache.get("l2_hit_pct_from_tables") is not None:
             add(f"| L2 总命中率（逐核表） | {_fmt(cache['l2_hit_pct_from_tables'], '%')} |")
+        dcache = cache.get("dcache") or {}
+        for row_name, columns in dcache.items():
+            requests = columns.get("requests")
+            throughput = columns.get("throughput(GB/s)")
+            add(f"| {row_name} | {int(requests) if requests is not None else '-'} 请求"
+                + (f", {_fmt(throughput)} GB/s" if throughput is not None else "") + " |")
         add("")
+        if not dcache:
+            add("> DCache 明细不可用（本次采集的 metric 组未产出该表）。"
+                "Outstanding/inflight 请求数在本芯片任何 metric 组下均无输出通路。")
+            add("")
 
     conflicts = result["conflicts"]
     if conflicts.get("available"):

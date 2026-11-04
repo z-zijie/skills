@@ -173,6 +173,15 @@ def build_catalogue() -> List[Metric]:
         M("l2_hit_viz", "L2 总命中率 (逐核)", "%", "B",
           "visualize_data.bin 0x08 core_memory_map[].L2cache.hit_ratio",
           caveat="读+写加权，与 CSV 分读写口径不同"),
+        M("dcache", "DCache 请求与吞吐", "-", "B",
+          "visualize_data.bin 0x09 table 'DCache'",
+          note="GM/Vector 三个方向的请求数与吞吐；与 L2 是不同层级",
+          caveat="vector 算子通常全为 0——DCache 主要服务于 scalar 访存"),
+        M("outstanding", "Outstanding 未完成请求数", "-", "C",
+          "不可用（unavailable）",
+          note="reviewer 点名要的一项",
+          caveat="实测在本芯片任何 --aic-metrics 取值下均无输出通路"
+                 "（visualize_data.bin 全文搜 outstanding/inflight 命中 0 次）"),
 
         # ---- compute -----------------------------------------------------
         M("cube_instr", "Cube 指令数", "count", "A",

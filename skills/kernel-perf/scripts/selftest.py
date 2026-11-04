@@ -482,6 +482,52 @@ def test_instruction_profile() -> None:
               not insight.available and insight.reason, insight.reason)
 
 
+def test_cache_layers_surfaced() -> None:
+    print("\n[cache layers]")
+    # DCache lives only in the per-block JSON table; a regression that drops it
+    # would leave the report looking complete while missing a cache level.
+    with tempfile.TemporaryDirectory() as tmp:
+        cap = build_capture(Path(tmp))
+        # inject a DCache table into the 0x09 record
+        blob = (cap / "visualize_data.bin").read_bytes()
+        import struct as _struct
+        recs = []
+        pos = 0
+        dec = json.JSONDecoder()
+        while pos + 14 <= len(blob):
+            n = _struct.unpack_from("<Q", blob, pos)[0]
+            kind = blob[pos + 8]
+            obj, _ = dec.raw_decode(blob[pos + 12:pos + 12 + n].decode("utf-8", "surrogateescape"))
+            recs.append((kind, blob[pos + 9], obj))
+            pos += 12 + n
+        for kind, var, obj in recs:
+            if kind == 0x09:
+                for blk in obj.get("table_per_block", []):
+                    blk["table_detail"].append({
+                        "table_name": "DCache",
+                        "header_name": ["", "requests", "throughput(GB/s)"],
+                        "row": [{"name": "DCache Read GM", "value": ["0", "0.0"]},
+                                {"name": "DCache Read Vector", "value": ["7", "1.5"]}],
+                        "size": [2, 2],
+                    })
+                break
+        rebuilt = b"".join(
+            _struct.pack("<Q", len(json.dumps(o, ensure_ascii=False).encode())) +
+            bytes([k, v]) + b"ZZ" + json.dumps(o, ensure_ascii=False).encode()
+            for k, v, o in recs)
+        (cap / "visualize_data.bin").write_bytes(rebuilt)
+
+        result = KP.analyze(KP.load_capture(cap, None))
+        dcache = (result.get("cache") or {}).get("dcache") or {}
+        check("DCache table extracted", bool(dcache), str(dcache))
+        check("DCache rows named", "DCache Read Vector" in dcache, str(list(dcache)))
+        check("DCache throughput parsed",
+              dcache.get("DCache Read Vector", {}).get("throughput(GB/s)") == 1.5,
+              str(dcache.get("DCache Read Vector")))
+        text = KP.render_markdown(result)
+        check("DCache appears in the report", "DCache Read Vector" in text)
+
+
 def test_stability_threshold() -> None:
     print("\n[stability]")
     import metric_catalogue as MC
@@ -565,6 +611,7 @@ def main() -> int:
     test_metric_catalogue()
     test_key_metrics()
     test_instruction_profile()
+    test_cache_layers_surfaced()
     test_stability_threshold()
     test_stability_harness()
     test_multipass_planning()
