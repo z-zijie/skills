@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -289,9 +290,7 @@ def search(args: argparse.Namespace) -> int:
     # Materialise the winner as the canonical capture.
     final = out_root / "capture"
     if final.exists():
-        import shutil
         shutil.rmtree(final)
-    import shutil
     shutil.copytree(winner["capture"], final)
     loaded = KP.load_capture(final, home)
     analysis = KP.analyze(loaded)

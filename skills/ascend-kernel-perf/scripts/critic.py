@@ -32,7 +32,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 import struct
 import sys
 from pathlib import Path
