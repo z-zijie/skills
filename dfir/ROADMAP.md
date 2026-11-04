@@ -28,7 +28,7 @@
 | **M0** | IR 骨架 + MTE2 单通路 | `aiv_total_cycles` (MTE2) | **已通**：IR 解析/调度/估算可跑，MTE2 满载 LOO 5.18% |
 | **M1** | AIV 全通路 | MTE2 / MTE3 / VEC | **完成**：流水线 K≥4 误差 3–5.5%；引入 isolated/streaming 两套上下文 |
 | **M2** | AIC 全通路 | MTE1 / MAC / **Fixpipe** | **完成**：reps 扫描 5 点，模型误差 ±0.2%；发现 AIC 计数器时间基与 AIV 不同 |
-| **M3** | MIX 协同 | AIC↔AIV 的 KFC / CrossCore 同步开销 | 待做：Mix kernel，AIC+AIV 同时活跃 |
+| **M3** | MIX 协同 | AIC↔AIV 的 CrossCore 同步开销 | **完成**：686 周期/次握手 |
 | **M4** | 泛化验证 | 任意 flow | 待做：用真实算子（matmul+vector epilogue 等）做端到端 <5% 验证 |
 
 ---
@@ -111,6 +111,24 @@ matmul reps 扫描（M=128,K=256,N=128，B=28）：
 
 MIX 模式下 AIC 与 AIV 协同（CV 融合），引入 CrossCore 同步。
 要标定的是**同步/握手开销**，它不是字节数的函数。
+
+## M3 结果（完成）
+
+MIX kernel 里 AIC 与 AIV 由同一次 launch 驱动，通过 CrossCoreSetFlag /
+CrossCoreWaitFlag 会合。用"带握手 / 不带握手"差分测得：
+
+| iters | sync=1 | sync=0 | delta |
+|---|---|---|---|
+| 1 | 1 875 | 1 634 | +241 |
+| 4 | 4 462 | 2 164 | +2 298 |
+
+**686 AIV 周期/次握手**，已写入 `MixCost`，估算器按 flow 里 AIC↔AIV 的依赖对计数。
+
+### 两个必须先修掉的测量陷阱
+1. AIC 侧只翻 flag 不干活 → AIV 从不等待，同步差异测出来是 0。
+   "测不出差异"被误当成"开销可忽略"。
+2. Abs 操作未初始化的 VECCALC tensor、结果不写回 → 整个循环被死代码消除，
+   测到的是纯循环开销。修法：MTE2 载入真实数据 + MTE3 写回。
 
 ## M4（泛化）
 

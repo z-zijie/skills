@@ -232,6 +232,29 @@ class VECCost:
 
 
 @dataclass
+class MixCost:
+    """AIC<->AIV cooperation overhead in a MIX kernel (M3).
+
+    A MIX launch runs Cube and Vector code from one kernel; the two halves
+    rendezvous via CrossCoreSetFlag / CrossCoreWaitFlag. That handshake is pure
+    overhead no single-engine model can predict, so it was measured directly:
+
+      AIV wall time with and without the handshake, AIC given real work:
+        iters=1: 1875 vs 1634  (+241)
+        iters=4: 4462 vs 2164  (+2298)
+      => per handshake = (2298-241)/3 = 686 AIV cycles
+
+    Applied once per (AIC node, AIV node) dependency pair in a MIX flow.
+    """
+    handshake_cycles: float = 686.0
+    calibrated: bool = True
+    source: str = "hw-counters M3, sync on/off differencing at B=56"
+
+    def cycles(self, pairs: int = 1) -> float:
+        return self.handshake_cycles * max(0, pairs)
+
+
+@dataclass
 class Clock:
     ghz: float = 1.65
 
@@ -245,6 +268,7 @@ class CostModel:
     mte3: MTE3Cost = None
     vec: VECCost = None
     aic: AICCost = None
+    mix: MixCost = None
     clock: Clock = None
 
     def __post_init__(self):
@@ -252,6 +276,7 @@ class CostModel:
         self.mte3 = self.mte3 or MTE3Cost()
         self.vec = self.vec or VECCost()
         self.aic = self.aic or AICCost()
+        self.mix = self.mix or MixCost()
         self.clock = self.clock or Clock()
 
     def node_cycles(self, node, cores: int, shared_bus: bool = False) -> float:
@@ -291,4 +316,5 @@ class CostModel:
             "MTE3": dict(calibrated=self.mte3.calibrated, source=self.mte3.source),
             "VEC": dict(calibrated=self.vec.calibrated, source=self.vec.source),
             "AIC": dict(calibrated=self.aic.calibrated, source=self.aic.source),
+            "MIX": dict(calibrated=self.mix.calibrated, source=self.mix.source),
         }

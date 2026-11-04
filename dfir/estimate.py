@@ -143,9 +143,26 @@ def estimate(flow: Flow, model: CostModel = None, verbose: bool = False) -> Resu
         # must carry the sum of their bytes, so charge the smaller pipe's work as
         # an addition rather than hiding it inside the larger one's shadow.
         contested = CONTENTION * min(busy.get("MTE2", 0.0), busy.get("MTE3", 0.0))
-        total = (max(end.values()) if end else 0.0) + contested
-    else:
-        total = max(end.values()) if end else 0.0
+
+    total = (max(end.values()) if end else 0.0) + contested
+
+    # ---- MIX cooperation overhead (M3) -----------------------------------
+    # A flow that uses both Cube (MAC/CUBE) and Vector (VEC) pipes needs a
+    # cross-core handshake per dependency between the two engines. Measured at
+    # 686 AIV cycles per pair (see MixCost).
+    pipes_used = {n.pipe for n in flow.nodes if n.kind != "barrier"}
+    mix_pairs = 0
+    if ({"MAC", "CUBE"} & pipes_used) and "VEC" in pipes_used:
+        for n in flow.nodes:
+            for d in n.deps:
+                dep = flow.by_id().get(d)
+                if not dep:
+                    continue
+                a = dep.pipe in ("MAC", "CUBE")
+                b = n.pipe == "VEC"
+                if (a and b) or (dep.pipe == "VEC" and n.pipe in ("MAC", "CUBE")):
+                    mix_pairs += 1
+        total += model.mix.cycles(mix_pairs)
     bottleneck = max(per_pipe, key=per_pipe.get) if per_pipe else "none"
     return Result(
         cycles=total,
