@@ -267,6 +267,20 @@ def build_catalogue() -> List[Metric]:
         M("die_count", "DIE 数量", "-", "A", "platform_config:DieInfo/io_die_num",
           note="Ascend950PR 为 2"),
 
+        # ---- runtime / driver REA outcomes --------------------------------
+        M("op_timeline", "per-op start/end/duration", "ns", "A",
+          "libprofapi.so: aclprofGetOpStart/GetOpEnd/GetOpDuration（acl_prof.h）",
+          note="算子级时间轴，可区分每个下发算子的起止；比 CSV 的单个总时长细",
+          caveat="仍是 op 级，不是 block 级；不含硬件计数"),
+        M("stream_correlation", "stream / correlationId 关联", "-", "A",
+          "mspti: msptiActivityKernel{start,end,streamId,correlationId}",
+          note="可判断 kernel 在哪个 stream、对应哪次 host 调用",
+          caveat="需要改用 mspti 采集，与 msopprof 是两套通路；本工具默认不启用"),
+        M("pmu_via_driver", "driver 直读 PMU", "-", "C",
+          "不可用（unavailable）: libascend_hal.so 无对应导出",
+          note="1757 个导出符号里只有 dmanage_get_pmu_voltage（电源，非性能计数）",
+          caveat="计数器通路在 profiler 驱动内部，不经 HAL 导出；只能走 msopprof"),
+
         # ---- rock-bottom reliability ------------------------------------
         M("imbalance", "核间离散度", "%", "B", "derived: (max-min)/mean of per-core time",
           note=">30% 说明 tiling 切分不均；短 kernel 上主要是启动开销"),

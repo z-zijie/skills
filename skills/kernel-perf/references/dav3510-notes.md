@@ -150,3 +150,79 @@ ImportError: /opt/buildtools/python-3.12.9/lib/python3.12/lib-dynload/_ctypes.cp
 ```
 
 `msprof`（非 `op` 模式）用宿主机 `python3` 解析采集数据，而镜像里这个 Python 是自编译的、`_ctypes` 与解释器主版本不匹配。数据本身采到了（`PROF_*/host/data`、`device_0/data` 都有内容），只是解析不出来。改用 CANN 自带的 `python` 或修好 `_ctypes` 可解，本工具不依赖这条路。
+
+## runtime / driver 库逆向（2026-11-04 16:5x）
+
+按 reviewer 要求，直接看 runtime / driver 两条库链能否绕过 profiler 拿到更细的计数。
+
+### 库清单
+
+| 库 | 路径 | 规模 |
+|---|---|---|
+| runtime（ACL） | `x86_64-linux/lib64/libascendcl.so` | 268 KB，导出符号极少（prof 相关仅 1 个） |
+| profiler API | `x86_64-linux/lib64/libprofapi.so` | 76 个 `*prof*` 导出符号 |
+| driver HAL | `/usr/local/Ascend/driver/lib64/driver/libascend_hal.so` | 1757 个导出符号 |
+| mspti（新版 profiling 接口） | `tools/mspti/lib64/libmspti.so` + `include/mspti*.h` + py wheel | activity-based |
+
+### libprofapi.so：可拿到 per-op 时间戳，拿不到 PMU
+
+导出符号分三组：
+
+- **生命周期**：`ProfAclInit/Start/Stop/Finalize/SetConfig/Subscribe/UnSubscribe`
+- **打点**：`ProfAclPush/Pop/RangeStart/RangeStop/RangePushEx/RangePop/Mark/MarkEx`、`ProfAclSetStamp*`
+- **取数**：`ProfAclGetOpVal`、`ProfAclGetOpTime`、`ProfAclGetId/GetOpAttriVal/GetCompatibleFeatures`
+
+对应头文件 `x86_64-linux/include/acl/acl_prof.h`（623 行）里的 subscribe 通路给出**每个 op 的
+start/end/duration**：
+
+```c
+aclprofGetOpStart(opInfo, len, index)      // uint64_t
+aclprofGetOpEnd(opInfo, len, index)        // uint64_t
+aclprofGetOpDuration(opInfo, len, index)   // uint64_t
+aclprofGetOpNum / GetOpName / GetOpType / GetModelId / GetOpFlag
+```
+
+这是**算子级**（op-level）的时间轴，不是 block 级，也不含任何 PMU 计数器。`ProfAclGetOpVal`
+的名字暗示返回值，但要拿到硬件计数仍得先有计数被采集——而采集由 msopprof 侧完成。
+
+### libascend_hal.so：不暴露 PMU
+
+1757 个导出符号里，与 PMU/计数相关的只有 `dmanage_get_pmu_voltage`（电源管理，不是性能计数），
+profiling 相关的只有 `drv_event_proc` / `drv_registert_event_proc`（事件回调注册）。
+**driver HAL 层面没有可用的 PMU 计数器读取接口**——计数器通路在 profiler 驱动内部，
+不经过 HAL 导出。
+
+### mspti：kernel 级时间戳，无计数器
+
+`include/mspti_activity.h` 定义 13 种 activity kind（KERNEL / API / MEMCPY / HCCL / MARKER …）。
+`msptiActivityKernel` 结构体：
+
+```c
+msptiActivityKind kind;   // MSPTI_ACTIVITY_KIND_KERNEL
+uint64_t start;           // ns
+uint64_t end;             // ns
+struct { uint32_t deviceId, streamId; } ds;
+uint64_t correlationId;
+const char *type, *name;
+```
+
+有价值的点：**start/end 是纳秒级 kernel 时间戳**，且带 streamId 与 correlationId，比 CSV 里的
+单个 `Task Duration` 多了"这个 kernel 属于哪个 stream、和哪个 host API 关联"。
+没有 block 级细分，也没有任何 PMU 计数。
+
+### 结论
+
+三条路径都没有比 `msopprof` 更多**硬件计数**：
+
+| 想要的东西 | runtime | driver | mspti | msopprof |
+|---|---|---|---|---|
+| PMU 计数器 | ✗ | ✗ | ✗ | ✓（固定 7 组） |
+| sector / coalescing | ✗ | ✗ | ✗ | ✗ |
+| outstanding / snoop | ✗ | ✗ | ✗ | ✗ |
+| per-op start/end | ✓（aclprof） | ✗ | ✓（kernel 级） | 仅总时长 |
+| per-block start/end | ✗ | ✗ | ✗ | ✓（PipeTimeline，部分核） |
+| stream / correlation 关联 | ✓ | ✗ | ✓ | ✗ |
+
+所以：**计数器只能从 msopprof 拿，而且拿不到比它预设 7 组更多的东西**；runtime/mspti 的增量在
+时间戳粒度与 stream 关联，不在计数器。若后续要做"kernel 在 stream 上的排队/串行度"分析，
+mspti 是正确入口——但那属于调度层的时间语义，不是硬件计数。
