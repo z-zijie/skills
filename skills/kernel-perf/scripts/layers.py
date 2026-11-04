@@ -508,6 +508,155 @@ def render_paths(paths: SocPaths) -> List[str]:
     return lines
 
 
+# ---------------------------------------------------------------------------
+# PC-vs-cycle: icache miss detection (scalar_story's 手段一)
+# ---------------------------------------------------------------------------
+@dataclass
+class PcStall:
+    """A period where the PC did not advance while the pipe was busy.
+
+    scalar_story's diagnostic: plot PC against cycle; a long horizontal segment
+    means the core is waiting on an icache fetch, because the same PC is being
+    re-executed/stalled rather than advancing. We reproduce that numerically --
+    a horizontal run is simply an interval where consecutive events share a PC
+    and the gap between them is large relative to the event durations.
+    """
+
+    pc: str
+    opcode: str
+    pipe: str
+    start_us: float
+    gap_us: float
+    events: int
+
+    def as_dict(self) -> Dict[str, object]:
+        return {
+            "pc": self.pc, "opcode": self.opcode, "pipe": self.pipe,
+            "start_us": self.start_us, "gap_us": self.gap_us,
+            "events": self.events,
+        }
+
+
+@dataclass
+class PcCycleInsight:
+    available: bool = False
+    reason: str = ""
+    events: int = 0
+    distinct_pcs: int = 0
+    span_us: Optional[float] = None
+    stalls: List[Dict[str, object]] = field(default_factory=list)
+    total_stall_us: float = 0.0
+    stall_pct: Optional[float] = None
+    threshold_us: float = 0.0
+
+    def as_dict(self) -> Dict[str, object]:
+        return {
+            "available": self.available, "reason": self.reason,
+            "events": self.events, "distinct_pcs": self.distinct_pcs,
+            "span_us": self.span_us, "stalls": self.stalls,
+            "total_stall_us": round(self.total_stall_us, 4),
+            "stall_pct": self.stall_pct,
+            "threshold_us": round(self.threshold_us, 4),
+        }
+
+
+def analyse_pc_cycle(trace: Dict[str, object],
+                     kernel_us: Optional[float] = None,
+                     min_gap_us: float = 0.05) -> PcCycleInsight:
+    """Find intervals where the PC stayed put long enough to look like a stall.
+
+    Only InstrTimeline events carry both a timestamp and a PC, so this needs
+    --with-instructions. The threshold is absolute microseconds rather than a
+    multiple of event duration: instrumented events are sub-nanosecond, so a
+    ratio test would flag every pair.
+    """
+    insight = PcCycleInsight(threshold_us=min_gap_us)
+    events = []
+    for event in (trace or {}).get("traceEvents", []):
+        if not isinstance(event, dict) or event.get("ph") != "X":
+            continue
+        args = event.get("args") or {}
+        pc = args.get("pc_addr")
+        ts = event.get("ts")
+        if pc is None or ts is None:
+            continue
+        try:
+            events.append((float(ts), str(pc), str(event.get("name", "?")),
+                           str(event.get("tid", "?")),
+                           float(event.get("dur", 0.0) or 0.0)))
+        except (TypeError, ValueError):
+            continue
+    if not events:
+        insight.reason = ("trace 里没有同时带 pc_addr 与 ts 的事件"
+                          "（需要 --with-instructions）")
+        return insight
+
+    events.sort(key=lambda e: e[0])
+    insight.available = True
+    insight.events = len(events)
+    insight.distinct_pcs = len({e[1] for e in events})
+    insight.span_us = round(events[-1][0] - events[0][0], 4)
+
+    # Group consecutive events sharing a PC; a large internal gap is the signal.
+    origin = events[0][0]
+    stalls: List[PcStall] = []
+    index = 0
+    while index < len(events):
+        run_start = index
+        pc = events[index][1]
+        while index + 1 < len(events) and events[index + 1][1] == pc:
+            index += 1
+        run_end = index
+        if run_end > run_start:
+            gap = events[run_end][0] - events[run_start][0]
+            if gap >= min_gap_us:
+                stalls.append(PcStall(
+                    pc=pc,
+                    opcode=events[run_start][2],
+                    pipe=events[run_start][3],
+                    start_us=round(events[run_start][0] - origin, 4),
+                    gap_us=round(gap, 4),
+                    events=run_end - run_start + 1,
+                ))
+        index += 1
+
+    stalls.sort(key=lambda s: -s.gap_us)
+    insight.stalls = [s.as_dict() for s in stalls[:10]]
+    insight.total_stall_us = sum(s.gap_us for s in stalls)
+    if insight.span_us:
+        insight.stall_pct = round(
+            100.0 * insight.total_stall_us / insight.span_us, 2)
+    return insight
+
+
+def render_pc_cycle(insight: PcCycleInsight) -> List[str]:
+    lines: List[str] = []
+    if not insight.available:
+        lines.append(f"不可用：{insight.reason}")
+        lines.append("")
+        return lines
+    lines.append(f"- {insight.events} 个带 PC 的事件，{insight.distinct_pcs} 个不同 PC，"
+                 f"时间跨度 {insight.span_us:.3f} us")
+    lines.append(f"- 同一 PC 停留 ≥ {insight.threshold_us:.2f} us 的区间："
+                 f"**{len(insight.stalls)} 处**，合计 {insight.total_stall_us:.3f} us"
+                 + (f"（占跨度 {insight.stall_pct:.1f}%）"
+                    if insight.stall_pct is not None else ""))
+    lines.append("")
+    if insight.stalls:
+        lines.append("| PC | 指令 | 流水 | 起始 us | 停留 us | 事件数 |")
+        lines.append("|---|---|---|---:|---:|---:|")
+        for entry in insight.stalls:
+            lines.append(f"| `{entry['pc']}` | `{entry['opcode']}` | {entry['pipe']} | "
+                         f"{entry['start_us']:.3f} | {entry['gap_us']:.3f} | "
+                         f"{entry['events']} |")
+        lines.append("")
+        lines.append("> 同一 PC 长时间不动＝在等取指。scalar_story 用 PC-Cycle 图上的"
+                     "长水平线段定位 icache miss；这里是它的数值等价物。命中该模式时，"
+                     "可在循环入口或函数调用前 1–2 个基本块处插 icache 预取。")
+        lines.append("")
+    return lines
+
+
 def render_layers(sections: Dict[str, List[str]]) -> List[str]:
     """Assemble the layered view given already-rendered per-layer lines."""
     lines: List[str] = []

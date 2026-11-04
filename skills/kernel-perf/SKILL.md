@@ -170,6 +170,10 @@ MFU 一律标 D 级：分母是理论峰值，用于横向比较，不是"实测
 
 报告会明确写出**覆盖率**——已归属耗时占 kernel 总时间的百分比。低于 50% 时给出警告：那描述的是被插桩区间，不是整个 kernel。
 
+同一份 trace 还用来做 **PC-vs-cycle 的 icache miss 诊断**（scalar_story 的手段一）：同一 PC 连续出现
+且间隔 ≥0.05 us 判为「在等取指」，报告列出停留最久的 PC。实测 vector_add 为 0 处——短 kernel
+本来就没有 icache miss，工具如实报 0。
+
 ## 约束（实测）
 
 - **采集分趟**：`InstrTimeline` 与 `PipeTimeline` 互斥；`InstrTimeline` 和 8 个核心组混采会挂起。工具自动拆趟（`plan_passes`）。

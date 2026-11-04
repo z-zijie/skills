@@ -241,10 +241,15 @@ def build_catalogue() -> List[Metric]:
           note="Scalar Story 判定寄存器 spill 的核心依据，>30% 即疑似 spill",
           caveat="instr_popped 日志需 --dump=true，而 --dump 要求 TimelineDetail；"
                  "后者在 dav-3510 上直接失败，故上板取不到"),
-        M("pc_cycle", "PC vs Cycle 曲线（icache miss 诊断）", "-", "C",
+        M("pc_cycle", "PC 停留（icache miss 诊断）", "us", "C",
           "trace.json (InstrTimeline) 的 pc_addr + ts",
-          note="PC 长时间不变＝在等 icache 载入；Scalar Story 用它定位 icache miss",
-          caveat="需要 --with-instructions 且 kernel 带 -g"),
+          note="同一 PC 长时间不动＝在等取指；这是 scalar_story 的 PC-Cycle 图的数值等价物",
+          caveat="需要 --with-instructions；实测 vector_add 71 事件 0 处停留，"
+                 "短 kernel 上事件太少不足以判定"),
+        M("load_store_via_pc", "Load/Store 热点（按 PC 归属）", "us", "C",
+          "derived: InstrTimeline 的 pc + dfx_region_map 的 opcode",
+          note="能看到 LD/ST 类 opcode 各自耗时，但没有指令总数口径",
+          caveat="不是 scalar_story 的 Load/Store 占比（那需要 instr_popped 全量指令流）"),
 
         # ---- sector / coalescing / cross-die ------------------------------
         M("sector_efficiency", "Sector 利用率 / Coalescing", "%", "C",

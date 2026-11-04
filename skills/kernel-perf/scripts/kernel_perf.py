@@ -1214,6 +1214,8 @@ def analyze(capture: Capture) -> Dict[str, Any]:
         die_num = capture.platform.io_die_num if capture.platform else None
         result["soc_paths"] = LY.analyse_paths(
             capture.viz_cores, die_num).as_dict()
+        result["pc_cycle"] = LY.analyse_pc_cycle(
+            capture.timeline, capture.duration_us).as_dict()
         result["layers"] = {
             m.key: LY.layer_of(m.key)
             for m in (MC.build_catalogue() if MC is not None else [])
@@ -1648,6 +1650,23 @@ def render_markdown(result: Dict[str, Any]) -> str:
             unmatched_events=instruction.get("unmatched_events", 0),
         )
         lines.extend(IP.render(insight))
+
+        pc_cycle = result.get("pc_cycle")
+        if LY is not None and pc_cycle is not None:
+            add("### 12.1 PC-vs-cycle（icache miss 诊断）")
+            add("")
+            pcins = LY.PcCycleInsight(
+                available=pc_cycle.get("available", False),
+                reason=pc_cycle.get("reason", ""),
+                events=pc_cycle.get("events", 0),
+                distinct_pcs=pc_cycle.get("distinct_pcs", 0),
+                span_us=pc_cycle.get("span_us"),
+                stalls=pc_cycle.get("stalls") or [],
+                total_stall_us=pc_cycle.get("total_stall_us", 0.0),
+                stall_pct=pc_cycle.get("stall_pct"),
+                threshold_us=pc_cycle.get("threshold_us", 0.0),
+            )
+            lines.extend(LY.render_pc_cycle(pcins))
 
     subblocks = result.get("subblocks") or []
     if subblocks:

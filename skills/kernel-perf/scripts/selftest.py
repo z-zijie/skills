@@ -646,6 +646,33 @@ def test_layers() -> None:
     check("skew warning rendered", "启动不同步" in text)
 
 
+def test_pc_cycle_stalls() -> None:
+    print("\n[pc-cycle icache diagnosis]")
+    import layers as LY
+    # No pc -> must degrade, not raise
+    ins = LY.analyse_pc_cycle({"traceEvents": [
+        {"ph": "X", "pid": "c0", "ts": 0.0, "dur": 0.1}]})
+    check("missing pc degrades gracefully", not ins.available, ins.reason)
+
+    # A repeated PC held for a long gap is the icache-miss signature
+    trace = {"traceEvents": [
+        {"ph": "X", "pid": "c0", "tid": "SCALAR", "name": "LD", "ts": 1.000,
+         "dur": 0.001, "args": {"pc_addr": "0xA0"}},
+        {"ph": "X", "pid": "c0", "tid": "SCALAR", "name": "LD", "ts": 1.400,
+         "dur": 0.001, "args": {"pc_addr": "0xA0"}},
+        {"ph": "X", "pid": "c0", "tid": "SCALAR", "name": "ST", "ts": 1.500,
+         "dur": 0.001, "args": {"pc_addr": "0xB0"}},
+    ]}
+    ins = LY.analyse_pc_cycle(trace)
+    check("stall detected", ins.available and len(ins.stalls) == 1, str(ins.stalls))
+    check("stall gap measured", ins.stalls[0]["gap_us"] == 0.4, str(ins.stalls[0]))
+    check("distinct pcs counted", ins.distinct_pcs == 2, str(ins.distinct_pcs))
+    check("stall pct computed",
+          ins.stall_pct is not None and 60 < ins.stall_pct < 90, str(ins.stall_pct))
+    text = "\n".join(LY.render_pc_cycle(ins))
+    check("render explains the diagnosis", "icache" in text)
+
+
 def test_cli_contracts() -> None:
     print("\n[CLI contracts]")
     import subprocess
@@ -684,6 +711,7 @@ def main() -> int:
     test_instruction_profile()
     test_multipass_merge_discovers_artifacts()
     test_layers()
+    test_pc_cycle_stalls()
     test_cache_layers_surfaced()
     test_stability_threshold()
     test_stability_harness()

@@ -258,3 +258,19 @@ vector 算子上这组跨 die path 几乎不出流量（<3.3 GB/s），说明影
 | VF count / PUSHQ VF cycles / RVECEX / RVECLD / RVECSU / PUSH_PB | ❌ | 仅 cannsim trace；上板只有 `aiv_vec_vf_ratio` 汇总 |
 | MTE2/MTE3 sum_cycles | ✅ | 已有 |
 | bank 冲突（vf_data_transform_story） | ✅ | ResourceConflictRatio |
+
+## PC-vs-cycle（icache miss 诊断）实测（2026-11-04 16:4x）
+
+InstrTimeline 的 `trace.json` 同时带 `args.pc_addr` 与 `ts`，这是 scalar_story「手段一」需要的两个字段。
+`layers.analyse_pc_cycle()` 把「同一 PC 连续出现且间隔 ≥ 阈值」识别为停留（等价于 PC-Cycle 图上的水平线段）：
+
+vector_add（`-g` 编译，71 事件，8 个不同 PC，跨度 0.7115 us）：
+
+```
+stalls = 0，total_stall_us = 0.0，stall_pct = 0.0
+```
+
+**这是诚实结果**：该 kernel 短、代码小，本来就没有 icache miss。工具如实报 0 而不是凑一个数。
+要验证检测器本身有效，用合成轨迹（同一 PC、间隔 0.4us）→ 命中 1 处、占 80%，见 `selftest.py`。
+
+阈值取绝对 0.05 us 而非「事件时长的倍数」：插桩事件的 `dur` 在纳秒级，比值法会把每一对都判成停留。
