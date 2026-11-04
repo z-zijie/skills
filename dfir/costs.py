@@ -432,15 +432,25 @@ class CostModel:
                                         shared_bus=shared_bus)
             if node.pipe == "MTE3":
                 return self.mte3.cycles(node.bytes, cores, copies=node.copies)
+            if node.pipe == "MTE1":
+                # AIC-side GM->L1 load. NOTE the estimator's unit is AIV cycles,
+                # while AIC counters tick on a different timebase -- so convert
+                # the measured microseconds with the AIV clock, NOT with
+                # aic_cycles_per_us (that mistake inflated this by 28x).
+                us = self.aic_load.us(node.bytes * node.copies)
+                return us * self.clock.ghz * 1000.0
             raise ValueError(f"copy node {node.id} on unsupported pipe {node.pipe}")
         if node.kind == "compute":
             if node.pipe == "VEC":
                 return self.vec.cycles(node.elem, node.dtype_bytes, cores)
             if node.pipe in ("MAC", "CUBE"):
-                # `elem` carries the FLOP count for a Cube node; a matmul node can
-                # instead set mmads/mk/n to be explicit.
-                return self.aic.cycles_for_mm(128, 256, 128, cores,
-                                              mmads=max(1, node.copies))
+                # cycles_for_mm returns AIC counter cycles, whose timebase differs
+                # from the AIV cycles the estimator works in. Convert through
+                # microseconds so the whole graph shares one unit.
+                aic_cyc = self.aic.cycles_for_mm(128, 256, 128, cores,
+                                                 mmads=max(1, node.copies))
+                us = aic_cyc / self.aic.aic_cycles_per_us
+                return us * self.clock.ghz * 1000.0
             raise ValueError(f"compute node {node.id} on unsupported pipe {node.pipe}")
         raise ValueError(f"bad kind {node.kind}")
 
