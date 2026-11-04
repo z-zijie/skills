@@ -27,7 +27,7 @@
 |---|---|---|---|
 | **M0** | IR 骨架 + MTE2 单通路 | `aiv_total_cycles` (MTE2) | **已通**：IR 解析/调度/估算可跑，MTE2 满载 LOO 5.18% |
 | **M1** | AIV 全通路 | MTE2 / MTE3 / VEC | **完成**：流水线 K≥4 误差 3–5.5%；引入 isolated/streaming 两套上下文 |
-| **M2** | AIC 全通路 | MTE1 / MTE2 / MTE3 / MAC / **Fixpipe** / SCALAR | 待做：Cube kernel + `aic_*` 计数器 |
+| **M2** | AIC 全通路 | MTE1 / MAC / **Fixpipe** | **完成**：reps 扫描 5 点，模型误差 ±0.2%；发现 AIC 计数器时间基与 AIV 不同 |
 | **M3** | MIX 协同 | AIC↔AIV 的 KFC / CrossCore 同步开销 | 待做：Mix kernel，AIC+AIV 同时活跃 |
 | **M4** | 泛化验证 | 任意 flow | 待做：用真实算子（matmul+vector epilogue 等）做端到端 <5% 验证 |
 
@@ -93,6 +93,19 @@ K=4 → +5.5%，K=8 → +3.0%。K=1 是 +33.7%，因为单次流程不存在 str
 `aic_total_cycles` 已可用；`PipeUtilization` 组提供 `aic_mac_time`、
 `aic_mte1_time`、`aic_fixpipe_time` 等分通路时间与占比。
 需要写 Cube kernel（matmul）来标定 MAC 与 Fixpipe。
+
+## M2 结果（完成）
+
+matmul reps 扫描（M=128,K=256,N=128，B=28）：
+
+`aic_cycles = 98 730 + 46 994 × mmads`，5 个点误差全部 ≤0.2%。
+
+| 发现 | 内容 |
+|---|---|
+| 固定成本按 launch 计 | 98 730 cyc（载入 A/B + 一次 Fixpipe），**不随 Mmad 数增长** |
+| MAC 成本 | 46 994 cyc/Mmad = 0.0056 cyc/FLOP |
+| Fixpipe | 0.48–0.54µs **恒定**，与 reps 无关，是一次性成本 |
+| **计数器时间基不同** | AIC 45 900 cyc/us vs AIV 1 650 cyc/us，**换算错 28 倍** |
 
 ## M3（MIX）
 

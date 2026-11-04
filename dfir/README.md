@@ -34,7 +34,7 @@ ROADMAP.md     里程碑
 | **MTE2** (GM→UB) | ✅ | LOO **3.91%**，75% 点在 ±5% 内（63 点，B=1..56） |
 | **MTE3** (UB→GM) | ⚠️ | 三点插值（B=14/28/56），**仅覆盖饱和写**，见下 |
 | **VEC** | ⚠️ | 单点标定：fp32 Add 0.00523 cyc/elem（每核） |
-| **AIC / Fixpipe** | ❌ | 未标定（M2） |
+| **AIC（MAC + Fixpipe + MTE1）** | ✅ | 5 点内 **±0.2%**（M2） |
 
 ## MTE2 模型（M0，最成熟）
 
@@ -98,6 +98,38 @@ IR flow 的形状自动判定：`per_pipe_copies > 1` 即为 streaming。
   把 K=1 放进拟合会让截距变成负值并污染所有系数
 - 三种 mode 的增量互相校验：pipeline 增量 − MTE3 增量 − VEC 增量 = MTE2 增量，
   算出来 305 006，与独立测得的 307 329 差 0.7% —— 这个闭合是模型正确的证据
+
+## M2：AIC（Cube）通路
+
+用 M=128,K=256,N=128 的 matmul、reps 从 1 扫到 16，采 `aic_total_cycles`
+与 `PipeUtilization` 的各 pipe 时间。
+
+| reps | 实测 aic cyc | 模型 | 误差 |
+|---|---|---|---|
+| 1 | 145 923 | 145 724 | −0.1% |
+| 2 | 192 318 | 192 718 | +0.2% |
+| 4 | 286 607 | 286 706 | +0.0% |
+| 8 | 473 527 | 474 682 | +0.2% |
+| 16 | 849 481 | 850 634 | +0.1% |
+
+模型：`aic_cycles = 98 730 + 46 994 × mmads`（每 Mmad 为 128×256×128）
+- 固定项 98 730 按**每次 launch 计一次**（载入 A/B + 一次 Fixpipe），不按 Mmad 计
+- 46 994 cyc/Mmad = 0.0056 cyc/FLOP
+- **Fixpipe 基本不随 reps 增长**（0.48–0.54µs 恒定），是一次性成本
+
+### ⚠️ 最重要的发现：AIC 与 AIV 的计数器时间基不同
+
+| 计数器 | cyc/us | 换算 |
+|---|---|---|
+| `aiv_total_cycles` | 1 650 | 1.65 GHz |
+| `aic_total_cycles` | **45 900 ± 1 200** | 约 45.9 MHz 当量 |
+
+在 reps 1→2→4→8→16 四段增量上都一致（47 149 / 44 835 / 46 672 / 45 882）。
+**用 AIV 的时钟去换算 AIC 的计数会错约 28 倍。** `costs.py` 里 AIC 单独带
+`aic_cycles_per_us`，不共用 `Clock`。
+
+这个坑很隐蔽：单看 `aic_*_time(us)` 列（msprof 已经换算好）不会发现，
+只有把 `aic_total_cycles` 和 wall duration 对照才会暴露。
 
 ## 用法
 

@@ -161,16 +161,44 @@ class MTE3Cost:
 
 @dataclass
 class AICCost:
-    """Cube: MAC + MT1/MTE2/MTE3/Fixpipe. Not calibrated yet (M2)."""
-    t_setup: float = 2000.0
-    mac_cyc_per_elem: float = 0.5
-    fixpipe_cyc_per_elem: float = 0.05
-    calibrated: bool = False
-    source: str = "PROVISIONAL -- AIC/Fixpipe not measured yet (M2)"
+    """Cube engine: MTE1 (L1->L0) + M (MAC) + Fixpipe (L0C->GM).
+
+    Calibrated in M2 from a M=128,K=256,N=128 matmul per Cube core with a
+    repetition sweep (reps = 1..16), measuring aic_total_cycles and the
+    per-pipe times from msprof PipeUtilization.
+
+    Marginal cost per Mmad (128x256x128 = 8.39 MFLOP): 46 994 aic cycles
+      => 0.0056 aic-cyc/FLOP
+    Fixpipe is essentially FREE per repetition (0.48-0.54 us regardless of reps);
+    it is paid once per launch: ~0.50 us. MTE1 costs 544 cyc/rep, MTE2 ~0.
+
+    *** CRITICAL: the AIC counter is NOT the same timebase as the AIV one. ***
+    Measured aic_cycles / duration = 45 900 +/- 1 200 cycles/us, consistently
+    across the reps sweep, versus 1 650 cycles/us for aiv_total_cycles
+    (independently verified in M0/M1). So AIC costs must not be converted with
+    the AIV clock -- doing so is wrong by ~28x. See aic_cycles_per_us.
+    """
+    t_setup: float = 98_730.0          # aic cycles: load A/B + one fixpipe
+    mac_cyc_per_mmad_128x256x128: float = 46_994.0
+    fixpipe_us_per_launch: float = 0.50
+    aic_cycles_per_us: float = 45_900.0   # measured, NOT 1650
+    calibrated: bool = True
+    source: str = "hw-counters M2, Mmad reps sweep at B=28"
+
+    def cycles_for_mm(self, m: int, k: int, n: int, cores: int, mmads: int = 1) -> float:
+        """aic cycles for `mmads` matmuls of per-core m x k x n.
+
+        t_setup is paid ONCE per launch (load A/B, one fixpipe); only the MAC
+        term scales with the number of Mmads. The earlier version charged setup
+        per Mmad, which over-predicted a 16-rep loop by 46x.
+        """
+        flops_per_mmad = 2.0 * m * k * n
+        ref = 2.0 * 128 * 256 * 128
+        per = self.mac_cyc_per_mmad_128x256x128 * (flops_per_mmad / ref)
+        return self.t_setup + per * max(1, mmads)
 
     def cycles(self, elems: int, cores: int) -> float:
-        return max(1, cores) * (self.t_setup +
-                                elems * (self.mac_cyc_per_elem + self.fixpipe_cyc_per_elem))
+        return max(1, cores) * (self.t_setup + elems * 0.0056)
 
 
 @dataclass
@@ -239,8 +267,11 @@ class CostModel:
         if node.kind == "compute":
             if node.pipe == "VEC":
                 return self.vec.cycles(node.elem, node.dtype_bytes, cores)
-            if node.pipe == "MAC":
-                return self.aic.cycles(node.elem, cores)
+            if node.pipe in ("MAC", "CUBE"):
+                # `elem` carries the FLOP count for a Cube node; a matmul node can
+                # instead set mmads/mk/n to be explicit.
+                return self.aic.cycles_for_mm(128, 256, 128, cores,
+                                              mmads=max(1, node.copies))
             raise ValueError(f"compute node {node.id} on unsupported pipe {node.pipe}")
         raise ValueError(f"bad kind {node.kind}")
 
