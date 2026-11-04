@@ -2,7 +2,9 @@
 
 按"先看瓶颈落到哪"排序。每一条都是一个 `-D` 宏，改完重编译重测，不与别的改动叠加。
 
-实测前提（Ascend950PR，56 AIV，UB 248 KiB，L2 128 MiB）：多数单 case kernel 的真实瓶颈不在算法，而在**下发地板**与**标量开销**。先量，再选组。
+前提（Ascend950PR，56 AIV，UB 248 KiB，L2 128 MiB）：多数单 case kernel 的真实瓶颈不在算法，而在**下发地板**与**标量开销**。先量，再选组。
+
+**来源分级**：标"实测"的条目是本流程在 1M fp16 exp case 上亲手量过的；标"待验"的是从既有优化周期里继承的方向，进你的 case 之前要自己再跑一遍。
 
 ## 底线：下发地板
 
@@ -26,23 +28,23 @@
 
 现象：逐核 duration 从 1.45 到 3.99 µs（spread 93%），沿 blockIdx 单调。
 
-- 反转 blockIdx 映射：`bid = GetBlockNum() - 1 - bid`。实测能把 spread 从 58% 压到 52%，但 Duration 常只动 1%。
-- 互质交错映射：`bid = (bid * K) % blocks`，K 取 3/5/9。常是负结果。
-- subcore 均衡：把每核工作量按 AIC/AIV 子核重排。
+- 反转 blockIdx 映射（待验）：`bid = GetBlockNum() - 1 - bid`。既有周期里能把 spread 从 58% 压到 52%，但 Duration 只动 1%——正是"spread 是线索不是判据"的例子。
+- 互质交错映射（待验）：`bid = (bid * K) % blocks`，K 取 3/5/9。既有周期里是负结果。
+- subcore 均衡（待验）：把每核工作量按 AIC/AIV 子核重排。
 
 注意：spread 是**线索**不是判据。它本身抖 6 个点，且 Duration 由最慢核决定——spread 改善而 Duration 不动，说明瓶颈已经移位。
 
 ## C 组：tiling 与流水
 
-- 每核趟数 2/3/4/6/8（`-DTILES=`）。趟数少 = 描述符大、DMA 少；趟数多 = 流水更深。两极都实测过负结果，中间值随 case 变。
-- ping-pong 深度（`-DPDEPTH=`）：2/4/8。实测 4 与 8 在噪声内等价。
+- 每核趟数（`-DTILES=`）：趟数少 = tile 大、描述符少、DMA 少；趟数多 = 流水更细。实测有拐点而不是单调：tile 1472 → 14.47 µs、4688 → 9.00、8192 → 9.09（5 进程合并中位数）。tile 从 1.5K 涨到 ~5K 是真收益，再往上停在噪声内。
+- **一次只改一个旋钮，并核对 `[cfg]` 行**：骨架早期版本里 `-DPDEPTH=` 同时决定 ping-pong 深度和 tile 大小，于是"深度"消融实际测的是"tile 大小"，落在同一条单调线上，被记成第二条收益。两个旋钮耦合时，两次实验测的是一件事。
 - UB 预算：`UB_NUM/UB_DEN` 取 15/16、7/8、31/32。预算越紧 tile 越小、流水越浅。
 - 每核最小 tile 数（`-DMIN_TILE=`）：控制尾块粒度。
-- 写回 cache 模式（`CACHE_MODE_LAST`）：小 case 上常见负收益，但要在自己的 case 上量。
+- 写回 cache 模式（`CACHE_MODE_LAST`，待验）：既有周期在小 case 上是负收益，要在自己的 case 上量。
 
 ## D 组：向量体
 
-- 原生低精度指令：fp16 域的 `VEXP.f16` 把 `VLD → VCVT → VEXP.f32 → VCVT → VST` 五条压到三条编译产物，且一个 vreg 装 128 个 fp16（fp32 是 64），重复次数减半。
+- 原生低精度指令（待验）：fp16 域的 `VEXP.f16` 把 `VLD → VCVT → VEXP.f32 → VCVT → VST` 五条压到三条编译产物，且一个 vreg 装 128 个 fp16（fp32 是 64），重复次数减半。
 - **精度判定先于性能判定**：fp16 域内算 exp 的误差是 1–3 ulp（~1e-3），可能过不了 `MERE < 9.77e-4` 的门。两版都实现，只有过了门的那版算数。
 - 掩码：`PLT.b32 P1, S64` 的 `S64` 是谓词元素数，fp16 路径要设 128；`VLOOPV2` 的 repeat 数按每寄存器元素数重算。
 
