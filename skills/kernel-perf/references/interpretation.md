@@ -1,89 +1,91 @@
-# 指标判读
+# Reading the results
 
-所有阈值来自 Ascend950PR（dav-3510）实测样本，并在 `references/measurements.md` 里保留了对应的原始数字。判读分三层，顺序不能颠倒。
+Every threshold below comes from measured samples on Ascend950PR (dav-3510); the raw numbers behind each one are in `references/measurements.md`. Read in three passes, in this order.
 
-## 第一层：先确认数据有效
+## Pass 1: confirm the data is valid
 
-采集本身可能失败而 `msopprof` 仍然返回 0。以下任一情况，先修采集，不要读指标：
+A collection can fail while `msopprof` still returns 0. Any of the following means fix the collection before reading metrics:
 
-| 现象 | 含义 | 处理 |
+| Symptom | Meaning | Action |
 |---|---|---|
-| 所有 `*_ratio` 都是 `NA`/空 | replay 没跑到 kernel | 减少 `--metrics` 组数；或 `--replay-mode=application` |
-| `Block Dim` 远小于芯片核数（如 1） | tiling 只切了 1 块，或 kernel 没按核展开 | 查 tiling 代码，不是性能问题 |
-| `Current Freq` 明显低于 `Rated Freq` | 降频，可能是温度/功耗墙 | 隔一会儿重采；对比时确认频率一致 |
-| 同一 kernel 两次采集耗时差 >15% | 设备上有别的任务 | `npu-smi info` 确认独占 |
+| All `*_ratio` cells are `NA` or blank | Replay never reached the kernel | Reduce the number of `--metrics` groups, or change `--replay-mode` |
+| `Block Dim` far below the chip core count (e.g. 1) | Tiling covered only one block, or the kernel did not spread across cores | Inspect the tiling; this is not a performance question |
+| `Current Freq` well below `Rated Freq` | Throttling, likely thermal or power-limited | Re-collect later; confirm the clock matches when comparing runs |
+| The same kernel differs by more than 15% between collections | Another workload is on the device | Confirm exclusive access with `npu-smi info` |
 
-工具在 `roofline.class` 为 `no data (...)` 时会明确标注。
+The tool states this explicitly: when `roofline.class` is `no data (...)`, the capture is empty rather than the kernel being idle.
 
-## 第二层：定位主导流水
+## Pass 2: locate the dominant pipe
 
-`pipes[].mean_ratio_pct` 是跨核平均的流水占用。取最高的一条：
+`pipes[].mean_ratio_pct` is the per-pipe occupancy averaged across cores. Take the largest:
 
-| 主导流水 | 含义 | 先查什么 |
+| Dominant pipe | Meaning | Check first |
 |---|---|---|
-| `vec` >60% | Vector 计算单元饱和 | 峰值占比 >70% 即接近极限；否则查 bank 冲突与 cast |
-| `cube` >50% | Cube 饱和 | 看 `arithmetic.cube_fp_ratio`，算子类型是否用对了精度 |
-| `mte2`/`aiv_mte2` >50% | GM→片上搬运受限 | 增大搬运粒度（≥16KB）、512B 对齐、L2 CacheMode |
-| `mte3`/`aiv_mte3` >50% | 结果写回受限 | 合并写、减少中间结果落 GM |
-| `scalar` >30% | 标量指令成为瓶颈 | 缩小 TilingData、减少循环内标量运算、核数别开太满 |
-| 全部 <50% | 流水线气泡 | 查 `conflicts.*_wait`、double buffer 是否生效 |
+| `vec` above 60% | Vector unit saturated | Peak utilisation above 70% means the limit; otherwise check bank conflicts and casts |
+| `cube` above 50% | Cube saturated | Read `arithmetic.cube_fp_ratio`; confirm the operator uses the intended precision |
+| `mte2`/`aiv_mte2` above 50% | GM-to-chip transfer limited | Larger transfers (16 KB or more), 512 B alignment, L2 cache mode |
+| `mte3`/`aiv_mte3` above 50% | Write-back limited | Coalesce writes; avoid spilling intermediates to GM |
+| `scalar` above 30% | Scalar instructions are the bottleneck | Shrink TilingData, remove scalar work from loops, do not over-provision cores |
+| Everything below 50% | Pipeline bubbles | Read `conflicts.*_wait` and confirm double buffering |
 
-`scalar` 高是一个容易漏的点：它意味着 address 计算/循环控制吃掉了主流水的时间，加大 tile 比不上减少标量指令。
+High `scalar` is easy to miss: it means address arithmetic and loop control are consuming the time the main pipelines need, and enlarging the tile will not help as much as removing scalar instructions.
 
-## 第三层：看瓶颈证据
+## Pass 3: read the bottleneck evidence
 
-### 带宽峰值占比
+### Share of peak bandwidth
 
-`bandwidth[].peak_pct` 的分母是工具从采集数据反解出的真实峰值（不是 datasheet 值）。判读：
+The denominator in `bandwidth[].peak_pct` is the real peak, inverted from the capture itself rather than taken from a datasheet. Reading:
 
-- `>80%`：该通路已经到顶，继续压这条通路没收益，改算法或换通路
-- `50–80%`：还有余量，可继续优化搬运
-- `<50%` 且该通路是主导：说明不是带宽受限，而是延迟/气泡（`msopprof` 也会给出 "bandwidth utilization lower than 80% when active"）
+- Above 80%: this path is at its limit; pushing it further yields nothing, so change the algorithm or the path
+- 50-80%: headroom remains for further transfer tuning
+- Below 50% while this path is dominant: the limit is latency or bubbles, not bandwidth (the profiler itself reports "bandwidth utilization lower than 80% when active")
 
-### 核间离散度
+### Core-to-core spread
 
-`imbalance.aiv.spread_pct = (max-min)/mean`：
+`imbalance.aiv.spread_pct = (max - min) / mean`:
 
-- `<10%`：切分均匀
-- `10–30%`：有尾块效应，通常是大 shape 除不尽
-- `>30%`：切分策略有问题，此时优化流水收益会被不均衡吃掉
+- Below 10%: even tiling
+- 10-30%: tail-tile effect, usually an indivisible large shape
+- Above 30%: the tiling strategy is wrong; pipeline gains will be eaten by the imbalance
 
-注意 `spread_pct` 大但总耗时很短时（<10us），主要是启动开销占比高，不是切分问题——看 `time_us` 绝对值再判断。
+Note that a large `spread_pct` on a very short kernel (under 10 us) mostly reflects launch overhead, not a tiling defect. Check the absolute `time_us` before concluding.
 
-### bank 冲突
+### Bank conflicts
 
-`conflicts.vec_stu_cflt` / `vec_ldu_cflt` / `vec_sfu_cflt`：
+`conflicts.vec_stu_cflt`, `vec_ldu_cflt`, `vec_sfu_cflt`:
 
-- `<5%`：可忽略
-- `5–15%`：调 UB 地址对齐或加 padding
-- `>15%`：UB 布局有系统性问题
+- Below 5%: ignorable
+- 5-15%: adjust UB address alignment or add padding
+- Above 15%: the UB layout has a systemic problem
 
 ### Cache
 
-- L2 读命中率 `<50%`：数据复用没做出来，或 tile 太大把 L2 冲掉了
-- L2 写命中率天然偏低（写回策略），不必单独优化
-- iCache miss `>15%`：代码量太大（大量展开/内联），考虑缩小 kernel 或拆分
+- L2 read hit rate below 50%: data reuse is not happening, or the tile is large enough to thrash L2
+- L2 write hit rate is naturally low because of write-back; do not tune it in isolation, and treat the value as tier E (measured CV 14%)
+- iCache miss above 15%: the code footprint is too large (heavy unrolling or inlining); consider shrinking or splitting the kernel
 
-### 等待占比
+### Wait ratios
 
-`conflicts.vec_wait`、`*_mte*_wait` 与 `pipe_wait_cycles_total` 说明流水在等谁：
+`conflicts.vec_wait`, `*_mte*_wait` and `pipe_wait_cycles_total` show what each pipe is waiting for:
 
-- Vector 等待高 + MTE2 占用低 → 搬运没提前发起，double buffer 没生效
-- MTE3 等待高 → 输出队列满，写回跟不上
-- 两条流水互相等待都高 → 队列深度不足，加大 buffer num
+- Vector wait high with low MTE2 occupancy: transfers are not issued early enough; double buffering is not taking effect
+- MTE3 wait high: the output queue is full and write-back cannot keep up
+- Two pipes waiting on each other: queue depth is insufficient; increase the buffer count
 
-## 按算子类型的预期分布
+## Expected distribution by operator type
 
-| 类型 | 主导流水 | 健康区间 | 异常信号 |
+| Type | Dominant pipe | Healthy range | Abnormal signal |
 |---|---|---|---|
-| Elementwise（Add/Mul/Relu） | vec | 50–80% | MTE2 占比 > vec |
-| Reduction | vec | 40–70% | scalar >20% |
-| Activation（Softmax/Gelu） | vec | 60–85% | 大量 cast 指令 |
-| MatMul | cube | 40–70% | vec 占比 > cube |
-| 纯搬运（Transpose/Concat） | mte2+mte3 | 合计 >50% | vec >30% |
+| Elementwise (Add/Mul/Relu) | vec | 50-80% | MTE2 share above vec |
+| Reduction | vec | 40-70% | scalar above 20% |
+| Activation (Softmax/Gelu) | vec | 60-85% | Heavy cast traffic |
+| MatMul | cube | 40-70% | vec share above cube |
+| Pure movement (Transpose/Concat) | mte2 + mte3 | Combined above 50% | vec above 30% |
 
-## 实测参照（Ascend950PR, CANN 9.3.0, 1650 MHz）
+These are expectations, not rules. A measured `cube` matmul spent 0.08% in the cube pipe because the shape was small; classification follows measured occupancy.
 
-**vector_add**（56 核，9.965 us，409600 float32）：MTE2 51.8%、scalar 23.9%、MTE3 17.7%、vec 8.3%。GM→UB 峰值 163 GiB/s，实测 28.4 GiB/s（17.4%）。核间离散 71.9%（短 kernel 的启动开销主导）。厂商 advice：MTE2 活跃时带宽利用率低于 80%、vector 计算占用低于 20%。
+## Measured reference points (Ascend950PR, CANN 9.3.0, 1650 MHz)
 
-**matmul mxfp4 base**（28 核，3.051 us）：AIC scalar 92.5%、fixpipe 2.4%。cube 仅 0.08%——kernel 在小 shape 下几乎全花在标量准备上，这是 cube 类算子在小 shape 的典型形态，也说明"cube 算子"不等于"cube 忙"。
+**vector_add** (56 cores, 9.965 us, 409600 float32): MTE2 51.8%, scalar 23.9%, MTE3 17.7%, vec 8.3%. GM-to-UB peak 163 GiB/s, measured 28.4 GiB/s (17.4%). Core spread 71.9%, dominated by launch overhead on a short kernel. Vendor advice: MTE2 bandwidth below 80% while active, and vector occupancy below 20%.
+
+**matmul mxfp4 base** (28 cores, 3.051 us): AIC scalar 92.5%, fixpipe 2.4%. Cube only 0.08% - at this shape the kernel spends nearly all its time on scalar preparation, the typical form of a cube-class operator at small shape, and proof that "cube operator" does not imply "cube busy".

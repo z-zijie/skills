@@ -1,107 +1,110 @@
-# Ascend950PR（dav-3510）上的 msopprof 能力边界
+# msopprof capability boundaries on Ascend950PR (dav-3510)
 
-本文记录在 `Ascend950PR_9579`（`NpuArch=3510`、`Short_SoC_version=Ascend950`、CCEC `dav-c310-cube` / `dav-c310-vec`）上逐项实测的结果。CANN `9.3.0~weekly.20261009.01`。
+Each item below was measured on `Ascend950PR_9579` (`NpuArch=3510`, `Short_SoC_version=Ascend950`, CCEC `dav-c310-cube` / `dav-c310-vec`) with CANN `9.3.0~weekly.20261009.01`.
 
-## 有效的 metric 集合
+## Metric sets that work
 
-逐个 `--aic-metrics=<NAME>` 单独采集一个 `vector_add` 可执行文件，结果：
+Collected one at a time with `--aic-metrics=<NAME>` against a `vector_add` binary:
 
-| metric | 结果 | 产出 |
+| Metric | Result | Output |
 |---|---|---|
-| `Default` | 可用 | 7 份 CSV 全套 |
-| `PipeUtilization` | 可用 | PipeUtilization.csv |
-| `ArithmeticUtilization` | 可用 | ArithmeticUtilization.csv |
-| `Memory` / `MemoryUB` / `MemoryL0` | 可用 | 各自 CSV |
-| `L2Cache` | 可用 | L2Cache.csv |
-| `ResourceConflictRatio` | 可用 | ResourceConflictRatio.csv |
-| `BasicInfo` | 可用 | 仅 OpBasicInfo.csv |
-| `Roofline` | 可用 | 7 份 CSV + `0x0D` roofline 记录 |
-| `Occupancy` | 可用 | OpBasicInfo + visualize_data |
-| `KernelScale` | 可用 | 7 份 CSV |
-| `Source` | 部分失败 | 需要 `-g` 编译，否则 "Failed to parse pc to code" |
-| `PCSampling` | 部分失败 | 同上；hot spot 计算失败 |
-| `TimelineDetail` | **失败** | "Parse kernel data failed"；CSV 全空 |
-| `InstrTimeline` | 可用（有限） | trace.json，需 `-g` 才有源码归属 |
-| `PipeTimeline` | 可用 | trace.json，每核每流水的 `X` 事件 |
+| `Default` | works | the full set of 7 CSVs |
+| `PipeUtilization` | works | PipeUtilization.csv |
+| `ArithmeticUtilization` | works | ArithmeticUtilization.csv |
+| `Memory` / `MemoryUB` / `MemoryL0` | works | their respective CSVs |
+| `L2Cache` | works | L2Cache.csv |
+| `ResourceConflictRatio` | works | ResourceConflictRatio.csv |
+| `BasicInfo` | works | OpBasicInfo.csv only |
+| `Roofline` | works | 7 CSVs + the `0x0D` roofline record |
+| `Occupancy` | works | OpBasicInfo + visualize_data |
+| `KernelScale` | works | 7 CSVs |
+| `Source` | partly fails | needs a `-g` build, otherwise "Failed to parse pc to code" |
+| `PCSampling` | partly fails | as above; hot-spot computation fails |
+| `TimelineDetail` | **fails** | "Parse kernel data failed"; all CSVs empty |
+| `InstrTimeline` | works, limited | trace.json; source attribution needs `-g` |
+| `PipeTimeline` | works | trace.json with an `X` event per core and pipe |
 
-### 组合采集有上限
+### Combining metric sets has a ceiling
 
-把 `BasicInfo,Roofline,Occupancy,KernelScale` 一起塞进一个 `--aic-metrics` 列表（共 11 组）时，`msopprof` 返回 0 且报告成功，但**所有 CSV 的计数列全是 `NA`**，`Task Duration` 仍有一个值。这是最危险的一类失败：看起来成功，数据是空的。
+Passing eleven groups at once (`BasicInfo,Roofline,Occupancy,KernelScale` on top of the core seven) makes `msopprof` return 0 and report success while **every CSV counter column is `NA`**; `Task Duration` still carries a value. This is the most dangerous failure class: it looks successful and the data is empty.
 
-工具对这种 capture 标注 `no data (all pipe counters empty)`。规避方式：采集组数不超过 7 组（工具的默认集合就是这个规模），或用 `--replay-mode=application`。
+The tool flags such a capture as `no data (all pipe counters empty)`. Avoid it by keeping a pass to seven groups or fewer (the tool's default set is that size) or by changing `--replay-mode`.
 
-## 只在这个芯片上成立的约束
+## Constraints that hold only on this part
 
-- **没有 biprof**。`biprof` 是 `cannsim`（仿真器）的 Python 包，仅在 CANN 9.1.0 的 `site-packages/cannsim/biprof` 存在，且需要 `plotly`（镜像里没装），作用是读仿真数据库生成热点报告。真机上等价且更全的能力在 `msopprof`。
-- **`msprof op` 就是 `msopprof`**。`msprof --help` 里 "subcommand for operator optimization: op — Use binary msopprof" 说得很清楚，`msprof op ...` 与直接调 `msopprof ...` 等价。直接用 `msopprof` 少一层转发。
-- **`msprof` 应用级采集在本机 Python 上会崩**。`msprof`（非 `op` 模式）启动后需要 `python3` 解析结果，而镜像里 `/opt/buildtools/python-3.12.9` 的 `_ctypes` 与解释器不匹配：
+- **No biprof.** `biprof` is a `cannsim` (simulator) Python package, present only in CANN 9.1.0 under `site-packages/cannsim/biprof`, and it needs `plotly`, which the image does not have. Its job is to read simulator databases and produce hotspot reports. On real hardware the equivalent and far more complete capability is `msopprof`.
+- **`msprof op` is `msopprof`.** `msprof --help` states it plainly: "subcommand for operator optimization: op — Use binary msopprof to operator optimization (msprof op ...)". `msprof op ...` and calling `msopprof ...` directly are equivalent; going straight to `msopprof` skips a forwarding layer.
+- **Application-level `msprof` crashes on this host's Python.** After starting, `msprof` (the non-`op` mode) needs `python3` to parse results, and the image's `/opt/buildtools/python-3.12.9` has a `_ctypes` that does not match the interpreter:
   ```
   ImportError: .../_ctypes.cpython-312-x86_64-linux-gnu.so: undefined symbol: _PyErr_SetLocaleString
   ```
-  数据仍然采到了（`PROF_*/host/data`、`device_0/data`），但无法解析成 CSV。因此**应用级（端到端）分析在本机不可用**；kernel 级分析走 `msopprof` 完全没有这个问题。
-- **`msopprof` 的 kernel 名是 mangled 名**。`--kernel-name` 需要完整签名（如 `_Z10add_kernelIfEvPhS0_S0_llj`）；工具的 `--kernel` 支持子串匹配，会先看采集结果再用子串过滤统计。
-- **`msopprof` 要求程序能接受它自己的参数**。带参数的算子（如 matmul 教程要 `m k n`）必须把参数一起传，否则子进程直接退出、采集为空。
+  The data is still collected (`PROF_*/host/data`, `device_0/data`) but cannot be parsed into CSVs. So **application-level (end-to-end) analysis is unavailable on this host**; kernel-level analysis through `msopprof` is unaffected.
+- **`msopprof`'s kernel name is the mangled name.** `--kernel-name` wants the full signature (e.g. `_Z10add_kernelIfEvPhS0_S0_llj`) and matches it as a glob, not a substring. The tool's `--kernel` wraps the pattern in `*` so a bare name behaves as expected.
+- **`msopprof` passes its own arguments to the program.** An operator that takes arguments (the matmul tutorial needs `m k n`) must receive them, otherwise the child process exits immediately and the capture is empty.
 
-## 单位约定（易错）
+## Unit conventions (easy to get wrong)
 
-- `*_datas(KB)` 是 **KiB**（1024 B）
-- `*(GB/s)` 是 **GiB/s**（1024³ B/s）
+- `*_datas(KB)` is **KiB** (1024 B)
+- `*(GB/s)` is **GiB/s** (1024^3 B/s)
 
-实测校验：`57.375 KiB / 2.267879 us` 用 `1024` 与 `1024³` 换算得 24.127 GB/s，与 CSV 里公布的 `24.126980` 完全一致；换成十进制 GB 会差 4.9%。工具统一按 KiB/GiB 处理，`derive_bw_peaks()` 里有一行注释说明为什么不能用 `1e9`。
+Verification: `57.375 KiB / 2.267879 us`, converted with `1024` and `1024^3`, gives 24.1270 GB/s, matching the published `24.126980` exactly; using decimal GB instead is off by 4.9%. The tool works in KiB/GiB throughout, and `derive_bw_peaks()` carries a comment explaining why `1e9` is wrong.
 
-## visualize_data.bin 容器格式
+## visualize_data.bin container format
 
 ```
 repeat:
-  u64 payload_len    little endian, 不含本头部
+  u64 payload_len    little endian, excludes this header
   u8  kind           05=identity 06=AIV subblock 07=AIC subblock
                      08=per-core memory map 09=per-block tables
                      0C=op_detail 0D=roofline
-  u8  variant        随采集变化，不是身份的一部分
+  u8  variant        varies per capture; not part of the identity
   b'ZZ'              magic
-  payload_len-2 B    一个 JSON 对象，NUL padding
+  payload_len-2 B    one JSON object, NUL padded
 ```
 
-第二个字节（variant）在每个 capture 里都可能不同：同一个 identity 记录在不同采集里是 `05/00` 或 `05/02`，per-block tables 是 `09/00` 或 `09/01` 或 `09/02`。**只按第一个字节判类型**。
+The second byte (variant) differs between captures: the same identity record appears as `05/00` or `05/02`, and per-block tables as `09/00`, `09/01` or `09/02`. **Classify by the first byte only.**
 
-`0x0D` 只在采了 `Roofline` metric 时出现，内容是 `{"advice": "latency bound:pipeline caused", "multiple_rooflines": [...]}`。
+`0x0D` appears only when the `Roofline` metric was collected; its content is `{"advice": "latency bound:pipeline caused", "multiple_rooflines": [...]}`.
 
-## 平台常量位置
+A different record kind, `0x01`, is not JSON: it is a length-prefixed string table of source paths and source text, used for source-level attribution.
 
-`$ASCEND_HOME_PATH/x86_64-linux/data/platform_config/Ascend950PR_9579.ini`。本机实测值：
+## Where the platform constants live
 
-| 键 | 值 |
+`$ASCEND_HOME_PATH/x86_64-linux/data/platform_config/Ascend950PR_9579.ini`. Values measured on this part:
+
+| Key | Value |
 |---|---|
 | `ai_core_cnt` / `cube_core_cnt` | 28 / 28 |
 | `vector_core_cnt` | 56 |
 | `cube_freq` / `vec_freq` | 1650 / 1650 MHz |
 | `l1_size` / `ub_size` | 524288 / 253952 B |
 | `l0_a_size` / `l0_b_size` / `l0_c_size` | 65536 / 65536 / 262144 B |
-| `l2_size` | 134217728 B（128 MiB） |
+| `l2_size` | 134217728 B (128 MiB) |
 | `l1_to_ub_rate` / `ub_to_l2_rate` / `ub_to_ddr_rate` | 128 / 128 / 128 |
-| `ddr_rate`（AICore 段）/ `ddr_rate`（VectorCore 段） | 31 / 16 |
+| `ddr_rate` (`[AICoreMemoryRates]`) / `ddr_rate` (`[VectorCoreMemoryRates]`) | 31 / 16 |
+| `io_die_num` (`[DieInfo]`) | 2 |
 
-注意 `[AICoreMemoryRates]` 与 `[VectorCoreMemoryRates]` 两段的 `ddr_rate` 不同（31 vs 16），工具只用采集数据反解出的峰值做分母，ini 值仅作交叉校验，避免选错段。
+Note that `[AICoreMemoryRates]` and `[VectorCoreMemoryRates]` disagree on `ddr_rate` (31 against 16). The tool uses only peaks inverted from the capture as denominators and keeps the ini values as a cross-check, so picking the wrong section cannot corrupt a percentage.
 
-## 指标计算口径（CANN 源码）
+## Metric definitions from the CANN source
 
-`tools/profiler/profiler_tool/analysis/common_func/constant.py` 里有两个关键结构：
+`tools/profiler/profiler_tool/analysis/common_func/constant.py` holds two key structures:
 
-- `PmuMetricCalculate.pmu_metric_calculate_with_freq()`：带宽类指标的通用公式
+- `PmuMetricCalculate.pmu_metric_calculate_with_freq()` - the general formula for bandwidth metrics:
   ```
-  值 = float_bit × pmu × pip_size × scalar / (task_cyc / freq) / 8589934592.0
+  value = float_bit * pmu * pip_size * scalar / (task_cyc / freq) / 8589934592.0
   ```
-  `8589934592 = 8 × 1024³`，即 **8 GiB**。这独立印证了 GB 在这里是 GiB：除数用的是 1024³ 而不是 1e9。
+  `8589934592 = 8 * 1024^3`, i.e. **8 GiB**. This independently confirms that GB here means GiB: the divisor is 1024^3, not 1e9.
 
-- `PmuMetricCalculate.pmu_metric_calculate_without_freq()`：占比类指标
+- `PmuMetricCalculate.pmu_metric_calculate_without_freq()` - ratios:
   ```
-  值 = float_bit × pmu / task_cyc
+  value = float_bit * pmu / task_cyc
   ```
-  纯比值，无单位换算，因此这类指标是 B 级（精确推导）。
+  A pure ratio with no unit conversion, which is why these are tier B (exact derivation).
 
-各带宽的 `pip_size × scalar` 实测值：
+Measured `pip_size * scalar` per bandwidth metric:
 
-| 指标 | pip_size | scalar |
+| Metric | pip_size | scalar |
 |---|---:|---:|
 | `ub_read_bw` | 256 | 4 |
 | `l2_read_bw` | 256 | 8 |
@@ -110,70 +113,84 @@ repeat:
 | `ub_write_bw_scalar` | 128 | 1 |
 | `fixp2ub_write_bw` | 256 | 8 |
 
-- `Constant.L2_CACHE_EVENTS`：L2 采集用的事件号列表（32 个原始 PMU event id）
-- `Constant.SOC_PMU_EVENTS`：SOC 级事件（`0x2, 0x8a, 0x8b, 0x8c, 0x8d`）
-- `msconfig/soc_pmu_config.py`：默认事件三元组
-  `request_events=0x8a`、`hit_events=0x8c,0x8d`、`miss_events=0x2`
+Raw PMU event ids:
 
-这些是打到硬件上的原始事件号。`msopprof` 的 `--aic-metrics` 是更高层的预设，不暴露逐个 event 的选择；因此部分 CANN 能算的指标在采集侧无输出通路。
+- `Constant.L2_CACHE_EVENTS`: the 32 event ids used for L2 collection
+- `Constant.SOC_PMU_EVENTS`: SOC-level events (`0x2, 0x8a, 0x8b, 0x8c, 0x8d`)
+- `msconfig/soc_pmu_config.py`: the default event triple `request_events=0x8a`, `hit_events=0x8c,0x8d`, `miss_events=0x2`
 
-## InstrTimeline 的输入与输出
+These are the ids programmed into the hardware. `msopprof`'s `--aic-metrics` is a higher-level preset and does not expose per-event selection, which is why some metrics CANN can compute have no collection path.
 
-输入约束（实测报错原文）：
+### Metric index order (from the Ascend/msprof source)
 
-- `--instr-timeline-pipe` 只接受 `cube|fixp|vector|mte1|mte2|mte3`，`scalar` 被拒：
+`analysis/csrc/domain/entities/metric/include/metric.h` defines the index enums, and `metric.cpp` binds each enum to its header string. In a PMU result vector the position is the enum value, so this is the authoritative ordering:
+
+- `PipeLineUtIndex`: VecTime, VecRatio, MacTime, MacRatio, ScalarTime, ScalarRatio, Mte1Time, Mte1Ratio, Mte2Time, Mte2Ratio, Mte3Time, Mte3Ratio, FixPipeTime, FixPipeRatio, ICacheMissRate
+- `MemoryIndex`: UBReadBw, UBWriteBw, L1ReadBw, L1WriteBw, MainMemReadBw, MainMemWriteBw, L2ReadBw, L2WriteBw
+- `MemoryL0Index`: L0aReadBw, L0aWriteBw, L0bReadBw, L0bWriteBw, L0cReadBw, L0cWriteBw, L0cReadBwCube, L0cWriteBwCube
+- `ResourceConflictIndex`: VecBankGroupCfltRatio, VecBankCfltRatio, VecRescCfltRatio
+- `MemoryUBIndex`: UbReadBwVector, UbWriteBwVector, UbReadBwScalar, UbWriteBwScalar, Fixp2UbWriteBw (v6 only)
+- `L2CacheIndex`: WriteCacheHit, WriteCacheMissAllocate, R0ReadCacheHit, R0ReadCacheMissAllocate, R1ReadCacheHit, R1ReadCacheMissAllocate, then the **v6-only** ReadLocalL2Hit, ReadLocalL2Miss, ReadLocalL2Victim, WriteLocalL2Hit, WriteLocalL2Miss, WriteLocalL2Victim
+- `MemoryAccessIndex`: ReadMainMemoryData, WriteMainMemoryData, GmToL1Data, L0CToL1Data, L0CToGmData, GmToUbData, UbToGmData
+
+The `L2CacheIndex` v6 group is what the CSV exposes as the close/far hit/miss/victim split: dav-3510 is a v6-class part, so the local/remote hit-miss-victim counters are the ones actually populated.
+
+## InstrTimeline inputs and outputs
+
+Input constraints (verbatim errors measured):
+
+- `--instr-timeline-pipe` accepts only `cube|fixp|vector|mte1|mte2|mte3`; `scalar` is rejected:
   ```
   [ERROR] --instr-timeline-pipe only support pipes in [cube fixp vector mte1 mte2 mte3]
   ```
-- 与 `PipeTimeline` 互斥：
+- Mutually exclusive with `PipeTimeline`:
   ```
   [ERROR] Unexpected argument --aic-metrics, 'PipeTimeline' and 'InstrTimeline' cannot be specified together.
   ```
 
-输出产物（一次采集）：
+Output artifacts (one collection):
 
-| 文件 | 大小量级 | 内容 |
+| File | Size order | Content |
 |---|---:|---|
-| `trace.json` | ~10 KB | Chrome tracing，`X` 事件带 `args.pc_addr` 与 `dur` |
-| `dump/dfx_region_map.txt` | ~3 KB | pc → pipe/opcode 映射 |
-| `dump/pc_start_addr.txt` | 14 B | 绝对基址 |
-| `dump/timeline.bin.0` | ~25 MB | 原始时间线（未公开格式） |
-| `dump/OperandRecord.bin` | ~190 MB | 操作数记录（未公开格式） |
+| `trace.json` | ~10 KB | Chrome tracing; `X` events carry `args.pc_addr` and `dur` |
+| `dump/dfx_region_map.txt` | ~3 KB | pc to pipe/opcode map |
+| `dump/pc_start_addr.txt` | 14 B | absolute base address |
+| `dump/timeline.bin.0` | ~25 MB | raw timeline (undocumented format) |
+| `dump/OperandRecord.bin` | ~190 MB | operand record (undocumented format) |
 
-后两个文件格式未公开，本工具不做解码；可用信息已经通过 `trace.json` + region map 拿到。
+The last two have no public format and this tool does not decode them; everything usable already comes from `trace.json` plus the region map.
 
-## 应用级 msprof 失效的根因
+## Root cause of application-level msprof failure
 
 ```
 ImportError: /opt/buildtools/python-3.12.9/lib/python3.12/lib-dynload/_ctypes.cpython-312-x86_64-linux-gnu.so:
   undefined symbol: _PyErr_SetLocaleString
 ```
 
-`msprof`（非 `op` 模式）用宿主机 `python3` 解析采集数据，而镜像里这个 Python 是自编译的、`_ctypes` 与解释器主版本不匹配。数据本身采到了（`PROF_*/host/data`、`device_0/data` 都有内容），只是解析不出来。改用 CANN 自带的 `python` 或修好 `_ctypes` 可解，本工具不依赖这条路。
+`msprof` in non-`op` mode uses the host `python3` to parse the capture, and the image's Python is self-built with a `_ctypes` that does not match the interpreter. The data itself is collected (`PROF_*/host/data` and `device_0/data` both have content), it simply cannot be parsed. Using CANN's bundled `python` or repairing `_ctypes` would fix it; this tool does not depend on that path.
 
-## runtime / driver 库逆向（2026-11-04 16:5x）
+## Runtime and driver library reverse engineering (2026-11-04 16:5x)
 
-按 reviewer 要求，直接看 runtime / driver 两条库链能否绕过 profiler 拿到更细的计数。
+Asked to check whether the runtime and driver library chains expose finer counters than the profiler does.
 
-### 库清单
+### Libraries
 
-| 库 | 路径 | 规模 |
+| Library | Path | Size order |
 |---|---|---|
-| runtime（ACL） | `x86_64-linux/lib64/libascendcl.so` | 268 KB，导出符号极少（prof 相关仅 1 个） |
-| profiler API | `x86_64-linux/lib64/libprofapi.so` | 76 个 `*prof*` 导出符号 |
-| driver HAL | `/usr/local/Ascend/driver/lib64/driver/libascend_hal.so` | 1757 个导出符号 |
-| mspti（新版 profiling 接口） | `tools/mspti/lib64/libmspti.so` + `include/mspti*.h` + py wheel | activity-based |
+| runtime (ACL) | `x86_64-linux/lib64/libascendcl.so` | 268 KB, very few exported symbols (one prof-related) |
+| profiler API | `x86_64-linux/lib64/libprofapi.so` | 76 `*prof*` exported symbols |
+| driver HAL | `/usr/local/Ascend/driver/lib64/driver/libascend_hal.so` | 1757 exported symbols |
+| mspti (newer profiling interface) | `tools/mspti/lib64/libmspti.so` + `include/mspti*.h` + py wheel | activity-based |
 
-### libprofapi.so：可拿到 per-op 时间戳，拿不到 PMU
+### libprofapi.so: per-op timestamps, no PMU
 
-导出符号分三组：
+Exported symbols fall into three groups:
 
-- **生命周期**：`ProfAclInit/Start/Stop/Finalize/SetConfig/Subscribe/UnSubscribe`
-- **打点**：`ProfAclPush/Pop/RangeStart/RangeStop/RangePushEx/RangePop/Mark/MarkEx`、`ProfAclSetStamp*`
-- **取数**：`ProfAclGetOpVal`、`ProfAclGetOpTime`、`ProfAclGetId/GetOpAttriVal/GetCompatibleFeatures`
+- **Lifecycle**: `ProfAclInit/Start/Stop/Finalize/SetConfig/Subscribe/UnSubscribe`
+- **Instrumentation**: `ProfAclPush/Pop/RangeStart/RangeStop/RangePushEx/RangePop/Mark/MarkEx`, `ProfAclSetStamp*`
+- **Retrieval**: `ProfAclGetOpVal`, `ProfAclGetOpTime`, `ProfAclGetId/GetOpAttriVal/GetCompatibleFeatures`
 
-对应头文件 `x86_64-linux/include/acl/acl_prof.h`（623 行）里的 subscribe 通路给出**每个 op 的
-start/end/duration**：
+The subscribe path in `x86_64-linux/include/acl/acl_prof.h` (623 lines) gives **start/end/duration for every operator**:
 
 ```c
 aclprofGetOpStart(opInfo, len, index)      // uint64_t
@@ -182,20 +199,15 @@ aclprofGetOpDuration(opInfo, len, index)   // uint64_t
 aclprofGetOpNum / GetOpName / GetOpType / GetModelId / GetOpFlag
 ```
 
-这是**算子级**（op-level）的时间轴，不是 block 级，也不含任何 PMU 计数器。`ProfAclGetOpVal`
-的名字暗示返回值，但要拿到硬件计数仍得先有计数被采集——而采集由 msopprof 侧完成。
+That is an **operator-level** timeline, not block level, and it carries no PMU counters.
 
-### libascend_hal.so：不暴露 PMU
+### libascend_hal.so: no PMU exposure
 
-1757 个导出符号里，与 PMU/计数相关的只有 `dmanage_get_pmu_voltage`（电源管理，不是性能计数），
-profiling 相关的只有 `drv_event_proc` / `drv_registert_event_proc`（事件回调注册）。
-**driver HAL 层面没有可用的 PMU 计数器读取接口**——计数器通路在 profiler 驱动内部，
-不经过 HAL 导出。
+Of 1757 exported symbols the only PMU-related one is `dmanage_get_pmu_voltage` (power management, not performance counting), and the only profiling-related ones are `drv_event_proc` and `drv_registert_event_proc` (event callback registration). **There is no usable PMU counter read interface at the driver HAL layer** - counter access lives inside the profiler driver and is not exported through HAL.
 
-### mspti：kernel 级时间戳，无计数器
+### mspti: kernel-level timestamps, no counters
 
-`include/mspti_activity.h` 定义 13 种 activity kind（KERNEL / API / MEMCPY / HCCL / MARKER …）。
-`msptiActivityKernel` 结构体：
+`include/mspti_activity.h` defines 13 activity kinds (KERNEL / API / MEMCPY / HCCL / MARKER ...). The `msptiActivityKernel` structure:
 
 ```c
 msptiActivityKind kind;   // MSPTI_ACTIVITY_KIND_KERNEL
@@ -206,23 +218,19 @@ uint64_t correlationId;
 const char *type, *name;
 ```
 
-有价值的点：**start/end 是纳秒级 kernel 时间戳**，且带 streamId 与 correlationId，比 CSV 里的
-单个 `Task Duration` 多了"这个 kernel 属于哪个 stream、和哪个 host API 关联"。
-没有 block 级细分，也没有任何 PMU 计数。
+The valuable part: **nanosecond kernel timestamps** plus `streamId` and `correlationId`, which the CSV's single `Task Duration` does not carry. There is no block-level breakdown and no PMU counter.
 
-### 结论
+### Conclusion
 
-三条路径都没有比 `msopprof` 更多**硬件计数**：
+None of the three paths offers more **hardware counters** than `msopprof`:
 
-| 想要的东西 | runtime | driver | mspti | msopprof |
+| Wanted | runtime | driver | mspti | msopprof |
 |---|---|---|---|---|
-| PMU 计数器 | ✗ | ✗ | ✗ | ✓（固定 7 组） |
-| sector / coalescing | ✗ | ✗ | ✗ | ✗ |
-| outstanding / snoop | ✗ | ✗ | ✗ | ✗ |
-| per-op start/end | ✓（aclprof） | ✗ | ✓（kernel 级） | 仅总时长 |
-| per-block start/end | ✗ | ✗ | ✗ | ✓（PipeTimeline，部分核） |
-| stream / correlation 关联 | ✓ | ✗ | ✓ | ✗ |
+| PMU counters | no | no | no | yes (7 preset groups) |
+| sector / coalescing | no | no | no | no |
+| outstanding / snoop | no | no | no | no |
+| per-op start/end | yes (aclprof) | no | yes (kernel level) | total only |
+| per-block start/end | no | no | no | yes (PipeTimeline, subset of cores) |
+| stream / correlation association | yes | no | yes | no |
 
-所以：**计数器只能从 msopprof 拿，而且拿不到比它预设 7 组更多的东西**；runtime/mspti 的增量在
-时间戳粒度与 stream 关联，不在计数器。若后续要做"kernel 在 stream 上的排队/串行度"分析，
-mspti 是正确入口——但那属于调度层的时间语义，不是硬件计数。
+So: **counters come from msopprof and nowhere else, and it will not yield more than its preset groups**; the genuine increment available from runtime/mspti is timestamp granularity and stream association, not counters. If stream-level queueing analysis is wanted later, mspti is the right entry point - that is scheduling semantics, not hardware counting.

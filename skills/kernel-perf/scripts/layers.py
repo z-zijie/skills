@@ -33,15 +33,15 @@ from typing import Dict, List, Optional
 LAYERS = ["soc", "core", "schedule"]
 
 LAYER_LABELS = {
-    "soc": "SoC 层（数据搬运 / 总线 / L2）",
-    "core": "核内层（流水线 / 冲突 / 片上缓存）",
-    "schedule": "调度层（block 启动与结束 / 多核同步）",
+    "soc": "SoC layer (data movement / interconnect / L2)",
+    "core": "Core layer (pipes / conflicts / on-chip caches)",
+    "schedule": "Schedule layer (block start and end / multi-core synchronisation)",
 }
 
 LAYER_DESCRIPTIONS = {
-    "soc": "跨核共享的资源。这一层出的问题靠改 kernel 代码解决不了，要改算法规格或 tiling 总量。",
-    "core": "单核内部各流水的竞争。这一层回答「瓶颈是哪个单元」。",
-    "schedule": "每个 block 的时间轴。这一层回答「核有没有一起开工、有没有拖尾」。",
+    "soc": "Resources shared across cores. Problems here cannot be fixed by editing kernel code; they need a change of algorithmic shape or total tiling.",
+    "core": "Contention among pipes inside one core. This layer answers which unit is the bottleneck.",
+    "schedule": "Each block's timeline. This layer answers whether the cores started together and whether any straggled.",
 }
 
 # metric key -> layer
@@ -206,7 +206,7 @@ def analyse_schedule(blocks: List[BlockTime],
     insight = ScheduleInsight()
     usable = [b for b in blocks if b.start_us is not None and b.end_us is not None]
     if not usable:
-        insight.reason = "没有 block 级时间戳（当前采集未提供 start/end）"
+        insight.reason = "no block-level timestamps (this capture provides no start/end)"
         return insight
 
     insight.available = True
@@ -218,7 +218,7 @@ def analyse_schedule(blocks: List[BlockTime],
     durations = [b.duration_us for b in usable if b.duration_us is not None]
     if not starts or not ends:
         insight.available = False
-        insight.reason = "block 记录缺少 start 或 end"
+        insight.reason = "block records lack start or end"
         return insight
 
     insight.first_start_us = round(min(starts), 4)
@@ -299,43 +299,43 @@ def render_schedule(insight: ScheduleInsight) -> List[str]:
     """Markdown for the scheduling layer."""
     lines: List[str] = []
     if not insight.available:
-        lines.append(f"不可用：{insight.reason}")
+        lines.append(f"Unavailable: {insight.reason}")
         lines.append("")
-        lines.append("> block 级时间戳需要 `--aic-metrics=PipeTimeline`（单独一趟采集）。"
-                     "它只插桩部分核，因此覆盖的 block 数可能小于 Block Dim。")
+        lines.append("> Block-level timestamps require `--aic-metrics=PipeTimeline` (a separate pass). "
+                     "It instruments only a subset of cores, so covered blocks may be fewer than Block Dim.")
         lines.append("")
         return lines
 
-    lines.append(f"- 采集到 **{insight.blocks}** 个 block 的时间轴（来源 `{insight.source}`）")
-    lines.append(f"- 首个 block 启动 {insight.first_start_us:.3f} us，"
-                 f"最后一个启动 {insight.last_start_us:.3f} us")
+    lines.append(f"- Block timelines collected for **{insight.blocks}** blocks (source `{insight.source}`)")
+    lines.append(f"- First block started at {insight.first_start_us:.3f} us, "
+                 f"last at {insight.last_start_us:.3f} us")
     lines.append("")
-    lines.append("| 指标 | 值 | 含义 |")
+    lines.append("| Metric | Value | Meaning |")
     lines.append("|---|---:|---|")
-    lines.append(f"| **启动偏移 (launch skew)** | {insight.launch_skew_us:.3f} us"
+    lines.append(f"| **Launch skew** | {insight.launch_skew_us:.3f} us"
                  + (f" ({insight.launch_skew_pct:.1f}%)" if insight.launch_skew_pct else "")
-                 + " | 这段时间内芯片只有部分核在工作 |")
-    lines.append(f"| **拖尾 (tail)** | {insight.tail_us:.3f} us"
+                 + " | Only part of the chip works during this interval |")
+    lines.append(f"| **Tail** | {insight.tail_us:.3f} us"
                  + (f" ({insight.tail_pct:.1f}%)" if insight.tail_pct else "")
-                 + " | 最先完成的核到最慢核完成的间隔 |")
-    lines.append(f"| block 耗时范围 | {insight.min_duration_us:.3f}–{insight.max_duration_us:.3f} us | "
-                 f"离散度 {insight.duration_spread_pct:.1f}% |")
+                 + " | Gap between the earliest and the latest block to finish |")
+    lines.append(f"| Block duration range | {insight.min_duration_us:.3f}-{insight.max_duration_us:.3f} us | "
+                 f"spread {insight.duration_spread_pct:.1f}% |")
     lines.append("")
 
     if insight.launch_skew_pct is not None and insight.launch_skew_pct > 10:
-        lines.append(f"> **启动不同步**：偏移占 kernel 时长的 {insight.launch_skew_pct:.0f}%。"
-                     "这部分时间芯片利用率按比例下降，与流水线优化无关，"
-                     "应先查 tiling 是否让各核依赖同一个前置步骤。")
+        lines.append(f"> **Asynchronous launch**: skew is {insight.launch_skew_pct:.0f}% of kernel duration. "
+                     "Chip utilisation drops proportionally during that interval and pipeline tuning cannot help; "
+                     "first check whether tiling makes every core depend on the same prerequisite step.")
         lines.append("")
     if insight.tail_pct is not None and insight.tail_pct > 20:
-        lines.append(f"> **拖尾明显**：最慢核比最快核晚 {insight.tail_us:.2f} us 收工"
-                     f"（{insight.tail_pct:.0f}%）。典型原因是尾块数据量不均或某个核被抢占。")
+        lines.append(f"> **Pronounced tail**: the slowest core finishes {insight.tail_us:.2f} us after the fastest "
+                     f"({insight.tail_pct:.0f}%). Usually an uneven final tile or a preempted core.")
         lines.append("")
 
     if insight.slowest_blocks:
-        lines.append("最慢的 block：")
+        lines.append("Slowest blocks:")
         lines.append("")
-        lines.append("| block | 类型 | 启动 us | 结束 us | 耗时 us |")
+        lines.append("| Block | Type | Start us | End us | Duration us |")
         lines.append("|---|---|---:|---:|---:|")
         for b in insight.slowest_blocks:
             lines.append(f"| {b['block_id']} | {b['core_type']} | {b['start_us']:.3f} | "
@@ -366,25 +366,25 @@ def render_schedule(insight: ScheduleInsight) -> List[str]:
 # confidence is C, not A. A reader who knows the SKU can correct the names
 # without touching the parser.
 MEMORY_PATH_NAMES = {
-    0: "GM 读（本 die）",
-    1: "GM 写（本 die）",
-    2: "跨 die 通路 2（推断）",
-    6: "跨 die 通路 6（推断）",
-    7: "跨 die 通路 7（推断）",
-    8: "跨 die 通路 8（推断）",
-    12: "UB←GM（MTE2 落 UB）",
+    0: "GM read (local die)",
+    1: "GM write (local die)",
+    2: "Cross-die path 2 (inferred)",
+    6: "Cross-die path 6 (inferred)",
+    7: "Cross-die path 7 (inferred)",
+    8: "Cross-die path 8 (inferred)",
+    12: "UB<-GM (MTE2 into UB)",
     13: "UB→GM（MTE3）",
-    14: "UB→L2（vector 读）",
-    15: "L2→UB（vector 写）",
-    37: "跨 die 通路 37（推断）",
-    38: "跨 die 通路 38（推断）",
-    39: "保留（恒 0）",
-    40: "GM 读（cube 侧，推断）",
-    41: "保留（恒 0）",
-    48: "L0A/B 通路",
-    50: "保留（恒 0）",
-    52: "L0C 通路",
-    54: "FixPipe 通路",
+    14: "UB->L2 (vector read)",
+    15: "L2->UB (vector write)",
+    37: "Cross-die path 37 (inferred)",
+    38: "Cross-die path 38 (inferred)",
+    39: "Reserved (always 0)",
+    40: "GM read (cube side, inferred)",
+    41: "Reserved (always 0)",
+    48: "L0A/B path",
+    50: "Reserved (always 0)",
+    52: "L0C path",
+    54: "FixPipe path",
 }
 
 # Paths that carry traffic off the local die. Everything else is on-die.
@@ -423,12 +423,12 @@ def analyse_paths(viz_cores: List[Dict[str, object]],
     result = SocPaths()
     result.die_count = die_num
     if not viz_cores:
-        result.reason = "没有 core_memory_map（visualize_data.bin 0x08）"
+        result.reason = "no core_memory_map (visualize_data.bin 0x08)"
         return result
 
     units = (viz_cores[0] or {}).get("memory_unit") or []
     if not units:
-        result.reason = "core 0 没有 memory_unit"
+        result.reason = "core 0 has no memory_unit"
         return result
     result.available = True
 
@@ -446,7 +446,7 @@ def analyse_paths(viz_cores: List[Dict[str, object]],
         is_cross = path_id in CROSS_DIE_PATHS
         result.paths.append({
             "path_id": path_id,
-            "name": MEMORY_PATH_NAMES.get(path_id, f"path {path_id}（未命名）"),
+            "name": MEMORY_PATH_NAMES.get(path_id, f"path {path_id} (unnamed)"),
             "bandwidth_gbps": round(bandwidth, 4),
             "requests": int(requests),
             "cross_die": is_cross,
@@ -476,40 +476,40 @@ def render_paths(paths: SocPaths) -> List[str]:
     """Markdown for the memory-path / cross-die section."""
     lines: List[str] = []
     if not paths.available:
-        lines.append(f"不可用：{paths.reason}")
+        lines.append(f"Unavailable: {paths.reason}")
         lines.append("")
         return lines
 
-    die_note = (f"本芯片 io_die_num={paths.die_count}（双 die）"
-                if paths.die_count else "die 数量未知")
+    die_note = (f"this part declares io_die_num={paths.die_count} (dual-die)"
+                if paths.die_count else "die count unknown")
     lines.append(f"- {die_note}")
-    lines.append(f"- 跨 die 流量 {paths.cross_die_gbps:.3f} GB/s，"
-                 f"片内流量 {paths.on_die_gbps:.3f} GB/s"
-                 + (f"，**跨 die 占 {paths.cross_die_pct:.1f}%**"
+    lines.append(f"- Cross-die traffic {paths.cross_die_gbps:.3f} GB/s, "
+                 f"on-die traffic {paths.on_die_gbps:.3f} GB/s"
+                 + (f", **cross-die {paths.cross_die_pct:.1f}%**"
                     if paths.cross_die_pct is not None else ""))
     lines.append("")
-    lines.append("| path | 名称 | 带宽 GB/s | 请求数 | 跨 die |")
+    lines.append("| Path | Name | Bandwidth GB/s | Requests | Cross-die |")
     lines.append("|---:|---|---:|---:|:--:|")
     for entry in paths.paths:
         lines.append(
             f"| {entry['path_id']} | {entry['name']} | {entry['bandwidth_gbps']:.3f} | "
-            f"{entry['requests']} | {'是' if entry['cross_die'] else ''} |")
+            f"{entry['requests']} | {'yes' if entry['cross_die'] else ''} |")
     lines.append("")
-    lines.append("> path 名称是**推断**的（CANN 未公开 id 含义）：0/1 与 GM 读写吻合，"
-                 "12–15 与 UB 表逐字节相同，2/6/7/8/37/38 只在 cube kernel 上出现且有流量。"
-                 "置信度按推断给，不按实测给。")
+    lines.append("> Path names are **inferred** (CANN does not document the ids): 0/1 match GM read/write, "
+                 "12-15 match the UB table byte for byte, and 2/6/7/8/37/38 appear only on the cube kernel with real traffic. "
+                 "Their confidence reflects the inference, not a measurement.")
     lines.append("")
     if paths.cross_die_pct is not None and paths.cross_die_pct > 20:
-        lines.append(f"> **跨 die 流量占比 {paths.cross_die_pct:.0f}%**：双 die 上核访问到对端 "
-                     "die 的 L2 要走 SIO，延迟显著高于本 die。可行方向：按 GM 地址的 L2 交织"
-                     "关系让每个核只写本 die 的 cacheline、减少多核写同一 cacheline、"
-                     "或减少参与写同一地址的核数。")
+        lines.append(f"> **Cross-die traffic is {paths.cross_die_pct:.0f}%**: on a dual-die part, reaching the remote "
+                     "die's L2 traverses SIO at materially higher latency. Available levers: map GM addresses to the L2 "
+                     "interleave so each core writes only local-die cachelines, reduce the number of cores writing the same cacheline, "
+                     "or reduce same-address write participation.")
         lines.append("")
     return lines
 
 
 # ---------------------------------------------------------------------------
-# PC-vs-cycle: icache miss detection (scalar_story's 手段一)
+# PC-vs-cycle: icache-miss detection (the primary technique in scalar_story)
 # ---------------------------------------------------------------------------
 @dataclass
 class PcStall:
@@ -587,8 +587,8 @@ def analyse_pc_cycle(trace: Dict[str, object],
         except (TypeError, ValueError):
             continue
     if not events:
-        insight.reason = ("trace 里没有同时带 pc_addr 与 ts 的事件"
-                          "（需要 --with-instructions）")
+        insight.reason = ("no events carry both pc_addr and ts "
+                          "(requires --with-instructions)")
         return insight
 
     events.sort(key=lambda e: e[0])
@@ -632,27 +632,27 @@ def analyse_pc_cycle(trace: Dict[str, object],
 def render_pc_cycle(insight: PcCycleInsight) -> List[str]:
     lines: List[str] = []
     if not insight.available:
-        lines.append(f"不可用：{insight.reason}")
+        lines.append(f"Unavailable: {insight.reason}")
         lines.append("")
         return lines
-    lines.append(f"- {insight.events} 个带 PC 的事件，{insight.distinct_pcs} 个不同 PC，"
-                 f"时间跨度 {insight.span_us:.3f} us")
-    lines.append(f"- 同一 PC 停留 ≥ {insight.threshold_us:.2f} us 的区间："
-                 f"**{len(insight.stalls)} 处**，合计 {insight.total_stall_us:.3f} us"
-                 + (f"（占跨度 {insight.stall_pct:.1f}%）"
+    lines.append(f"- {insight.events} events carry a PC, {insight.distinct_pcs} distinct PCs, "
+                 f"span {insight.span_us:.3f} us")
+    lines.append(f"- Intervals where one PC resided for at least {insight.threshold_us:.2f} us: "
+                 f"**{len(insight.stalls)} sites**, totalling {insight.total_stall_us:.3f} us"
+                 + (f"({insight.stall_pct:.1f}% of span)"
                     if insight.stall_pct is not None else ""))
     lines.append("")
     if insight.stalls:
-        lines.append("| PC | 指令 | 流水 | 起始 us | 停留 us | 事件数 |")
+        lines.append("| PC | Opcode | Pipe | Start us | Residence us | Events |")
         lines.append("|---|---|---|---:|---:|---:|")
         for entry in insight.stalls:
             lines.append(f"| `{entry['pc']}` | `{entry['opcode']}` | {entry['pipe']} | "
                          f"{entry['start_us']:.3f} | {entry['gap_us']:.3f} | "
                          f"{entry['events']} |")
         lines.append("")
-        lines.append("> 同一 PC 长时间不动＝在等取指。scalar_story 用 PC-Cycle 图上的"
-                     "长水平线段定位 icache miss；这里是它的数值等价物。命中该模式时，"
-                     "可在循环入口或函数调用前 1–2 个基本块处插 icache 预取。")
+        lines.append("> A PC that does not advance for a long interval is waiting on instruction fetch. scalar_story localises icache misses "
+                     "by the long horizontal segments of a PC-vs-cycle plot; this is the numeric equivalent. On a hit, "
+                     "insert an icache prefetch one or two basic blocks before the loop entry or call.")
         lines.append("")
     return lines
 

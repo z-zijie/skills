@@ -736,14 +736,14 @@ def load_capture(path: Path, home: Optional[Path] = None) -> Capture:
 # ---------------------------------------------------------------------------
 
 PIPE_INFO = {
-    "aic_cube": ("cube", "Cube 计算"),
-    "aic_scalar": ("aic_scalar", "AIC scalar 标量"),
+    "aic_cube": ("cube", "Cube compute"),
+    "aic_scalar": ("aic_scalar", "AIC scalar"),
     "aic_mte1": ("mte1", "MTE1 (L1->L0)"),
     "aic_mte2": ("mte2", "MTE2 (GM->L1)"),
     "aic_mte3": ("mte3", "MTE3 (L1/UB->GM)"),
     "aic_fixpipe": ("fixpipe", "FixPipe (L0C->UB/GM)"),
-    "aiv_vec": ("vec", "Vector 计算"),
-    "aiv_scalar": ("aiv_scalar", "AIV scalar 标量"),
+    "aiv_vec": ("vec", "Vector compute"),
+    "aiv_scalar": ("aiv_scalar", "AIV scalar"),
     "aiv_mte2": ("aiv_mte2", "AIV MTE2 (GM->UB)"),
     "aiv_mte3": ("aiv_mte3", "AIV MTE3 (UB->GM)"),
 }
@@ -797,20 +797,20 @@ def bandwidth_breakdown(capture: Capture) -> List[Dict[str, Any]]:
         ("MTE2 GM→UB", "Memory", "aiv_gm_to_ub_bw(GB/s)", "GM_to_UB"),
         ("MTE2 GM→L1", "Memory", "aic_mte2_active_bw(GB/s)", None),
         ("MTE3 UB→GM", "Memory", "aiv_ub_to_gm_bw(GB/s)", "UB_to_GM"),
-        ("主存读", "Memory", "aiv_main_mem_read_bw(GB/s)", None),
-        ("主存写", "Memory", "aiv_main_mem_write_bw(GB/s)", None),
-        ("L1 读", "Memory", "aic_l1_read_bw(GB/s)", None),
-        ("L1 写", "Memory", "aic_l1_write_bw(GB/s)", None),
-        ("UB 读 (vector)", "MemoryUB", "aiv_ub_read_bw_vector(GB/s)", None),
-        ("UB 写 (vector)", "MemoryUB", "aiv_ub_write_bw_vector(GB/s)", None),
-        ("UB 读 (GM)", "MemoryUB", "aiv_ub_read_bw_gm(GB/s)", None),
-        ("UB 写 (GM)", "MemoryUB", "aiv_ub_write_bw_gm(GB/s)", None),
-        ("L0A 读", "MemoryL0", "aic_l0a_read_bw(GB/s)", None),
-        ("L0A 写", "MemoryL0", "aic_l0a_write_bw(GB/s)", None),
-        ("L0B 读", "MemoryL0", "aic_l0b_read_bw(GB/s)", None),
-        ("L0B 写", "MemoryL0", "aic_l0b_write_bw(GB/s)", None),
-        ("L0C 读", "MemoryL0", "aic_l0c_read_bw_cube(GB/s)", None),
-        ("L0C 写", "MemoryL0", "aic_l0c_write_bw_cube(GB/s)", None),
+        ("Main-memory read", "Memory", "aiv_main_mem_read_bw(GB/s)", None),
+        ("Main-memory write", "Memory", "aiv_main_mem_write_bw(GB/s)", None),
+        ("L1 read", "Memory", "aic_l1_read_bw(GB/s)", None),
+        ("L1 write", "Memory", "aic_l1_write_bw(GB/s)", None),
+        ("UB read (vector)", "MemoryUB", "aiv_ub_read_bw_vector(GB/s)", None),
+        ("UB write (vector)", "MemoryUB", "aiv_ub_write_bw_vector(GB/s)", None),
+        ("UB read (GM)", "MemoryUB", "aiv_ub_read_bw_gm(GB/s)", None),
+        ("UB write (GM)", "MemoryUB", "aiv_ub_write_bw_gm(GB/s)", None),
+        ("L0A read", "MemoryL0", "aic_l0a_read_bw(GB/s)", None),
+        ("L0A write", "MemoryL0", "aic_l0a_write_bw(GB/s)", None),
+        ("L0B read", "MemoryL0", "aic_l0b_read_bw(GB/s)", None),
+        ("L0B write", "MemoryL0", "aic_l0b_write_bw(GB/s)", None),
+        ("L0C read", "MemoryL0", "aic_l0c_read_bw_cube(GB/s)", None),
+        ("L0C write", "MemoryL0", "aic_l0c_write_bw_cube(GB/s)", None),
     ]
     table_map = {"Memory": rows, "MemoryUB": ub_rows, "MemoryL0": l0_rows}
     out: List[Dict[str, Any]] = []
@@ -994,15 +994,15 @@ def memory_paths(capture: Capture) -> List[Dict[str, Any]]:
         return []
     # memory_path ids observed on Ascend950PR; unknown ids are surfaced as-is
     path_names = {
-        0: "GM→服务器(远)",
-        1: "GM→本卡",
+        0: "GM -> remote (far)",
+        1: "GM -> local card",
         12: "GM→UB (MTE2)",
         13: "UB→GM (MTE3)",
-        14: "UB→L2 (vector 读)",
-        15: "L2→UB (vector 写)",
-        48: "L0A/B 通路",
-        52: "L0C 通路",
-        54: "FixPipe 通路",
+        14: "UB -> L2 (vector read)",
+        15: "L2 -> UB (vector write)",
+        48: "L0A/B path",
+        52: "L0C path",
+        54: "FixPipe path",
     }
     first = capture.viz_cores[0]
     out = []
@@ -1383,35 +1383,35 @@ def render_markdown(result: Dict[str, Any]) -> str:
     lines: List[str] = []
     add = lines.append
 
-    add(f"# Kernel 性能报告 — {kernel['name'] or '?'}")
+    add(f"# Kernel performance report - {kernel['name'] or '?'}")
     add("")
     add(f"- SoC: `{kernel['soc'] or '?'}`  |  Capture: `{result['capture_root']}`")
-    add(f"- 工具版本: {result['tool_version']}")
+    add(f"- Tool version: {result['tool_version']}")
     add("")
 
-    add("## 1. 结论")
+    add("## 1. Verdict")
     add("")
-    add(f"- 耗时 **{_fmt(kernel['duration_us'], ' us', 3)}**，Block Dim **{kernel['block_dim'] or '?'}**，"
-        f"频率 {_fmt(kernel['current_freq_mhz'], ' MHz', 0)}"
-        f"（额定 {_fmt(kernel['rated_freq_mhz'], ' MHz', 0)}）")
+    add(f"- Duration **{_fmt(kernel['duration_us'], ' us', 3)}**, Block Dim **{kernel['block_dim'] or '?'}**, "
+        f"clock {_fmt(kernel['current_freq_mhz'], ' MHz', 0)}"
+        f" (rated {_fmt(kernel['rated_freq_mhz'], ' MHz', 0)})")
     roofline = result["roofline"]
     if str(roofline["class"]).startswith("no data"):
         add("")
-        add("> **采集无有效数据**：所有核的全部流水计数为空或 0。这表示本次采集没有真正"
-            "执行到 kernel（例如 metric 组合触发 replay 失败），不代表 kernel 空闲。"
-            "请减少 `--metrics` 的组数或改用 `--replay-mode=application` 重采。")
+        add("> **No valid data collected**: every pipe counter on every core is empty or zero. The capture never actually "
+            "executed the kernel (for example, the metric combination broke replay); this does not mean the kernel is idle. "
+            "Reduce the number of `--metrics` groups, or re-collect with a different replay mode.")
         add("")
-    add(f"- Roofline 归属：**{roofline['class']}**"
-        + (f"（主导流水 {roofline['dominant_pipe']} {_fmt(roofline['dominant_pct'], '%')}）"
+    add(f"- Roofline class: **{roofline['class']}**"
+        + (f" (dominant pipe {roofline['dominant_pipe']} at {_fmt(roofline['dominant_pct'], '%')})"
            if roofline.get("dominant_pipe") else ""))
     if roofline.get("vendor_verdict"):
-        add(f"- 厂商判定：`{roofline['vendor_verdict']}`")
+        add(f"- Vendor verdict: `{roofline['vendor_verdict']}`")
     if roofline.get("max_bandwidth_peak_pct") is not None:
-        add(f"- 最高带宽峰值占比：**{roofline['max_bandwidth_peak_pct']:.1f}%**")
+        add(f"- Max bandwidth share of peak: **{roofline['max_bandwidth_peak_pct']:.1f}%**")
     add("")
 
     if result["advice"]:
-        add("厂商建议：")
+        add("Vendor advice:")
         add("")
         for text in result["advice"]:
             add(f"- {text}")
@@ -1437,33 +1437,33 @@ def render_markdown(result: Dict[str, Any]) -> str:
         lines.extend(KM.render(metrics, peaks))
         lines.append("")
 
-    add("## 3. 流水占用")
+    add("## 3. Pipe occupancy")
     add("")
-    add("| 流水 | 平均占用 | 活跃核数 |")
+    add("| Pipe | Mean occupancy | Active cores |")
     add("|---|---:|---:|")
     for pipe in result["pipes"]:
         add(f"| {pipe['label']} | {_fmt(pipe['mean_ratio_pct'], '%')} | {pipe['cores_active']} |")
     add("")
-    add("> 占用率 = 该流水忙时间 / 该核总时间，跨核取平均。>50% 的流水即瓶颈候选。")
+    add("> Occupancy = pipe busy time / core total time, averaged across cores. A pipe above 50% is a bottleneck candidate.")
     add("")
 
-    add("## 4. 带宽与峰值占比")
+    add("## 4. Bandwidth and share of peak")
     add("")
     peak_model = result["peak_model_gbps"]
     if peak_model:
-        add("峰值分母（由本次采集的 `*_bw_usage_rate(%)` 反解，非 datasheet 值）：")
+        add("Peak denominators (inverted from this capture's `*_bw_usage_rate(%)`, not datasheet values):")
         add("")
         for name, value in sorted(peak_model.items()):
             add(f"- `{name}`: {_fmt(value, ' GB/s')} — {result['peak_source'].get(name, '?')}")
         add("")
     reference = {k: v for k, v in (result.get("platform_reference") or {}).items() if v is not None}
     if reference:
-        add("platform_config 参考值（仅供交叉校验，**未**用作峰值分母）：")
+        add("platform_config reference values (cross-check only, **not** used as peak denominators):")
         add("")
         for name, value in sorted(reference.items()):
             add(f"- `{name}`: {value}")
         add("")
-    add("| 通道 | 平均 GB/s | 峰值占比 |")
+    add("| Channel | Mean GB/s | Share of peak |")
     add("|---|---:|---:|")
     for entry in result["bandwidth"]:
         if entry.get("mean_gbps") is None and entry.get("peak_pct") is None:
@@ -1474,51 +1474,51 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     cache = result["cache"]
     if cache.get("aiv") or cache.get("aic") or cache.get("icache_hit_pct") is not None:
-        add("## 5. Cache 行为")
+        add("## 5. Cache behaviour")
         add("")
-        add("| 指标 | 值 |")
+        add("| Metric | Value |")
         add("|---|---:|")
         for prefix, label in (("aiv", "AIV"), ("aic", "AIC")):
             block = cache.get(prefix)
             if not block:
                 continue
-            add(f"| {label} L2 读命中率 | {_fmt(block.get('read_hit_pct'), '%')} |")
-            add(f"| {label} L2 写命中率 | {_fmt(block.get('write_hit_pct'), '%')} |")
-            add(f"| {label} L2 读 miss 次数 | {int(block.get('read_close_miss') or 0)} |")
+            add(f"| {label} L2 read hit rate | {_fmt(block.get('read_hit_pct'), '%')} |")
+            add(f"| {label} L2 write hit rate | {_fmt(block.get('write_hit_pct'), '%')} |")
+            add(f"| {label} L2 read miss count | {int(block.get('read_close_miss') or 0)} |")
         if cache.get("icache_hit_pct") is not None:
-            add(f"| iCache 命中率 | {_fmt(cache['icache_hit_pct'], '%')} |")
-            add(f"| iCache miss 率 | {_fmt(cache['icache_miss_pct'], '%')} |")
+            add(f"| iCache hit rate | {_fmt(cache['icache_hit_pct'], '%')} |")
+            add(f"| iCache miss rate | {_fmt(cache['icache_miss_pct'], '%')} |")
         if cache.get("l2_hit_pct_from_tables") is not None:
-            add(f"| L2 总命中率（逐核表） | {_fmt(cache['l2_hit_pct_from_tables'], '%')} |")
+            add(f"| L2 total hit rate (per-core table) | {_fmt(cache['l2_hit_pct_from_tables'], '%')} |")
         dcache = cache.get("dcache") or {}
         for row_name, columns in dcache.items():
             requests = columns.get("requests")
             throughput = columns.get("throughput(GB/s)")
-            add(f"| {row_name} | {int(requests) if requests is not None else '-'} 请求"
+            add(f"| {row_name} | {int(requests) if requests is not None else '-'} requests"
                 + (f", {_fmt(throughput)} GB/s" if throughput is not None else "") + " |")
         add("")
         if not dcache:
-            add("> DCache 明细不可用（本次采集的 metric 组未产出该表）。"
-                "Outstanding/inflight 请求数在本芯片任何 metric 组下均无输出通路。")
+            add("> DCache detail unavailable (this metric set produced no such table). "
+                "Outstanding/in-flight request counts have no output path under any metric set on this part.")
             add("")
 
     conflicts = result["conflicts"]
     if conflicts.get("available"):
-        add("## 6. 冲突与等待")
+        add("## 6. Conflicts and wait")
         add("")
-        add("| 指标 | 平均占比 |")
+        add("| Metric | Mean ratio |")
         add("|---|---:|")
         labels = {
-            "vec_stu_cflt": "store bank 冲突",
-            "vec_ldu_cflt": "load bank 冲突",
-            "vec_sfu_cflt": "SFU 冲突",
-            "vec_wait": "Vector 等待",
-            "vec_mte2_wait": "MTE2 等待",
-            "vec_mte3_wait": "MTE3 等待",
-            "cube_wait": "Cube 等待",
-            "aic_mte1_wait": "MTE1 等待",
-            "aic_mte2_wait": "AIC MTE2 等待",
-            "aic_mte3_wait": "AIC MTE3 等待",
+            "vec_stu_cflt": "store bank conflict",
+            "vec_ldu_cflt": "load bank conflict",
+            "vec_sfu_cflt": "SFU conflict",
+            "vec_wait": "Vector wait",
+            "vec_mte2_wait": "MTE2 wait",
+            "vec_mte3_wait": "MTE3 wait",
+            "cube_wait": "Cube wait",
+            "aic_mte1_wait": "MTE1 wait",
+            "aic_mte2_wait": "AIC MTE2 wait",
+            "aic_mte3_wait": "AIC MTE3 wait",
         }
         for key, label in labels.items():
             if key in conflicts:
@@ -1526,7 +1526,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
         pipe_wait = conflicts.get("pipe_wait_cycles_total") or {}
         if pipe_wait:
             add("")
-            add("各流水累计 wait cycles（全部核求和）：")
+            add("Accumulated wait cycles per pipe (summed over all cores):")
             add("")
             for name, cycles in sorted(pipe_wait.items(), key=lambda kv: -kv[1]):
                 add(f"- {name}: {int(cycles)} cycles")
@@ -1534,7 +1534,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     schedule = result.get("schedule")
     if LY is not None and schedule is not None:
-        add("## 7. block 时间轴（调度层）")
+        add("## 7. Block timeline (schedule layer)")
         add("")
         insight = LY.ScheduleInsight(
             available=schedule.get("available", False),
@@ -1558,17 +1558,17 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     imbalance_data = result["imbalance"]
     if imbalance_data:
-        add("## 8. 核间负载")
+        add("## 8. Core-to-core load")
         add("")
         for core_type, block in imbalance_data.items():
-            add(f"- {core_type.upper()}: {block['cores']} 核，"
-                f"耗时 {block['min_us']:.3f}–{block['max_us']:.3f} us，"
-                f"均值 {block['mean_us']:.3f} us，**离散度 {_fmt(block['spread_pct'], '%')}**")
+            add(f"- {core_type.upper()}: {block['cores']} cores, "
+                f"duration {block['min_us']:.3f}-{block['max_us']:.3f} us, "
+                f"mean {block['mean_us']:.3f} us, **spread {_fmt(block['spread_pct'], '%')}**")
         add("")
 
     soc_paths = result.get("soc_paths")
     if LY is not None and soc_paths and soc_paths.get("available"):
-        add("## 9. 内存通路与跨 DIE 流量")
+        add("## 9. Memory paths and cross-die traffic")
         add("")
         sp = LY.SocPaths(
             available=soc_paths.get("available", False),
@@ -1584,9 +1584,9 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     paths = result["memory_paths"]
     if paths:
-        add("### 9.1 逐通路明细（旧视图）")
+        add("### 9.1 Per-path detail (legacy view)")
         add("")
-        add("| 通路 | 带宽 GB/s | 请求数 |")
+        add("| Path | Bandwidth GB/s | Requests |")
         add("|---|---:|---:|")
         for entry in paths:
             add(f"| {entry['name']} | {_fmt(entry.get('bandwidth_gbps'))} | "
@@ -1595,12 +1595,12 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     confidence = result.get("confidence") or {}
     if MC is not None and confidence:
-        add("## 10. 置信度分级")
+        add("## 10. Confidence tiers")
         add("")
-        add("每个指标的置信度按「它是怎么来的」划分，并用 5 次重复采集的变异系数校准。"
-            "引用数字前先看这一栏。")
+        add("Each metric is tiered by how its value is produced, calibrated against the coefficient of variation over five repeat collections. "
+            "Check this column before quoting a number.")
         add("")
-        add("| 级别 | 含义 | 本报告条目数 |")
+        add("| Tier | Meaning | Entries in this report |")
         add("|---|---|---:|")
         catalogue = MC.build_catalogue()
         for tier in MC.TIER_ORDER:
@@ -1610,20 +1610,20 @@ def render_markdown(result: Dict[str, Any]) -> str:
         add("")
         unstable = [m for m in catalogue if MC.confidence_of(m.key) == "E"]
         if unstable:
-            add("**本报告中 E 级（不建议单独引用）的指标**：")
+            add("**Tier-E metrics in this report (do not quote alone)**:")
             add("")
             for m in unstable:
                 measured = MC.stability_for(m.key)
-                detail = (f"；实测 CV {measured['cv_pct']:.1f}%"
+                detail = (f"; measured CV {measured['cv_pct']:.1f}%"
                           if measured else "")
                 add(f"- {m.label} — {m.caveat or m.note}{detail}")
             add("")
-        add("完整目录（含每个指标的产出口径）：`python3 scripts/metric_catalogue.py`")
+        add("Full catalogue with provenance: `python3 scripts/metric_catalogue.py`")
         add("")
 
-    add("## 11. 逐核明细")
+    add("## 11. Per-core detail")
     add("")
-    add("| core | 类型 | 时间 us | 主导流水 | 占比 | GM→UB GB/s | L2 读命中 |")
+    add("| core | Type | Time us | Dominant pipe | Share | GM->UB GB/s | L2 read hit |")
     add("|---:|---|---:|---|---:|---:|---:|")
     for core in result["per_core"]:
         add(f"| {core['block_id']} | {core['core_type']} | "
@@ -1653,7 +1653,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
         pc_cycle = result.get("pc_cycle")
         if LY is not None and pc_cycle is not None:
-            add("### 12.1 PC-vs-cycle（icache miss 诊断）")
+            add("### 12.1 PC-vs-cycle (icache-miss diagnosis)")
             add("")
             pcins = LY.PcCycleInsight(
                 available=pc_cycle.get("available", False),
@@ -1670,9 +1670,9 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     subblocks = result.get("subblocks") or []
     if subblocks:
-        add("## 13. 子核活动")
+        add("## 13. Sub-core activity")
         add("")
-        add("| 指标 | 类型 | unit | 核数 | 均值 | 最大值 | 原始计数 |")
+        add("| Metric | Type | unit | Cores | Mean | Max | Raw count |")
         add("|---|---|---:|---:|---:|---:|---:|")
         for entry in subblocks:
             add(f"| {entry['name']} | {entry['block_type']} | {entry['unit']} | "
@@ -1683,12 +1683,12 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     op_detail = result.get("op_detail")
     if op_detail:
-        add("## 14. 逐核吞吐（Occupancy）")
+        add("## 14. Per-core throughput (Occupancy)")
         add("")
-        add(f"- {op_detail['cores']} 个核，其中 {op_detail['cores_with_activity']} 个有活动；"
-            f"最大 cycles {op_detail['max_cycles']}")
+        add(f"- {op_detail['cores']} cores, {op_detail['cores_with_activity']} with activity; "
+            f"max cycles {op_detail['max_cycles']}")
         add("")
-        add("| core | subcore | 类型 | cycles | 吞吐 | L2 命中 |")
+        add("| core | subcore | Type | cycles | Throughput | L2 hit |")
         add("|---:|---:|---|---:|---:|---:|")
         for row in op_detail["rows"]:
             add(f"| {row['core_id']} | {row['subcore_id']} | {row['subcore_type']} | "
@@ -1698,11 +1698,11 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     timeline = result.get("timeline")
     if timeline:
-        add("## 15. 时间线事件")
+        add("## 15. Timeline events")
         add("")
-        add(f"- 事件数 {timeline['event_count']}，来源 `{timeline['source']}`")
+        add(f"- {timeline['event_count']} events from `{timeline['source']}`")
         add("")
-        add("| core | 流水 | 累计时间 us |")
+        add("| core | Pipe | Accumulated us |")
         add("|---|---|---:|")
         for core, pipes in timeline["per_core_pipe_us"].items():
             for pipe, value in sorted(pipes.items(), key=lambda kv: -kv[1]):
@@ -1723,13 +1723,13 @@ def check_device_idle(home: Path) -> Tuple[bool, str]:
             ["npu-smi", "info"], capture_output=True, timeout=60, check=False
         ).stdout.decode(errors="replace")
     except (OSError, subprocess.SubprocessError):
-        return True, "npu-smi 不可用，未检查设备占用"
+        return True, "npu-smi unavailable; device occupancy not checked"
     processes = [line for line in out.splitlines() if re.search(r"\|\s*\d+\s*\|\s*\d+\s*\|", line)]
     # npu-smi prints a process row as "| 0 | <pid> | <name> | <mem> |"
     busy = [line for line in out.splitlines() if re.match(r"\|\s*\d+\s*\|\s*\d+\s*\|", line.strip())]
     if busy:
-        return False, f"设备上有 {len(busy)} 个其他进程，采集数据可能抖动"
-    return True, "设备空闲"
+        return False, f"{len(busy)} other processes are using the device; counters may be noisy"
+    return True, "device idle"
 
 
 def run_msopprof(home: Path, app: List[str], out_dir: Path,
@@ -1887,7 +1887,7 @@ def run_multipass(home: Path, app: List[str], capture_dir: Path,
     for index, metrics in enumerate(passes):
         label = "core" if index == 0 and metrics == passes[0] and "PipeUtilization" in metrics else metrics[0].lower()
         target = capture_dir / f"pass{index}_{label}"
-        print(f"[info]   第 {index + 1} 趟: {metrics}", file=sys.stderr)
+        print(f"[info]   pass {index + 1}: {metrics}", file=sys.stderr)
         rc, log, root = run_msopprof(
             home=home, app=app, out_dir=target, metrics=metrics,
             warmup=args.warmup, launch_count=args.launch_count,
@@ -1938,7 +1938,7 @@ def run_multipass(home: Path, app: List[str], capture_dir: Path,
 def command_profile(args: argparse.Namespace) -> int:
     home = find_cann_home()
     if home is None:
-        print("错误: 找不到 CANN 安装（需要 set_env.sh 与 tools/msopprof/bin/msopprof）",
+        print("error: no CANN installation found (need set_env.sh and tools/msopprof/bin/msopprof)",
               file=sys.stderr)
         return 1
 
@@ -1968,7 +1968,7 @@ def command_profile(args: argparse.Namespace) -> int:
         passes = plan_passes(metrics)
         rc, log, capture_root = 0, "", None
         if len(passes) <= 1:
-            print(f"[info] 采集 {metrics} → {capture_dir}", file=sys.stderr)
+            print(f"[info] collecting {metrics} -> {capture_dir}", file=sys.stderr)
             rc, log, capture_root = run_msopprof(
                 home=home, app=app_cmd, out_dir=capture_dir, metrics=metrics,
                 warmup=args.warmup, launch_count=args.launch_count,
@@ -1976,7 +1976,7 @@ def command_profile(args: argparse.Namespace) -> int:
                 timeout=args.timeout,
             )
         else:
-            print(f"[info] 分 {len(passes)} 趟采集（这些 metric 集合无法合并）→ {capture_dir}",
+            print(f"[info] {len(passes)} passes required (these metric sets cannot be merged) -> {capture_dir}",
                   file=sys.stderr)
             capture_root, log = run_multipass(
                 home, app_cmd, capture_dir, passes, args
@@ -1988,7 +1988,7 @@ def command_profile(args: argparse.Namespace) -> int:
             # not launch that kernel). Recollect without the filter so we can
             # tell the caller which kernels the app actually ran, instead of
             # just reporting "no data".
-            print("[warn] 指定的 kernel 未匹配到，重新采集以列出实际运行的 kernel…",
+            print("[warn] the kernel filter matched nothing; re-collecting to list the kernels that actually ran...",
                   file=sys.stderr)
             retry_log, retry_root = retry_without_filter(
                 home, app_cmd, capture_dir, metrics, args
@@ -1997,17 +1997,17 @@ def command_profile(args: argparse.Namespace) -> int:
             (out_dir / "collect.log").write_text(log, errors="replace")
             if retry_root is not None:
                 names = discover_kernels(retry_root)
-                print("错误: 未找到匹配 %r 的 kernel。本次运行实际采集到的 kernel：" % args.kernel,
+                print("error: no kernel matched %r. Kernels actually collected in this run:" % args.kernel,
                       file=sys.stderr)
                 for name in names:
                     print(f"  - {name}", file=sys.stderr)
-                print(f"（数据保留在 {retry_root}）", file=sys.stderr)
+                print(f"(data retained at {retry_root})", file=sys.stderr)
                 return 1
         if capture_root is None:
-            print("错误: msopprof 未产出 OPPROF_* 采集目录。日志尾部：", file=sys.stderr)
+            print("error: msopprof produced no OPPROF_* capture directory. Log tail:", file=sys.stderr)
             print("\n".join(log.splitlines()[-20:]), file=sys.stderr)
             return 1
-        print(f"[info] 采集完成: {capture_root}", file=sys.stderr)
+        print(f"[info] collection complete: {capture_root}", file=sys.stderr)
 
     capture_path = out_dir / "capture"
     if not any(capture_path.glob("OPPROF_*")):
@@ -2024,7 +2024,7 @@ def command_profile(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(render_markdown(result))
-    print(f"\n[info] 报告: {report_path}\n[info] 全量指标: {metrics_path}",
+    print(f"\n[info] report: {report_path}\n[info] full metrics: {metrics_path}",
           file=sys.stderr)
     return 0
 
@@ -2050,15 +2050,15 @@ def command_diff(args: argparse.Namespace) -> int:
     a = analyze(load_capture(Path(args.left), home))
     b = analyze(load_capture(Path(args.right), home))
 
-    lines = ["# Kernel capture 对比", ""]
+    lines = ["# Kernel capture comparison", ""]
     da = a["kernel"]["duration_us"]
     db = b["kernel"]["duration_us"]
     if da and db:
-        lines.append(f"- 耗时: {da:.3f} us → {db:.3f} us "
+        lines.append(f"- Duration: {da:.3f} us -> {db:.3f} us "
                      f"({(db - da) / da * 100:+.1f}%)")
     lines.append(f"- Block Dim: {a['kernel']['block_dim']} → {b['kernel']['block_dim']}")
     lines.append("")
-    lines.append("| 流水 | 左 % | 右 % | Δ |")
+    lines.append("| Pipe | Left % | Right % | Delta |")
     lines.append("|---|---:|---:|---:|")
     # Iterate the UNION of both sides: a kernel that switches from AIV to AIC
     # (e.g. vector vs cube) has pipes on only one side, and iterating just the
@@ -2103,41 +2103,41 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    profile = sub.add_parser("profile", help="采集并分析")
+    profile = sub.add_parser("profile", help="collect and analyse")
     profile.add_argument("--app", required=True,
-                         help="可执行文件路径，或带参数的完整命令行（用引号包起来）")
+                         help="executable path, or a full command line with arguments (quoted)")
     profile.add_argument("--kernel", default=None,
-                         help="kernel 名（子串匹配）；省略则采集第一个命中的 kernel")
-    profile.add_argument("--out", default="./kernel_perf_out", help="输出目录")
-    profile.add_argument("--warmup", type=int, default=3, help="预热次数（默认 3）")
-    profile.add_argument("--launch-count", type=int, default=1, help="采集轮数（默认 1）")
+                         help="kernel name (substring match); omit to collect the first match")
+    profile.add_argument("--out", default="./kernel_perf_out", help="output directory")
+    profile.add_argument("--warmup", type=int, default=3, help="warm-up iterations (default 3)")
+    profile.add_argument("--launch-count", type=int, default=1, help="launch iterations (default 1)")
     profile.add_argument("--replay-mode", default="kernel",
                          choices=["application", "kernel", "range"])
     profile.add_argument("--metrics", default=None,
-                         help="逗号分隔的 msopprof metric 集合（覆盖默认 7 组）")
+                         help="comma-separated msopprof metric sets (overrides the defaults)")
     profile.add_argument("--with-timeline", action="store_true",
-                         help="额外采集 BasicInfo（pipeline 时间线需要）")
+                         help="also collect BasicInfo (needed for the pipeline timeline)")
     profile.add_argument("--with-instructions", action="store_true",
-                         help="额外分一趟采集 InstrTimeline，产出逐指令耗时"
-                              "（慢：数十 MB~数百 MB 中间文件，通常 1-4 分钟）")
+                         help="add a separate InstrTimeline pass for instruction-level cost "
+                              "(slow: tens to hundreds of MB of intermediates, usually 1-4 minutes)")
     profile.add_argument("--instr-pipes", default="vector|mte2|mte3",
-                         help="InstrTimeline 的流水，取值限 "
-                              "cube|fixp|vector|mte1|mte2|mte3，用 | 分隔"
-                              "（默认 vector|mte2|mte3，适配 vector 算子）")
-    profile.add_argument("--timeout", type=int, default=1800, help="单次采集超时秒数")
-    profile.add_argument("--json", action="store_true", help="以 JSON 打印全量结果")
+                         help="pipes for InstrTimeline: "
+                              "cube|fixp|vector|mte1|mte2|mte3 separated by |"
+                              " (default vector|mte2|mte3, suited to vector kernels)")
+    profile.add_argument("--timeout", type=int, default=1800, help="per-collection timeout in seconds")
+    profile.add_argument("--json", action="store_true", help="print the full result as JSON")
     profile.add_argument("--analyze-only", action="store_true",
-                         help="跳过采集，直接解析 --out 下已有的 capture")
+                         help="skip collection and analyse the existing capture under --out")
     profile.add_argument("--no-kernel-retry", action="store_true",
-                         help="kernel 未匹配时不重采枚举（默认会重采一次）")
+                         help="do not re-collect for kernel discovery when the filter matches nothing")
     profile.set_defaults(func=command_profile)
 
-    analyze_cmd = sub.add_parser("analyze", help="重新解析已有采集")
+    analyze_cmd = sub.add_parser("analyze", help="re-analyse an existing capture")
     analyze_cmd.add_argument("--out", required=True)
     analyze_cmd.add_argument("--json", action="store_true")
     analyze_cmd.set_defaults(func=command_analyze)
 
-    diff_cmd = sub.add_parser("diff", help="对比两个采集")
+    diff_cmd = sub.add_parser("diff", help="compare two captures")
     diff_cmd.add_argument("left")
     diff_cmd.add_argument("right")
     diff_cmd.set_defaults(func=command_diff)
@@ -2155,10 +2155,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         return args.func(args)
     except FileNotFoundError as exc:
-        print(f"错误: {exc}", file=sys.stderr)
+        print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("中断", file=sys.stderr)
+        print("interrupted", file=sys.stderr)
         return 130
 
 

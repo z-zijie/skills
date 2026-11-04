@@ -193,7 +193,7 @@ def run_candidate(home: Path, config: Config, app: List[str],
 def search(args: argparse.Namespace) -> int:
     home = KP.find_cann_home()
     if home is None:
-        print("错误: 找不到 CANN 安装", file=sys.stderr)
+        print("error: no CANN installation found", file=sys.stderr)
         return 1
 
     out_root = Path(args.out).resolve()
@@ -216,7 +216,7 @@ def search(args: argparse.Namespace) -> int:
         )
         elapsed = time.time() - started
         if capture is None:
-            print(f"  → 采集为空（{elapsed:.0f}s）", file=sys.stderr)
+            print(f"  -> empty capture ({elapsed:.0f}s)", file=sys.stderr)
             results.append({
                 "config": config.name, "metrics": config.metrics,
                 "replay_mode": config.replay_mode,
@@ -250,13 +250,13 @@ def search(args: argparse.Namespace) -> int:
               f"coverage={verdict['coverage']} ({elapsed:.0f}s)",
               file=sys.stderr)
         if verdict.get("failed_checks"):
-            print(f"    失败检查: {', '.join(verdict['failed_checks'])}",
+            print(f"    failed checks: {', '.join(verdict['failed_checks'])}",
                   file=sys.stderr)
 
     # --- pick the winner ---------------------------------------------------
     usable = [r for r in results if r["reward"] > float("-inf")]
     if not usable:
-        print("\n错误: 没有任何配置产出可用数据。", file=sys.stderr)
+        print("\nerror: no configuration produced usable data.", file=sys.stderr)
         (out_root / "search.json").write_text(
             json.dumps({"results": results}, indent=2, ensure_ascii=False)
         )
@@ -276,16 +276,16 @@ def search(args: argparse.Namespace) -> int:
     )
 
     print("\n" + "=" * 66)
-    print("配置搜索结论")
+    print("Configuration search result")
     print("=" * 66)
     for entry in sorted(usable, key=lambda r: -r["reward"]):
-        mark = "  ← 最优" if entry is winner else ""
+        mark = "  <- best" if entry is winner else ""
         print(f"  {entry['config']:18} reward={entry['reward']:6.2f} "
               f"pass={entry['passed']:2d} fail={entry['failed']} "
               f"coverage={entry['coverage']:5d}{mark}")
     for entry in results:
         if entry["reward"] == float("-inf"):
-            print(f"  {entry['config']:18} 不可用（采集为空）")
+            print(f"  {entry['config']:18} unavailable (empty capture)")
 
     # Materialise the winner as the canonical capture.
     final = out_root / "capture"
@@ -298,8 +298,8 @@ def search(args: argparse.Namespace) -> int:
         json.dumps(analysis, indent=2, ensure_ascii=False)
     )
     (out_root / "report.md").write_text(KP.render_markdown(analysis))
-    print(f"\n最优采集已归档到 {final}")
-    print(f"报告: {out_root / 'report.md'}")
+    print(f"\nBest capture archived to {final}")
+    print(f"Report: {out_root / 'report.md'}")
     return 0
 
 
@@ -319,13 +319,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             "  collect_optimize.py --app './mm 1024 1024 1024' --out ./opt --quick\n"
         ),
     )
-    parser.add_argument("--app", required=True, help="可执行文件或完整命令行")
-    parser.add_argument("--kernel", default=None, help="kernel 名（子串匹配）")
-    parser.add_argument("--out", default="./kernel_perf_opt", help="输出目录")
+    parser.add_argument("--app", required=True, help="executable path, or a full command line")
+    parser.add_argument("--kernel", default=None, help="kernel name (substring match)")
+    parser.add_argument("--out", default="./kernel_perf_opt", help="output directory")
     parser.add_argument("--quick", action="store_true",
-                        help="只试 4 个最有价值的配置")
+                        help="try only the 4 highest-value configurations")
     parser.add_argument("--timeout", type=int, default=1800,
-                        help="单次采集超时秒数")
+                        help="per-collection timeout in seconds")
     args, extra = parser.parse_known_args(argv)
     args.app_args = extra
     return search(args)

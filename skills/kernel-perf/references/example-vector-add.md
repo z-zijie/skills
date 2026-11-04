@@ -1,15 +1,15 @@
-# 样例：对 cann-samples 的 vector_add 跑一遍
+# Worked example: vector_add from cann-samples
 
-这不是示意，是 2026-11-04 在 Ascend950PR 上的实际运行记录。命令、输出、产物结构都按真实结果抄录，数字可以拿去复核。
+This is not an illustration. It is the actual run recorded on Ascend950PR on 2026-11-04; the command, the output and the artifact layout are transcribed from it, and the numbers can be re-checked.
 
-## 被测对象
+## Target
 
 ```
 /workspace/cann-samples/build/Samples/0_Introduction/vector_add/vector_add
-kernel: _Z10add_kernelIfEvPhS0_S0_llj   （--kernel add_kernel 子串匹配）
+kernel: _Z10add_kernelIfEvPhS0_S0_llj   (--kernel add_kernel is a substring match)
 ```
 
-## 一条命令
+## One command
 
 ```shell
 python3 scripts/kernel_perf.py profile \
@@ -19,105 +19,105 @@ python3 scripts/kernel_perf.py profile \
     --metrics=PipeUtilization,ArithmeticUtilization,Memory,MemoryUB,MemoryL0,L2Cache,ResourceConflictRatio,Roofline,PipeTimeline
 ```
 
-`PipeTimeline` 与核心组互斥，工具自动拆成两趟：先采 8 组核心指标，再单独采 `PipeTimeline`。日志：
+`PipeTimeline` is mutually exclusive with the core groups, so the tool splits the request into two passes automatically: the eight core metric sets first, then `PipeTimeline` alone. The log:
 
 ```
-[warn] 设备上有 2 个其他进程，采集数据可能抖动
-[info] 分 2 趟采集（这些 metric 集合无法合并）→ ./demo/capture
-[info]   第 1 趟: ['PipeUtilization', 'ArithmeticUtilization', 'Memory', 'MemoryUB',
+[warn] 2 other processes are using the device; counters may be noisy
+[info] 2 passes required (these metric sets cannot be merged) -> ./demo/capture
+[info]   pass 1: ['PipeUtilization', 'ArithmeticUtilization', 'Memory', 'MemoryUB',
                    'MemoryL0', 'L2Cache', 'ResourceConflictRatio', 'Roofline']
-[info]   第 2 趟: ['PipeTimeline']
+[info]   pass 2: ['PipeTimeline']
 ```
 
-## 产出什么
+## What is produced
 
-四种东西，用途不同：
+Four artifacts with different purposes:
 
-| 产物 | 内容 | 谁用 |
+| Artifact | Content | Used by |
 |---|---|---|
-| `report.md` | 13 节人读报告，所有指标带置信度 | 人看结论 |
-| `metrics.json` | 全量结构化数据，含每核原始值 | Agent / 脚本再度分析 |
-| `capture/pass0_core/OPPROF_*/` | msopprof 原始 CSV + `visualize_data.bin` | 复核、归档 |
-| `capture/pass1_pipetimeline/` + `capture/extra/` | `trace.json` 与 `probe/`（region map） | block 时间轴、逐指令 |
+| `report.md` | 13-section human-readable report, every metric tiered | a person reading conclusions |
+| `metrics.json` | full structured data including per-core raw values | agents and further analysis |
+| `capture/pass0_core/OPPROF_*/` | the raw msopprof CSVs + `visualize_data.bin` | audit, archive |
+| `capture/pass1_pipetimeline/` + `capture/extra/` | `trace.json` and `probe/` (region map) | block timeline, instruction level |
 
-没有 CSV/JSON 二选一：**原始 CSV 保留**，报告与 JSON 是在其上算出来的。
+It is not CSV or JSON: **the raw CSVs are retained**, and the report and JSON are computed on top of them.
 
-## 实际报出来的东西
+## What was actually reported
 
-### 结论（第 1 节）
+### Verdict (section 1)
 
 ```
-耗时 4.285 us，Block Dim 56，频率 1650 MHz
-Roofline 归属：memory bound（主导流水 aiv_mte2 60.15%）
-厂商判定：latency bound:pipeline caused
-最高带宽峰值占比：10.9%
+Duration 4.285 us, Block Dim 56, clock 1650 MHz
+Roofline class: memory bound (dominant pipe aiv_mte2 at 60.15%)
+Vendor verdict: latency bound:pipeline caused
+Max bandwidth share of peak: 10.9%
 ```
 
-### 关键指标（第 2 节）
+### Key metrics (section 2)
 
-| 指标 | 值 | 说明 |
+| Metric | Value | Note |
 |---|---:|---|
-| MFU | n/a | 没有 cube 指令，vector 算子不适用 |
-| MAC usage | n/a | cube 流水未活动 |
-| 受限因素 | aiv_mte2 | MTE2 占 60.1%，最忙的单元 |
-| Cube 理论峰值 | 378.47 TFLOPS | 28 AIC × 1650 MHz × 16³ MAC × 2 |
+| MFU | n/a | no cube instruction; does not apply to a vector kernel |
+| MAC usage | n/a | the cube pipe was idle |
+| Binding constraint | aiv_mte2 | MTE2 at 60.1%, the busiest unit |
+| Cube theoretical peak | 378.47 TFLOPS | 28 AIC x 1650 MHz x 16^3 MAC x 2 |
 
-MFU 报 `n/a` 而不是 0：vector 算子本来就没有矩阵乘，给 0 会被误读成"效率极低"。
+MFU reports `n/a` rather than 0: a vector kernel has no matrix multiply, and 0 would be misread as "extremely inefficient".
 
-### 流水（第 3 节）
+### Pipes (section 3)
 
-| 流水 | 平均占用 |
+| Pipe | Mean occupancy |
 |---|---:|
-| AIV MTE2 (GM→UB) | 60.15% |
+| AIV MTE2 (GM->UB) | 60.15% |
 | AIV scalar | 26.27% |
-| AIV MTE3 (UB→GM) | 11.86% |
-| Vector 计算 | 5.16% |
+| AIV MTE3 (UB->GM) | 11.86% |
+| Vector compute | 5.16% |
 
-数据搬运占大头、vector 计算只占 5%——elementwise 算子在大 shape 下的典型形态，瓶颈在搬不在算。
+Transfer dominates and vector compute is only 5% - the typical form of an elementwise kernel at large shape: the bottleneck is moving data, not computing it.
 
-### block 时间轴（第 7 节，调度层）
+### Block timeline (section 7, schedule layer)
 
-这是 Triaged 的"多核启动不同步/拖尾"那一层：
+This is the "multi-core launch skew / tail" layer:
 
 ```
-采集到 12 个 block 的时间轴（来源 trace.json (PipeTimeline)）
-首个 block 启动 0.000 us，最后一个启动 0.864 us
+Block timelines collected for 12 blocks (source trace.json (PipeTimeline))
+First block started at 0.000 us, last at 0.864 us
 ```
 
-| 指标 | 值 | 含义 |
+| Metric | Value | Meaning |
 |---|---:|---|
-| 启动偏移 (launch skew) | 0.864 us (20.2%) | 这段时间只有部分核在工作 |
-| 拖尾 (tail) | 0.753 us (17.6%) | 最先完成到最慢完成的间隔 |
-| block 耗时范围 | 1.181–1.839 us | 离散度 45.0% |
+| Launch skew | 0.864 us (20.2%) | only part of the chip works during this interval |
+| Tail | 0.753 us (17.6%) | gap between the earliest and latest block to finish |
+| Block duration range | 1.181-1.839 us | spread 45.0% |
 
-**关键**：启动偏移占 kernel 时长 20%，这部分损失与流水线优化无关。56 个 block 只采到 12 个 subcore 的时间轴（PipeTimeline 只插桩部分核），所以这是下界，报告里明确写了。
+**The key point**: launch skew is 20% of kernel duration, and that loss is unrelated to pipeline tuning. Only 12 subcores of 56 blocks were captured (PipeTimeline instruments a subset), so this is a lower bound, and the report states that explicitly.
 
-### 内存通路与跨 DIE（第 9 节）
+### Memory paths and cross-die (section 9)
 
-vector_add 上 8 条通路里 12/13/14/15 与 UB 四向带宽逐字节相同，0/1 是 GM 读写。跨 die 通路全为 3.3 GB/s 以下的小值。
+On vector_add, four of the eight paths (12/13/14/15) match the UB four-direction bandwidth byte for byte, and 0/1 are GM read/write. Cross-die paths all sit below 3.3 GB/s.
 
-cube kernel（matmul）上则是另一种形态：跨 die 通路占 60.6%，其中 path 8 单项 36.2 GB/s。同一套工具，同一个字段，能看出两类算子的搬运结构差异。
+On the cube kernel (matmul) the picture is different: cross-die paths account for 60.6%, with path 8 alone at 36.2 GB/s. The same tool and the same field reveal the structural difference in data movement between the two operator classes.
 
-## 采集覆盖度（实测）
+## Collection coverage (measured)
 
-| 类别 | 本次拿到 | 说明 |
+| Category | Obtained here | Note |
 |---|---|---|
-| 流水占用 | ✅ 4 条 | MTE2/scalar/MTE3/vector |
-| 带宽 | ✅ 8 条通路 + 峰值占比 | 反解峰值 163 GB/s |
-| Cache | ✅ L2 读/写命中、iCache、DCache | 写命中有 CV 14% 的抖动 |
-| 冲突 | ✅ bank 冲突 + 各流水 wait | |
-| block 时间轴 | ✅ 12/56 核 | 启动偏移、拖尾、逐块耗时 |
-| 逐指令 | ⚠️ 需 `--with-instructions` | 另起一趟，1–4 分钟 |
-| 跨 die | ✅ 通路级带宽 | path 归属是推断 |
+| Pipe occupancy | yes, 4 pipes | MTE2/scalar/MTE3/vector |
+| Bandwidth | yes, 8 paths + share of peak | inverted peak 163 GB/s |
+| Cache | yes: L2 read/write hit, iCache, DCache | write hit has CV 14% jitter |
+| Conflicts | yes: bank conflicts + per-pipe wait | |
+| Block timeline | yes, 12 of 56 cores | launch skew, tail, per-block duration |
+| Instruction level | requires `--with-instructions` | separate pass, 1-4 minutes |
+| Cross-die | yes, per-path bandwidth | path attribution is inferred |
 
-## 拿不到什么（一并说明）
+## What is not obtainable (stated alongside)
 
-| 项 | 原因 |
+| Item | Reason |
 |---|---|
-| sector / coalescing 效率 | CANN 无对应计数器 |
-| Outstanding / snoop | 全部 metric 组下均无输出通路 |
-| Load/Store 指令占比 | 需 `--dump=true`，而它要求 `TimelineDetail`，在 dav-3510 上直接失败 |
-| VF 内部（PUSHQ/RVECEX/…） | 仅 cannsim 仿真 trace 有；本 skill 限定上板实采 |
-| 全 56 核的时间轴 | PipeTimeline 只插桩部分核 |
+| Sector / coalescing efficiency | CANN exposes no such counter |
+| Outstanding / snoop | no output path under any metric set |
+| Load/Store instruction share | needs `--dump=true`, which requires `TimelineDetail`, which fails on dav-3510 |
+| VF internals (PUSHQ/RVECEX/...) | only in cannsim simulator traces; this skill is on-device only |
+| Timeline for all 56 cores | PipeTimeline instruments a subset |
 
-这些都写在报告与 `metric_catalogue.py` 里，标 `不可用` 而不是估一个值。
+All of these appear in the report and in `metric_catalogue.py` marked `unavailable`, rather than being estimated.

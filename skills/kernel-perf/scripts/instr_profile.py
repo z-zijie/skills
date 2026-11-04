@@ -167,23 +167,23 @@ def analyze(capture_root: Path, kernel_us: Optional[float] = None) -> InstrInsig
     """Join region map and trace into per-opcode cost."""
     dump = find_dump_dir(capture_root)
     if dump is None:
-        return InstrInsight(reason="没有 dump 目录（需要 InstrTimeline 采集）")
+        return InstrInsight(reason="no dump directory (an InstrTimeline capture is required)")
 
     regions = parse_region_map(dump / "dfx_region_map.txt")
     if not regions:
-        return InstrInsight(reason="dfx_region_map.txt 缺失或为空")
+        return InstrInsight(reason="dfx_region_map.txt missing or empty")
 
     trace_path = capture_root / "trace.json"
     if not trace_path.is_file():
         return InstrInsight(
-            reason="trace.json 缺失（InstrTimeline 未产出）",
+            reason="trace.json missing (InstrTimeline produced none)",
             regions=len(regions),
         )
 
     try:
         trace = json.loads(trace_path.read_text(errors="replace"))
     except (OSError, ValueError) as exc:
-        return InstrInsight(reason=f"trace.json 无法解析: {exc!r}", regions=len(regions))
+        return InstrInsight(reason=f"trace.json could not be parsed: {exc!r}", regions=len(regions))
 
     base_pc = parse_base_pc(dump / "pc_start_addr.txt")
     events = [e for e in trace.get("traceEvents", []) if e.get("ph") == "X"]
@@ -241,7 +241,7 @@ def analyze(capture_root: Path, kernel_us: Optional[float] = None) -> InstrInsig
         covered_us=covered,
         kernel_us=kernel_us,
         unmatched_events=unmatched,
-        reason="" if covered > 0 else "trace 中没有任何可归属的事件",
+        reason="" if covered > 0 else "no attributable events in the trace",
     )
     if kernel_us:
         insight.covered_pct = 100.0 * covered / kernel_us
@@ -269,32 +269,32 @@ def analyze(capture_root: Path, kernel_us: Optional[float] = None) -> InstrInsig
 
 def render(insight: InstrInsight) -> List[str]:
     """Markdown lines for the instruction-level section."""
-    lines: List[str] = ["## 12. 逐指令耗时（InstrTimeline）", ""]
+    lines: List[str] = ["## 12. Instruction-level cost (InstrTimeline)", ""]
     if not insight.available:
-        lines.append(f"不可用：{insight.reason}")
+        lines.append(f"Unavailable: {insight.reason}")
         lines.append("")
-        lines.append("> 需要 `--aic-metrics=InstrTimeline --instr-timeline-pipe=vector|mte2|mte3`。"
-                     "该集合与 `PipeTimeline` 互斥，且必须与被采集 kernel 的流水一致——"
-                     "vector 算子给 `scalar` 会被直接拒绝。")
+        lines.append("> Requires `--aic-metrics=InstrTimeline --instr-timeline-pipe=vector|mte2|mte3`. "
+                     "That set is mutually exclusive with `PipeTimeline`, and the pipes must match the kernel being profiled - "
+                     "a vector kernel given `scalar` is rejected outright.")
         lines.append("")
         return lines
 
-    lines.append(f"- 探针指令点 **{insight.regions}** 个，trace 事件 **{insight.events}** 条")
-    lines.append(f"- 已归属耗时 **{insight.covered_us:.4f} us**"
-                 + (f"（占 kernel {insight.covered_pct:.1f}%）"
+    lines.append(f"- Probe sites: **{insight.regions}**, trace events: **{insight.events}**")
+    lines.append(f"- Attributed time: **{insight.covered_us:.4f} us**"
+                 + (f" ({insight.covered_pct:.1f}% of the kernel)"
                     if insight.covered_pct is not None else ""))
     if insight.covered_pct is not None and insight.covered_pct < 50:
         lines.append("")
-        lines.append(f"> **覆盖率仅 {insight.covered_pct:.1f}%**：下面的分布描述的是被插桩的区间，"
-                     "不是整个 kernel。不要把占比当作 kernel 的完整画像。")
+        lines.append(f"> **Only {insight.covered_pct:.1f}% covered**: the breakdown below describes the instrumented region, "
+                     "not the whole kernel. Do not read these shares as a complete profile of the kernel.")
     if insight.unmatched_events:
-        lines.append(f"- 未能归属的事件：{insight.unmatched_events}")
+        lines.append(f"- Unattributed events: {insight.unmatched_events}")
     lines.append("")
 
     if insight.by_opcode:
-        lines.append("### 按指令")
+        lines.append("### By opcode")
         lines.append("")
-        lines.append("| 指令 | 累计耗时 us | 占比 | 次数 |")
+        lines.append("| Opcode | Accumulated us | Share | Count |")
         lines.append("|---|---:|---:|---:|")
         for entry in insight.by_opcode:
             lines.append(f"| `{entry['opcode']}` | {entry['time_us']:.4f} | "
@@ -302,9 +302,9 @@ def render(insight: InstrInsight) -> List[str]:
         lines.append("")
 
     if insight.by_pipe:
-        lines.append("### 按流水")
+        lines.append("### By pipe")
         lines.append("")
-        lines.append("| 流水 | 累计耗时 us | 占比 | 次数 |")
+        lines.append("| Pipe | Accumulated us | Share | Count |")
         lines.append("|---|---:|---:|---:|")
         for entry in insight.by_pipe:
             lines.append(f"| {entry['pipe']} | {entry['time_us']:.4f} | "
@@ -312,9 +312,9 @@ def render(insight: InstrInsight) -> List[str]:
         lines.append("")
 
     if insight.hottest:
-        lines.append("### 最热指令点")
+        lines.append("### Hottest instruction sites")
         lines.append("")
-        lines.append("| PC 偏移 | 指令 | 流水 | 耗时 us | 占比 | 次数 |")
+        lines.append("| PC offset | Opcode | Pipe | Time us | Share | Count |")
         lines.append("|---|---|---|---:|---:|---:|")
         for entry in insight.hottest[:12]:
             lines.append(f"| `{entry['pc']}` | `{entry['opcode']}` | {entry['pipe']} | "

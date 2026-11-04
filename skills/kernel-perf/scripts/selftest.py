@@ -555,7 +555,7 @@ def test_stability_harness() -> None:
               abs(vec.mean - 0.20) < 1e-9, str(vec.mean))
         # CV of [0.20,0.21,0.19,0.205,0.195] is ~3.5%
         check("CV is a few percent", 3.0 < vec.cv_pct < 4.0, str(vec.cv_pct))
-        check("verdict is 'usable' at this CV", vec.verdict in ("稳定", "可用"),
+        check("verdict is 'usable' at this CV", vec.verdict in ("stable", "usable"),
               vec.verdict)
         text = ST.render(list(results.values()), 5)
         check("render produces a table", "CV%" in text)
@@ -643,7 +643,7 @@ def test_layers() -> None:
     # ends are 1.5, 2.5, 3.0 -> earliest end 1.5, last end 3.0, tail 1.5
     check("tail = last_end - first_end", insight.tail_us == 1.5, str(insight.tail_us))
     text = "\n".join(LY.render_schedule(insight))
-    check("skew warning rendered", "启动不同步" in text)
+    check("skew warning rendered", "Asynchronous launch" in text)
 
 
 def test_pc_cycle_stalls() -> None:

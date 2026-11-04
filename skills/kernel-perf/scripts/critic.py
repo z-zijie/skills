@@ -140,7 +140,7 @@ class Critic:
             try:
                 ok, detail, evidence = fn()
             except Exception as exc:  # a crashing check is itself a failure
-                self.add(Finding(name, kind, False, f"检查本身异常: {exc!r}"))
+                self.add(Finding(name, kind, False, f"the check itself raised: {exc!r}"))
                 return fn
             self.add(Finding(name, kind, ok, detail, evidence))
             return fn
@@ -179,7 +179,7 @@ class Critic:
         def _():
             rows = self.tables["PipeUtilization"]
             if not rows:
-                return False, "没有 PipeUtilization.csv 或为空", {}
+                return False, "PipeUtilization.csv is missing or empty", {}
             numeric = suspicious = 0
             for row in rows:
                 for key, value in row.items():
@@ -189,7 +189,7 @@ class Critic:
                     if num(value) is None:
                         suspicious += 1
             if numeric == 0:
-                return False, "没有任何 *_ratio/_time/_cycles 列", {}
+                return False, "no *_ratio/_time/_cycles columns present", {}
             # The real test is not "how many cells are NA" (the profiler leaves
             # whole pipe families NA by design: a vector kernel has no cube
             # columns and vice versa) but "did ANY pipe ever report a non-zero
@@ -205,7 +205,7 @@ class Critic:
                         busy += 1
             empty_frac = suspicious / numeric
             ok = busy > 0
-            return ok, (f"{busy} 个非零流水占比；{suspicious}/{numeric} 计数为空 "
+            return ok, (f"{busy} non-zero pipe ratios; {suspicious}/{numeric} counters empty "
                         f"({empty_frac:.1%})"), {
                 "busy_ratio_cells": busy, "empty_fraction": round(empty_frac, 4)
             }
@@ -217,13 +217,13 @@ class Critic:
         @self.check("rows_match_block_dim", "CONSISTENCY")
         def _():
             if not self.basic:
-                return True, "无 OpBasicInfo.csv，跳过", {}
+                return True, "no OpBasicInfo.csv; skipped", {}
             block_dim = num(self.basic[0].get("Block Dim"))
             rows = self.tables["PipeUtilization"]
             if block_dim is None or not rows:
-                return True, "block_dim 或行数缺失，跳过", {}
+                return True, "block_dim or row count missing; skipped", {}
             ok = int(block_dim) == len(rows)
-            return ok, f"Block Dim={int(block_dim)} vs CSV 行数={len(rows)}", {
+            return ok, f"Block Dim={int(block_dim)} vs CSV rows={len(rows)}", {
                 "block_dim": int(block_dim), "rows": len(rows)
             }
         _()
@@ -253,11 +253,11 @@ class Critic:
                                 (row.get("block_id"), f"{prefix}_{suffix}", ratio, expected)
                             )
             if checked == 0:
-                return True, "没有可校验的 ratio/time 对", {}
+                return True, "no ratio/time pairs to validate", {}
             ok = not violations
-            detail = (f"校验 {checked} 对，{len(violations)} 处不符"
-                      + (f"，例: core {violations[0][0]} {violations[0][1]} "
-                         f"ratio={violations[0][2]:.6f} 应为 {violations[0][3]:.6f}"
+            detail = (f"validated {checked} pairs, {len(violations)} mismatches"
+                      + (f", e.g. core {violations[0][0]} {violations[0][1]} "
+                         f"ratio={violations[0][2]:.6f} expected {violations[0][3]:.6f}"
                          if violations else ""))
             return ok, detail, {"checked": checked, "violations": len(violations)}
         _()
@@ -280,7 +280,7 @@ class Critic:
                         return False, (f"core {row.get('block_id')} {key}={parsed:.6f} > 1"), {
                             "core": row.get("block_id"), "field": key, "value": parsed
                         }
-            return True, f"最大流水占比 {worst[1]}={worst[2]:.4f}（core {worst[0]}）", {
+            return True, f"max pipe ratio {worst[1]}={worst[2]:.4f} (core {worst[0]})", {
                 "max_field": worst[1], "max_value": worst[2]
             }
         _()
@@ -311,9 +311,9 @@ class Critic:
                         worst_err = err
                         worst_ctx = f"core {row.get('block_id')} {worst_err:.2e}"
             if checked == 0:
-                return True, "没有可校验的带宽/数据量对", {}
+                return True, "no bandwidth/volume pairs to validate", {}
             ok = worst_err < 1e-5
-            return ok, (f"KiB→GiB 换算校验 {checked} 对，最大相对误差 {worst_err:.2e}"
+            return ok, (f"KiB->GiB conversion validated on {checked} pairs, max relative error {worst_err:.2e}"
                         + ("" if ok else f"（{worst_ctx}）")), {
                 "checked": checked, "max_relative_error": worst_err
             }
@@ -336,9 +336,9 @@ class Critic:
                 worst_err = max(worst_err, abs(recovered - pct))
                 checked += 1
             if checked == 0:
-                return True, "无 vendor 百分比可反解", {}
+                return True, "no vendor percentage to invert", {}
             ok = worst_err < 1e-4
-            return ok, (f"反解峰值回代 {checked} 次，最大绝对误差 {worst_err:.2e} 个百分点"), {
+            return ok, (f"recovered peak round-tripped {checked} times, max absolute error {worst_err:.2e} pp"), {
                 "checked": checked, "max_abs_error_pct": worst_err
             }
         _()
@@ -365,10 +365,10 @@ class Critic:
                     if abs(a - b) > 1e-6:
                         mismatches.append((name, left.get("block_id"), a, b))
             if compared == 0:
-                return True, "没有可比较的时间列", {}
+                return True, "no comparable time columns", {}
             ok = not mismatches
-            detail = (f"跨表比对 {compared} 个时间值，{len(mismatches)} 处不符"
-                      + (f"，例: {mismatches[0]}" if mismatches else ""))
+            detail = (f"compared {compared} cross-table time values, {len(mismatches)} mismatches"
+                      + (f", e.g. {mismatches[0]}" if mismatches else ""))
             return ok, detail, {"compared": compared, "mismatches": len(mismatches)}
         _()
 
@@ -378,10 +378,10 @@ class Critic:
         def _():
             core_map = self.viz.get(0x08, {}).get("core_memory_map")
             if not core_map:
-                return True, "无 0x08 core_memory_map 记录，跳过", {}
+                return True, "no 0x08 core_memory_map record; skipped", {}
             rows = self.tables["PipeUtilization"]
             ok = len(core_map) == len(rows)
-            return ok, f"visualize 核数={len(core_map)} vs CSV 行数={len(rows)}", {
+            return ok, f"visualize cores={len(core_map)} vs CSV rows={len(rows)}", {
                 "viz_cores": len(core_map), "csv_rows": len(rows)
             }
         _()
@@ -392,10 +392,10 @@ class Critic:
         @self.check("cycles_match_frequency", "IDENTITY")
         def _():
             if not self.basic:
-                return True, "无 OpBasicInfo.csv，跳过", {}
+                return True, "no OpBasicInfo.csv; skipped", {}
             freq = num(self.basic[0].get("Current Freq"))
             if not freq:
-                return True, "无 Current Freq，跳过", {}
+                return True, "no Current Freq; skipped", {}
             worst = 0.0
             checked = 0
             for row in self.tables["PipeUtilization"]:
@@ -408,9 +408,9 @@ class Critic:
                     worst = max(worst, abs(implied - freq))
                     checked += 1
             if checked == 0:
-                return True, "没有 cycles/time 对", {}
+                return True, "no cycles/time pairs", {}
             ok = worst < max(5.0, freq * 0.01)
-            return ok, f"{checked} 组 cycles/time 反推频率，最大偏差 {worst:.1f} MHz（报 {freq:.0f}）", {
+            return ok, f"{checked} cycles/time pairs imply the clock, max deviation {worst:.1f} MHz (reported {freq:.0f})", {
                 "checked": checked, "max_deviation_mhz": worst, "reported_mhz": freq
             }
         _()
@@ -431,7 +431,7 @@ class Critic:
                         worst = (key, parsed)
                     if parsed > 100.0 + self.tol:
                         return False, f"core {row.get('block_id')} {key}={parsed}", {}
-            return True, f"最大命中率 {worst[0]}={worst[1]:.2f}%", {"max": worst[1]}
+            return True, f"max hit rate {worst[0]}={worst[1]:.2f}%", {"max": worst[1]}
         _()
 
     # 11. CSV hit rate and the JSON hit_ratio are two encodings of one counter.
@@ -440,7 +440,7 @@ class Critic:
         def _():
             core_map = self.viz.get(0x08, {}).get("core_memory_map") or []
             if not core_map:
-                return True, "无 core_memory_map，跳过", {}
+                return True, "no core_memory_map; skipped", {}
             by_core = {}
             for row in self.tables["L2Cache"]:
                 read = num(row.get("aiv_read_hit_rate(%)"))
@@ -468,10 +468,10 @@ class Critic:
                 if not (low - 1.0 <= json_total <= high + 1.0):
                     mismatches.append((core_no, json_total, csv_read, csv_write))
             if compared == 0:
-                return True, "没有可交叉校验的 core", {}
+                return True, "no cores to cross-validate", {}
             ok = not mismatches
-            detail = (f"比对 {compared} 个核的 L2 命中率，{len(mismatches)} 处越界"
-                      + (f"，例: {mismatches[0]}" if mismatches else ""))
+            detail = (f"compared L2 hit rate on {compared} cores, {len(mismatches)} out of range"
+                      + (f", e.g. {mismatches[0]}" if mismatches else ""))
             return ok, detail, {"compared": compared, "mismatches": len(mismatches)}
         _()
 
@@ -497,10 +497,10 @@ class Critic:
                     if ratio > worst[1]:
                         worst = (f"core {row.get('block_id')} {prefix}", ratio)
                     if ratio > 2.0:
-                        return False, (f"{prefix} 流水时间合计是核时间的 {ratio:.2f} 倍，"
-                                       f"疑似跨核求和"), {"ratio": ratio}
-            return True, (f"流水时间合计最大为核时间的 {worst[1]:.3f} 倍"
-                          f"（{worst[0]}，流水本可重叠）"), {"max_ratio": worst[1]}
+                        return False, (f"{prefix} pipe time sums to {ratio:.2f}x the core time, "
+                                       f"suggesting summing across cores"), {"ratio": ratio}
+            return True, (f"pipe time sums to at most {worst[1]:.3f}x the core time"
+                          f"({worst[0]}; pipes may legitimately overlap)"), {"max_ratio": worst[1]}
         _()
 
     # 13. If the kernel shows a bottleneck but carries no vendor advice, that is
@@ -536,10 +536,10 @@ class Critic:
                         if parsed is not None and parsed > 0.5:
                             busy = True
             if not busy:
-                return True, "无主导流水，advice 非必需", {}
+                return True, "no dominant pipe; advice is not required", {}
             ok = bool(advice)
-            return ok, (f"存在 >50% 的流水，advice 条数={len(advice)}"
-                        + ("" if ok else "（4 处来源全空）")), {
+            return ok, (f"a pipe exceeds 50%; advice entries={len(advice)}"
+                        + ("" if ok else " (all four sources empty)")), {
                 "advice": advice
             }
         _()
@@ -559,18 +559,18 @@ class Critic:
                         if parsed is not None and parsed > 0:
                             empty = False
             if not empty:
-                return True, "采集有数据，无需空数据告警", {}
+                return True, "capture has data; no empty-data warning needed", {}
             text = self.report or ""
-            ok = "无有效数据" in text or "no data" in text.lower()
-            return ok, ("采集为空且报告已标注" if ok else "采集为空但报告未标注"), {}
+            ok = "No valid data" in text or "no data" in text.lower()
+            return ok, ("capture is empty and the report says so" if ok else "capture is empty but the report does not say so"), {}
         _()
 
     def check_report_has_per_core_section(self) -> None:
         @self.check("report_has_per_core", "COVERAGE")
         def _():
             text = self.report or ""
-            ok = "逐核明细" in text or "per_core" in text
-            return ok, ("报告含逐核明细" if ok else "报告缺少逐核明细"), {}
+            ok = "Per-core detail" in text or "per_core" in text
+            return ok, ("report contains per-core detail" if ok else "report lacks per-core detail"), {}
         _()
 
 
@@ -591,8 +591,8 @@ class Critic:
                         worst = (key, parsed)
                     if parsed > 100.0 + self.tol:
                         return False, (f"core {row.get('block_id')} {key}={parsed:.2f}% "
-                                       f"> 100%，分母可疑"), {"field": key, "value": parsed}
-            return True, f"最大带宽峰值占比 {worst[0]}={worst[1]:.2f}%", {"max": worst[1]}
+                                       f"> 100%, denominator suspect"), {"field": key, "value": parsed}
+            return True, f"max bandwidth share of peak {worst[0]}={worst[1]:.2f}%", {"max": worst[1]}
         _()
 
     # 17. MFU is only meaningful when its denominator (AIC count AND cube clock)
@@ -608,15 +608,15 @@ class Critic:
                     cube_active = True
                     break
             if not cube_active:
-                return True, "无 cube 活动，MFU 不适用", {}
+                return True, "no cube activity; MFU does not apply", {}
             if self.report is None:
-                return True, "未提供报告，跳过", {}
+                return True, "no report supplied; skipped", {}
             text = self.report or ""
             if "MFU" not in text:
-                return False, "cube 活动但报告未给出 MFU", {}
-            if "n/a" in text and "缺少 AIC" in text:
-                return False, "cube 活动但 MFU 分母缺失（AIC 数或频率）", {}
-            return True, "cube 活动且报告给出了 MFU", {}
+                return False, "cube active but the report omits MFU", {}
+            if "n/a" in text and "AIC count missing" in text:
+                return False, "cube active but the MFU denominator is missing (AIC count or clock)", {}
+            return True, "cube active and the report gives MFU", {}
         _()
 
     # 18. A report that presents derived numbers without their tier invites
@@ -625,9 +625,9 @@ class Critic:
         @self.check("report_labels_confidence", "COVERAGE")
         def _():
             text = self.report or ""
-            has_legend = "置信" in text or "confidence" in text.lower()
-            return has_legend, ("报告含置信度分级" if has_legend
-                                else "报告未标注置信度，读者无法判断哪些数可信"), {}
+            has_legend = "Confidence" in text or "confidence" in text.lower()
+            return has_legend, ("report declares confidence tiers" if has_legend
+                                else "report declares no confidence tiers; the reader cannot tell which numbers are trustworthy"), {}
         _()
 
 
@@ -666,18 +666,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         ),
     )
     parser.add_argument("--out", required=True,
-                        help="采集目录（含 OPPROF_*/PROF_*，或直接是捕获目录）")
+                        help="capture directory (containing OPPROF_*/PROF_*, or the capture itself)")
     parser.add_argument("--report", default=None,
-                        help="同时校验生成的 report.md")
+                        help="also validate the generated report.md")
     parser.add_argument("--tolerance", type=float, default=1e-3,
-                        help="ratio 恒等式的相对容差（默认 1e-3）")
-    parser.add_argument("--json", action="store_true", help="以 JSON 输出全部检查")
+                        help="relative tolerance for ratio identities (default 1e-3)")
+    parser.add_argument("--json", action="store_true", help="emit every check as JSON")
     args, _extra = parser.parse_known_args(argv)
 
     base = Path(args.out).resolve()
     capture = find_capture(base)
     if capture is None:
-        print(f"错误: {base} 下没有 OPPROF_*/PROF_* 采集目录", file=sys.stderr)
+        print(f"error: no OPPROF_*/PROF_* capture under {base}", file=sys.stderr)
         return 1
 
     critic = Critic(capture, tolerance=args.tolerance)
@@ -700,16 +700,16 @@ def main(argv: Optional[List[str]] = None) -> int:
             ],
         }, indent=2, ensure_ascii=False))
     else:
-        print(f"# 对抗校验 — {capture}")
+        print(f"# Adversarial validation - {capture}")
         print()
         for finding in findings:
             print(str(finding))
         print()
         passed = sum(1 for f in findings if f.ok)
         failed = critic.fail_count()
-        print(f"结果: {passed}/{len(findings)} 通过，{failed} 失败")
+        print(f"Result: {passed}/{len(findings)} passed, {failed} failed")
         if failed:
-            print("\n失败的检查意味着报告里的数字不可信，先修采集或解析再看指标。")
+            print("\nA failed check means the numbers in the report cannot be trusted. Fix the capture or the parsing before reading the metrics.")
 
     return 0 if critic.fail_count() == 0 else 1
 

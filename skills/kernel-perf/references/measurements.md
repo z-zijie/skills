@@ -1,45 +1,45 @@
-# 实测记录（Ascend950PR / dav-3510）
+# Measurement log (Ascend950PR / dav-3510)
 
-本文件保存工具结论背后的原始数字。每次复测都追加，不覆盖——阈值如果漂了，原因要能追到具体一次采集。
+This file holds the raw numbers behind the tool's conclusions. Re-measurements are appended, never overwritten: if a threshold drifts, the cause must be traceable to one specific collection.
 
-环境：`Ascend950PR_9579`，CANN `9.3.0~weekly.20261009.01`，`cube_freq=vec_freq=1650 MHz`，28 AIC / 56 AIV，UB 248 KiB，L1 512 KiB，L0C 256 KiB，L2 128 MiB。
+Environment: `Ascend950PR_9579`, CANN `9.3.0~weekly.20261009.01`, `cube_freq = vec_freq = 1650 MHz`, 28 AIC / 56 AIV, UB 248 KiB, L1 512 KiB, L0C 256 KiB, L2 128 MiB, `io_die_num = 2`.
 
-## 采集 1 — vector_add（2026-11-04 14:36）
+## Collection 1 - vector_add (2026-11-04 14:36)
 
-被测二进制：`cann-samples/build/Samples/0_Introduction/vector_add/vector_add`
-参数：`msopprof --warm-up=2`，默认 7 组 metric。kernel `_Z10add_kernelIfEvPhS0_S0_llj`，409600 float32。
+Binary: `cann-samples/build/Samples/0_Introduction/vector_add/vector_add`
+Arguments: `msopprof --warm-up=2`, the default 7 metric groups. Kernel `_Z10add_kernelIfEvPhS0_S0_llj`, 409600 float32.
 
 ```
 Op Type: vector   Task Duration: 9.965 us   Block Dim: 56
 Current Freq: 1650   Rated Freq: 1650
 ```
 
-| 流水 | 平均占比 |
+| Pipe | Mean share |
 |---|---:|
 | AIV MTE2 | 51.84% |
 | AIV scalar | 23.89% |
 | AIV MTE3 | 17.74% |
 | AIV vec | 8.26% |
 
-- GM→UB 实测 28.41 GB/s，`GM_to_UB_bw_usage_rate` 平均 17.4%，反解峰值 **163.13 GB/s**
-- UB 读(vector) 20.99、写(vector) 20.50 GB/s
-- L2 读命中 0.99%、写命中 59.52%，读 close miss 合计 2365
-- iCache 命中 100%（逐核表 `iCache Total` 141/141）
-- bank 冲突：stu 3.26%、ldu 2.23%、sfu 0%
-- 等待：Vector 43.73%、MTE3 49.47%
-- 核间耗时 1.453–2.873 us，均值 1.974 us，**离散度 71.9%**
+- GM->UB measured 28.41 GB/s, `GM_to_UB_bw_usage_rate` mean 17.4%, inverted peak **163.13 GB/s**
+- UB read (vector) 20.99, write (vector) 20.50 GB/s
+- L2 read hit 0.99%, write hit 59.52%, read close miss total 2365
+- iCache hit 100% (per-core table `iCache Total` 141/141)
+- Bank conflicts: store 3.26%, load 2.23%, sfu 0%
+- Wait: Vector 43.73%, MTE3 49.47%
+- Per-core duration 1.453-2.873 us, mean 1.974 us, **spread 71.9%**
 
-厂商 advice：`MTE2 bandwidth utilization lower than 80% when active`、`aivector compute usage lower than 20%`。
+Vendor advice: `MTE2 bandwidth utilization lower than 80% when active`, `aivector compute usage lower than 20%`.
 
-## 采集 2 — matmul mxfp4 base（2026-11-04 14:50）
+## Collection 2 - matmul mxfp4 base (2026-11-04 14:50)
 
-被测二进制：`matmul_tutorial_mxfp4_base 100 50 200`，kernel `_ZN6Kernel26QuantMatmulMxfp4BaseKernelEmmmPhS0_S0_S0_S0_`。
+Binary: `matmul_tutorial_mxfp4_base 100 50 200`, kernel `_ZN6Kernel26QuantMatmulMxfp4BaseKernelEmmmPhS0_S0_S0_S0_`.
 
 ```
 Op Type: cube   Task Duration: 3.051 us   Block Dim: 28
 ```
 
-| 流水 | 平均占比 |
+| Pipe | Mean share |
 |---|---:|
 | AIC scalar | 92.51% |
 | AIC fixpipe | 2.42% |
@@ -48,229 +48,224 @@ Op Type: cube   Task Duration: 3.051 us   Block Dim: 28
 | AIC MTE3 | 0.28% |
 | AIC cube | 0.08% |
 
-- 反解峰值：`GM_to_L1` 174.77 GB/s、`L0C_to_GM` 139.81 GB/s
-- L2 读命中 89.34%（cube 侧）
+- Inverted peaks: `GM_to_L1` 174.77 GB/s, `L0C_to_GM` 139.81 GB/s
+- L2 read hit 89.34% (cube side)
 
-**这个样本的价值**：它是"cube 算子"但 cube 流水几乎不忙（0.08%），92.5% 花在标量上。说明算子类型和实际瓶颈是两件事——报告必须按实测占比归类，不能按 op_type 猜。
+**Why this sample matters**: it is a "cube operator" whose cube pipe is nearly idle (0.08%), with 92.5% in scalar. Operator type and actual bottleneck are two different things - the report must classify by measured occupancy, never by `op_type`.
 
-## 采集 3 — 11 组 metric 合并（失败样本，2026-11-04 14:43）
+## Collection 3 - eleven metric groups merged (failure sample, 2026-11-04 14:43)
 
-`--aic-metrics` 同时给 11 组（core7 + BasicInfo + Roofline + Occupancy + KernelScale）：
+`--aic-metrics` given eleven groups at once (core7 + BasicInfo + Roofline + Occupancy + KernelScale):
 
 ```
-msopprof 返回 0，日志打印 "All task success"
-OpBasicInfo 有 Task Duration = 6.936 us、Block Dim = 56
-但全部 7 份 CSV 的所有计数列都是 NA
+msopprof returns 0, the log prints "All task success"
+OpBasicInfo has Task Duration = 6.936 us and Block Dim = 56
+but every counter column in all 7 CSVs is NA
 ```
 
-**这是最危险的失败形态**：退出码 0、日志成功、CSV 结构完整、`Task Duration` 还有值。只有逐列检查"有没有任何一个非零流水占比"才能识别。工具用 `collection_nonempty` 检查捕获它，`roofline.class` 标为 `no data (all pipe counters empty)`。
+**This is the most dangerous failure mode**: exit code 0, success in the log, structurally complete CSVs, and `Task Duration` still populated. Only checking for at least one non-zero pipe ratio reveals it. Caught by the `collection_nonempty` check; `roofline.class` is set to `no data (all pipe counters empty)`.
 
-结论：一次采集不要超过 7 组 metric。
+Conclusion: never request more than seven metric groups in one pass.
 
-## 各 metric 集合的可用性（2026-11-04 14:37–14:44）
+## Availability of each metric set (2026-11-04 14:37-14:44)
 
-对同一个 `vector_add` 逐个单独采集：
+Collected one at a time against the same `vector_add`:
 
-| metric | rc | 耗时 | 结果 |
+| Metric | rc | Time | Result |
 |---|---:|---:|---|
-| Default | 0 | 22s | 7 份 CSV 全套 |
-| BasicInfo | 0 | 35s | 仅 OpBasicInfo.csv |
-| Roofline | 0 | 35s | 7 份 CSV + `0x0D` roofline 记录（`latency bound:pipeline caused`） |
-| Occupancy | 0 | 37s | OpBasicInfo + visualize_data（含逐核 advice） |
-| KernelScale | 0 | 35s | 7 份 CSV |
-| Source | 0 | 36s | 需 `-g`；否则 "Failed to parse pc to code" |
-| PCSampling | 0 | 37s | 同上，hot spot 计算失败 |
-| MemoryDetail | 0 | 10s | 7 份 CSV，但 Task Duration 4.311us 明显异常（replay 语义不同） |
-| TimelineDetail | 0 | 24s | **失败**："Parse kernel data failed"，CSV 全空 |
-| PipeTimeline | 0 | 45s | `trace.json`，618 个 `X` 事件，仅 `core1.veccore0` |
-| InstrTimeline | 0 | 55s | `trace.json`，71 个事件（GET_BUF/RLS_BUF/MOV_UB_TO_OUT_ALIGN_V2） |
+| Default | 0 | 22s | the full set of 7 CSVs |
+| BasicInfo | 0 | 35s | OpBasicInfo.csv only |
+| Roofline | 0 | 35s | 7 CSVs + a `0x0D` roofline record (`latency bound:pipeline caused`) |
+| Occupancy | 0 | 37s | OpBasicInfo + visualize_data (with per-core advice) |
+| KernelScale | 0 | 35s | 7 CSVs |
+| Source | 0 | 36s | requires `-g`; otherwise "Failed to parse pc to code" |
+| PCSampling | 0 | 37s | as above; hot-spot computation fails |
+| MemoryDetail | 0 | 10s | 7 CSVs, but Task Duration 4.311 us is clearly anomalous (different replay semantics) |
+| TimelineDetail | 0 | 24s | **fails**: "Parse kernel data failed", all CSVs empty |
+| PipeTimeline | 0 | 45s | `trace.json`, 618 `X` events, only `core1.veccore0` |
+| InstrTimeline | 0 | 55s | `trace.json`, 71 events (GET_BUF / RLS_BUF / MOV_UB_TO_OUT_ALIGN_V2) |
 
-`PipeTimeline` 的 trace 只包含单个 core 的 SCALAR/MTE2/VECTOR/MTE3 累计（42.4 / 22.0 / 4.5 / 9.0 us），不是全核时间线——报告里要标明"取到的是哪个 core"。
+`PipeTimeline`'s trace contains accumulated SCALAR/MTE2/VECTOR/MTE3 for a single core (42.4 / 22.0 / 4.5 / 9.0 us), not a whole-chip timeline - the report must state which core was captured.
 
-## 恒等式校验结果（工具 `critic.py` 每次运行都重算）
+## Identity checks (recomputed by `critic.py` on every run)
 
-| 检查 | 实测结果 |
+| Check | Measured result |
 |---|---|
-| `ratio == time/total_time` | 224 对，0 处不符（容差 1e-3） |
-| `cycles/time == freq` | 56 组，最大偏差 0.0 MHz |
-| KiB→GiB 带宽换算 | 56 对，最大相对误差 **3.06e-07** |
-| 反解峰值回代 vendor % | 56 次，最大绝对误差 **3.55e-15** 个百分点 |
-| 跨表 `aiv_time` 一致 | 280 个值，0 处不符 |
-| visualize 核数 vs CSV 行数 | 56 vs 56 |
-| 流水时间合计 / 核时间 | 最大 1.073（流水可重叠，故允许 >1） |
+| `ratio == time/total_time` | 224 pairs, 0 mismatches (tolerance 1e-3) |
+| `cycles/time == freq` | 56 pairs, max deviation 0.0 MHz |
+| KiB->GiB bandwidth conversion | 56 pairs, max relative error **3.06e-07** |
+| Recovered peak round-trip against vendor % | 56 times, max absolute error **3.55e-15** percentage points |
+| Cross-table `aiv_time` agreement | 280 values, 0 mismatches |
+| visualize core count vs CSV rows | 56 vs 56 |
+| Sum of pipe time / core time | max 1.073 (pipes may overlap, so above 1 is allowed) |
 
-最大误差都在 1e-7 量级，说明这几条是真正的恒等式而非近似，可以当断言用。
+Every maximum error is on the order of 1e-7, which means these are genuine identities rather than approximations and can be used as assertions.
 
-## 单位反解过程（留档）
+## Unit derivation (kept for the record)
 
-`Memory.csv` 首行：`aiv_time=2.267879 us`、`GM_to_UB_datas(KB)=57.375`、`aiv_gm_to_ub_bw(GB/s)=24.126980`、`GM_to_UB_bw_usage_rate(%)=14.790032`。
+First row of `Memory.csv`: `aiv_time=2.267879 us`, `GM_to_UB_datas(KB)=57.375`, `aiv_gm_to_ub_bw(GB/s)=24.126980`, `GM_to_UB_bw_usage_rate(%)=14.790032`.
 
-| 假设 | 算得 GB/s | 与公布值之比 |
+| Assumption | Computed GB/s | Ratio to the published value |
 |---|---:|---:|
-| KB=1000 B, GB=1e9 | 25.2990 | 1.0486 |
-| KB=1024 B, GB=1e9 | 25.9061 | 1.0737 |
-| **KB=1024 B, GB=1024³** | **24.1270** | **1.000000** |
-| KB=1000 B, GB=1024³ | 23.5615 | 0.9766 |
+| kB=1000 B, GB=1e9 | 25.2990 | 1.0486 |
+| kB=1024 B, GB=1e9 | 25.9061 | 1.0737 |
+| **kB=1024 B, GB=1024^3** | **24.1270** | **1.000000** |
+| kB=1000 B, GB=1024^3 | 23.5615 | 0.9766 |
 
-只有 KiB + GiB 完全吻合。用 GB=1e9 会让每个峰值占比偏 4.9%——足以把"还有余量"误判成"接近极限"。
+Only KiB + GiB reproduces the value exactly. Using GB=1e9 shifts every share-of-peak by 4.9%, enough to misread "headroom remains" as "close to the limit".
 
-## 配置搜索（collect_optimize.py，2026-11-04 15:03）
+## Configuration search (collect_optimize.py, 2026-11-04 15:03)
 
-对同一个 `vector_add` 跑 6 个候选配置，reward = 通过数 − 3×失败数 + 覆盖度/1000（上限 5）。critic 为 reward 模型。
+Six candidate configurations against the same `vector_add`. Reward = passes - 3 x failures + coverage/1000 (capped at 5), with the critic as the reward model.
 
-| 配置 | replay | launch | reward | pass | fail | coverage |
+| Configuration | replay | launch | reward | pass | fail | coverage |
 |---|---|---|---:|---:|---:|---:|
 | **core7+roofline** | kernel | 1 | **18.87** | 15 | 0 | 3874 |
 | core7 | kernel | 1 | 18.86 | 15 | 0 | 3864 |
 | core7-launch5 | kernel | 5 | 18.86 | 15 | 0 | 3864 |
 | core7+occupancy | kernel | 1 | 18.86 | 15 | 0 | 3864 |
 | core7+timeline | kernel | 1 | 18.86 | 15 | 0 | 3864 |
-| core7-appreplay | **application** | 1 | — | — | — | 采集为空 |
+| core7-appreplay | **application** | 1 | - | - | - | empty capture |
 
-三个结论：
+Three conclusions:
 
-1. **`--replay-mode=application` 在本机采不到数据**（0 秒返回空）。这条不能当作"Kernel replay 失效时的兜底"，至少 dav-3510 + CANN 9.3.0 上不成立。`kernel_perf.py` 的默认值因此保持 `kernel`。
-2. `core7+roofline` 以 coverage 3874 vs 3864 胜出：多花一次采集（约 11s），换来厂商 Roofline 判定和 8 条 memory_path 明细。已设为工具默认 metric 集合。
-3. `launch5`（5 轮取均值）的 coverage 与单轮完全相同，耗时也相同（11s）——多次 launch 并没有带来更多字段，只影响数值平滑。默认仍用 1 轮，需要稳定性时再手动加。
+1. **`--replay-mode=application` collects nothing on this host** (returns empty in 0 seconds). It cannot be used as the fallback for "kernel replay failed", at least not on dav-3510 with CANN 9.3.0. `kernel_perf.py` therefore keeps `kernel` as its default.
+2. `core7+roofline` wins on coverage, 3874 against 3864: one extra collection (about 11 s) buys the vendor Roofline verdict and the 8 `memory_path` entries. It is now the tool's default metric set.
+3. `launch5` (averaging five launches) has exactly the same coverage and the same runtime (11 s) as a single launch - repeated launches add no fields, they only smooth the values. The default stays at one launch; add more when stability matters.
 
-设备当时有 1–2 个其他进程，critic 的 15 条检查全部通过，说明这些恒等式对计数抖动不敏感（它们是算术关系，不是阈值判断）——这正是用恒等式而不是用"经验范围"做校验的理由。
+The device carried 1-2 other processes during this run and all 15 critic checks still passed, which shows the identities are insensitive to counter jitter (they are arithmetic relations, not threshold judgements). That is precisely why validation uses identities rather than "expected ranges".
 
-## 稳定性测量（stability.py，2026-11-04 15:5x，3 次重复）
+## Stability measurement (stability.py, 2026-11-04 15:5x, 3 repeats)
 
-vector_add，`--warm-up=5`，`launch-count=3`，3 次独立采集：
+vector_add, `--warm-up=5`, `launch-count=3`, 3 independent collections:
 
-| 指标 | 均值 | CV% | 极差% | 判读 |
+| Metric | Mean | CV% | Range % | Verdict |
 |---|---:|---:|---:|---|
-| 核忙时间 | 3.0993 us | 0.31 | 0.61 | 稳定 |
-| MTE2 占用 | 61.21% | 0.69 | 1.34 | 稳定 |
-| Vector 占用 | 5.19% | 0.21 | 0.42 | 稳定 |
-| Scalar 占用 | 25.26% | 2.41 | 4.75 | 稳定 |
-| GM→UB 带宽 | 17.8484 GiB/s | 0.20 | 0.41 | 稳定 |
-| L2 读命中 | 0.6248% | 0.00 | 0.01 | 稳定 |
-| **L2 写命中** | 76.9353% | **9.57** | **18.78** | 可用（接近阈值） |
-| Vector 等待 | 60.62% | 2.22 | 4.26 | 稳定 |
+| Core busy time | 3.0993 us | 0.31 | 0.61 | stable |
+| MTE2 occupancy | 61.21% | 0.69 | 1.34 | stable |
+| Vector occupancy | 5.19% | 0.21 | 0.42 | stable |
+| Scalar occupancy | 25.26% | 2.41 | 4.75 | stable |
+| GM->UB bandwidth | 17.8484 GiB/s | 0.20 | 0.41 | stable |
+| L2 read hit | 0.6248% | 0.00 | 0.01 | stable |
+| **L2 write hit** | 76.9353% | **9.57** | **18.78** | usable (near threshold) |
+| Vector wait | 60.62% | 2.22 | 4.26 | stable |
 
-两次独立测量（5 次与 3 次）都指出同一件事：**L2 写命中率是唯一抖动的指标**（CV 14.4% 与 9.6%），其余全部 <3%。这支撑了把 `l2_write_hit` 定为 E 级、把 `l2_read_hit` 定为 C 级的划分——同一张表里读侧和写侧的可信度完全不同。
+Two independent measurements (5 runs and 3 runs) agree on one thing: **the L2 write hit rate is the only jittery metric** (CV 14.4% and 9.6%), everything else stays below 3%. This is what justifies tiering `l2_write_hit` as E and `l2_read_hit` as C - inside the same CSV table, the read side and the write side have completely different trustworthiness.
 
-## 指标覆盖率（2026-11-04 15:3x）
+## Metric coverage (2026-11-04 15:3x)
 
-CANN 自带 `analysis/common_func/constant.py` 的 `AI_CORE_CALCULATION_FORMULA` 定义 **74** 个可计算指标。用 `msopprof` 默认 7 组采集后：
+CANN's own `AI_CORE_CALCULATION_FORMULA` in `analysis/common_func/constant.py` defines **74** computable metrics. After a default 7-group `msopprof` collection:
 
-| 口径 | 数量 |
+| Scope | Count |
 |---|---:|
-| CSV 实际暴露的字段总数 | 122 |
-| 其中能对应上 CANN 计算口径的命名指标 | **7 / 53** |
-| 通过 `visualize_data.bin` 额外拿到的行 | 34（UB 四向带宽、8 条 memory_path、逐核 L2、wait cycles…） |
+| Total fields actually exposed by the CSVs | 122 |
+| Of those, named metrics mapping onto a CANN definition | **7 / 53** |
+| Extra rows obtained from `visualize_data.bin` | 34 (UB four-direction bandwidth, 8 `memory_path` entries, per-core L2, wait cycles...) |
 
-未打通的典型项：`vec_bankgroup_cflt_ratio`、`mte*_iq_full_ratio`、`control_flow_prediction_ratio`、`acess_stack_ratio`。这些在 `msopprof` 的任何 `--aic-metrics` 取值下都没有输出通路——是工具未暴露，不是采集失败，报告里如实标注而不猜测数值。
+Typical unreachable items: `vec_bankgroup_cflt_ratio`, `mte*_iq_full_ratio`, `control_flow_prediction_ratio`, `acess_stack_ratio`. None has an output path under any `--aic-metrics` value - the tool does not expose them, which is a tooling gap rather than a collection failure, and the report says so instead of guessing a value.
 
-## 逐指令耗时（2026-11-04 15:36）
+## Instruction-level cost (2026-11-04 15:36)
 
-`--aic-metrics=InstrTimeline --instr-timeline-pipe="vector|mte2|mte3"`，vector_add（`-g` 编译）：
+`--aic-metrics=InstrTimeline --instr-timeline-pipe="vector|mte2|mte3"`, vector_add (built with `-g`):
 
 ```
-探针指令点 28 个，trace 事件 97 条，已归属耗时 1.423 us（kernel 4.2 us，覆盖 34%）
+28 probe sites, 97 trace events, 1.423 us attributed (kernel 4.2 us, 34% covered)
 ```
 
-按 opcode 聚合：
+Aggregated by opcode:
 
-| opcode | 累计 us | 占比 |
+| Opcode | Accumulated us | Share |
 |---|---:|---:|
 | `MOV_UB_TO_OUT_ALIGN_V2` | 1.3248 | 93.1% |
 | `GET_BUF` | 0.0254 | 1.8% |
 | `RLS_BUF` | 0.0254 | 1.8% |
 
-按 PC 聚合后最热点是 `0x824` 的 `MOV_UB_TO_OUT_ALIGN_V2`——即写回搬运，与流水层面「MTE2 主导」的结论互补：MTE2 是**读**的主导，写侧真正的耗时集中在这一条指令上。
+Aggregated by PC, the hottest site is `MOV_UB_TO_OUT_ALIGN_V2` at `0x824` - the write-back transfer. This complements the pipe-level conclusion that MTE2 dominates: MTE2 dominates **reads**, while the write side concentrates its cost in this one instruction.
 
-## 采集分趟的必要性（2026-11-04 15:4x）
+## Why collection is split into passes (2026-11-04 15:4x)
 
-| 组合 | 结果 |
+| Combination | Result |
 |---|---|
-| `InstrTimeline,PipeTimeline` | 立刻报错：`'PipeTimeline' and 'InstrTimeline' cannot be specified together` |
-| `InstrTimeline` + 8 个核心组 | **挂起**（不报错，长时间无输出，最终被杀） |
-| `InstrTimeline` 单独 | 正常，约 1–4 分钟，产出 25 MB `timeline.bin` + 189 MB `OperandRecord.bin` |
+| `InstrTimeline,PipeTimeline` | immediate error: `'PipeTimeline' and 'InstrTimeline' cannot be specified together` |
+| `InstrTimeline` + the 8 core groups | **hangs** (no error, no output for a long time, eventually killed) |
+| `InstrTimeline` alone | normal, about 1-4 minutes, producing a 25 MB `timeline.bin` + 189 MB `OperandRecord.bin` |
 
-所以工具自动拆趟：核心组一趟、`InstrTimeline` 一趟、`PipeTimeline` 一趟。
+The tool therefore splits automatically: one pass for the core groups, one for `InstrTimeline`, one for `PipeTimeline`.
 
-## dfx_region_map.txt 的生命周期
+## Lifecycle of dfx_region_map.txt
 
-`dfx_region_map.txt`（pc→pipe/opcode）由 `msopprof` 在采集阶段写出，但**后续解析步骤会把它删掉**。实测：同一 capture 在采集刚结束时存在，几分钟后再看已消失。工具在 `run_msopprof` 返回后立即把它和 `pc_start_addr.txt` 复制到 `capture/probe/`，指令级分析优先读这个副本。
+`dfx_region_map.txt` (pc to pipe/opcode) is written by `msopprof` during collection, but **its later parsing step deletes it**. Measured: the same capture has the file right after collection and it is gone a few minutes later. The tool copies it and `pc_start_addr.txt` into `capture/probe/` immediately after `run_msopprof` returns, and instruction-level analysis reads that copy first.
 
-## 双 DIE 与跨 die 通路（2026-11-04 16:3x）
+## Dual die and cross-die paths (2026-11-04 16:3x)
 
-platform_config 里 `[DieInfo] io_die_num=2`，确认 Ascend950PR 是双 die。L2 跨 die 交织，访问对端
-L2 走 SIO。
+`platform_config` declares `[DieInfo] io_die_num=2`, confirming that Ascend950PR is dual-die. L2 is interleaved across dies, so reaching the remote die's L2 traverses SIO.
 
-`visualize_data.bin` 的 `core_memory_map[].memory_unit[]` 在不同 kernel 上暴露出不同的 `memory_path` 集合：
+`visualize_data.bin`'s `core_memory_map[].memory_unit[]` exposes different `memory_path` sets depending on the kernel:
 
-| 出现场景 | path id |
+| Scenario | path ids |
 |---|---|
-| vector 算子（vector_add） | 0, 1, 12, 13, 14, 15, 48, 52, 54 |
-| cube 算子（matmul mxfp4） | 0, 1, 2, 6, 7, 8, 37, 38, 39, 40, 41 |
+| Vector kernel (vector_add) | 0, 1, 12, 13, 14, 15, 48, 52, 54 |
+| Cube kernel (matmul mxfp4) | 0, 1, 2, 6, 7, 8, 37, 38, 39, 40, 41 |
 
-cube kernel 实测：
+Measured on the cube kernel:
 
-| path | 带宽 GB/s | 请求数 | 判定 |
+| path | Bandwidth GB/s | Requests | Attribution |
 |---:|---:|---:|---|
-| 8 | 36.188 | 91 | 跨 die（推断） |
-| 40 | 24.208 | 487 | GM 读（cube 侧） |
-| 2 | 3.330 | 67 | 跨 die（推断） |
-| 0 | 3.281 | 66 | GM 读（本 die） |
-| 1 | 3.032 | 61 | GM 写（本 die） |
-| 38 | 2.585 | 26 | 跨 die（推断） |
-| 6 | 2.262 | 91 | 跨 die（推断） |
-| 37 | 1.392 | 14 | 跨 die（推断） |
-| 7 | 1.292 | 13 | 跨 die（推断） |
-| 39, 41 | 0.000 | 0 | 恒 0，保留 |
+| 8 | 36.188 | 91 | cross-die (inferred) |
+| 40 | 24.208 | 487 | GM read (cube side) |
+| 2 | 3.330 | 67 | cross-die (inferred) |
+| 0 | 3.281 | 66 | GM read (local die) |
+| 1 | 3.032 | 61 | GM write (local die) |
+| 38 | 2.585 | 26 | cross-die (inferred) |
+| 6 | 2.262 | 91 | cross-die (inferred) |
+| 37 | 1.392 | 14 | cross-die (inferred) |
+| 7 | 1.292 | 13 | cross-die (inferred) |
+| 39, 41 | 0.000 | 0 | always 0, reserved |
 
-跨 die 合计 47.05 GB/s，片内 30.52 GB/s，**跨 die 占 60.6%**。
+Cross-die totals 47.05 GB/s against 30.52 GB/s on-die - **60.6% cross-die**.
 
-vector 算子上这组跨 die path 几乎不出流量（<3.3 GB/s），说明影子取决于访存模式而非芯片固定行为。
+On the vector kernel this group of cross-die paths carries almost no traffic (below 3.3 GB/s), so the pattern depends on the access pattern rather than being fixed chip behaviour.
 
-**path id 含义 CANN 未公开文档**。命名依据：0/1 与 GM↔UB 主流量吻合；12–15 与逐核 `UB` 表的四向带宽
-逐字节相同；39/41 在所有采集里恒 0；2/6/7/8/37/38 只在 cube kernel 出现且有流量。因此这些名字是
-**推断**，工具的置信度给 C 而非 A。
+**CANN documents none of the path ids.** The naming rests on: 0/1 matching the main GM<->UB traffic; 12-15 matching the per-core `UB` table's four directions byte for byte; 39/41 always 0 in every capture; and 2/6/7/8/37/38 appearing only on the cube kernel with real traffic. Those names are therefore **inferred**, and the tool assigns tier C rather than A.
 
-## sector / coalescing / outstanding / snoop 的可用性
+## Availability of sector / coalescing / outstanding / snoop
 
-对 `msopprof`、`libmsprofiler.so`、各 profiler 插件逐个 strings 检索：
+Searched `msopprof`, `libmsprofiler.so` and every profiler plugin by strings:
 
-| 概念 | 结论 |
+| Concept | Conclusion |
 |---|---|
-| `sector` / coalescing 效率 | 无任何计数器或字符串 |
-| `outstanding` / `inflight` | `visualize_data.bin` 全文 0 命中 |
-| `snoop` | 无 |
-| `instr_popped`（Load/Store 占比） | **存在于 msopprof**，但 `--dump=true` 要求 `--aic-metrics=TimelineDetail`，而后者在 dav-3510 上报错 `Unexpected argument --dump, maybe in wrong soc platform` |
+| `sector` / coalescing efficiency | no counter and no string anywhere |
+| `outstanding` / `inflight` | zero hits across the whole `visualize_data.bin` |
+| `snoop` | none |
+| `instr_popped` (Load/Store share) | **exists in msopprof**, but `--dump=true` requires `--aic-metrics=TimelineDetail`, and that fails on dav-3510 with `Unexpected argument --dump, maybe in wrong soc platform` |
 
-## Scalar Story 与 simd_vf_story 的观测项对照
+## Observation-by-observation comparison against the stories
 
-读 `cann-samples/Samples/2_Performance/scalar_story` 与 `simd_vf_story` 后，逐条对照本工具：
+After reading `cann-samples/Samples/2_Performance/scalar_story` and `simd_vf_story`, each observation they rely on was checked against this tool:
 
-| story 提到的观测点 | 本工具 | 说明 |
+| Observation in the story | This tool | Note |
 |---|---|---|
-| 各流水 cycle 分布 | ✅ | PipeUtilization |
-| Scalar 占比 | ✅ | scalar_ratio |
-| icache miss（PC-Cycle 图） | ✅ 部分 | InstrTimeline 的 pc_addr+ts 可画；需 `--with-instructions` |
-| dcache miss | ✅ | DCache 表（本次新增） |
-| Load/Store 指令占比 | ❌ | 需 instr_popped dump，上板不可用 |
-| 寄存器 spill | ❌ | 同上，由 Load/Store 占比间接推断 |
-| 软件头开销 (cycle) | ⚠️ | 只能从 scalar 时间间接看 |
-| VF count / PUSHQ VF cycles / RVECEX / RVECLD / RVECSU / PUSH_PB | ❌ | 仅 cannsim trace；上板只有 `aiv_vec_vf_ratio` 汇总 |
-| MTE2/MTE3 sum_cycles | ✅ | 已有 |
-| bank 冲突（vf_data_transform_story） | ✅ | ResourceConflictRatio |
+| Per-pipe cycle distribution | yes | PipeUtilization |
+| Scalar share | yes | scalar_ratio |
+| icache miss (PC-vs-cycle plot) | partly | drawable from InstrTimeline's pc_addr + ts; needs `--with-instructions` |
+| dcache miss | yes | DCache table (added in this work) |
+| Load/Store instruction share | no | needs the instr_popped dump, unavailable on-device |
+| Register spill | no | as above; would be inferred from the Load/Store share |
+| Software head overhead (cycles) | partly | only indirectly, via scalar time |
+| VF count / PUSHQ VF cycles / RVECEX / RVECLD / RVECSU / PUSH_PB | no | cannsim traces only; on-device there is just the `aiv_vec_vf_ratio` summary |
+| MTE2/MTE3 sum_cycles | yes | already collected |
+| Bank conflicts (vf_data_transform_story) | yes | ResourceConflictRatio |
 
-## PC-vs-cycle（icache miss 诊断）实测（2026-11-04 16:4x）
+## PC-vs-cycle (icache-miss diagnosis) measurement (2026-11-04 16:4x)
 
-InstrTimeline 的 `trace.json` 同时带 `args.pc_addr` 与 `ts`，这是 scalar_story「手段一」需要的两个字段。
-`layers.analyse_pc_cycle()` 把「同一 PC 连续出现且间隔 ≥ 阈值」识别为停留（等价于 PC-Cycle 图上的水平线段）：
+InstrTimeline's `trace.json` carries both `args.pc_addr` and `ts`, the two fields scalar_story's primary technique needs. `layers.analyse_pc_cycle()` treats "the same PC appearing consecutively with a gap at or above the threshold" as residence, the equivalent of a horizontal segment on a PC-vs-cycle plot.
 
-vector_add（`-g` 编译，71 事件，8 个不同 PC，跨度 0.7115 us）：
+vector_add (built with `-g`, 71 events, 8 distinct PCs, span 0.7115 us):
 
 ```
-stalls = 0，total_stall_us = 0.0，stall_pct = 0.0
+stalls = 0, total_stall_us = 0.0, stall_pct = 0.0
 ```
 
-**这是诚实结果**：该 kernel 短、代码小，本来就没有 icache miss。工具如实报 0 而不是凑一个数。
-要验证检测器本身有效，用合成轨迹（同一 PC、间隔 0.4us）→ 命中 1 处、占 80%，见 `selftest.py`。
+**That is the honest result**: the kernel is short with a small code footprint, so it has no icache misses. The tool reports zero rather than manufacturing a finding. The detector's own correctness is covered by a synthetic trace (same PC, 0.4 us gap) yielding one residence covering 80% of the span, in `selftest.py`.
 
-阈值取绝对 0.05 us 而非「事件时长的倍数」：插桩事件的 `dur` 在纳秒级，比值法会把每一对都判成停留。
+The threshold is an absolute 0.05 us rather than a multiple of event duration: instrumented `dur` values are on the order of nanoseconds, so a ratio test would classify every adjacent pair as a residence.

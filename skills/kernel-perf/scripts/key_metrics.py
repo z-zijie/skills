@@ -158,14 +158,14 @@ def compute(analysis: Dict[str, Any], peaks: PlatformPeaks) -> KeyMetrics:
     if result.achieved_tflops is not None and peak_flops:
         result.mfu_pct = 100.0 * (result.achieved_tflops * 1e12) / peak_flops
         result.mfu_note = (
-            f"达成 {result.achieved_tflops:.3f} TFLOPS ÷ 理论峰值 "
+            f"achieved {result.achieved_tflops:.3f} TFLOPS / theoretical peak "
             f"{peak_flops / 1e12:.1f} TFLOPS（{peaks.ai_core_cnt} AIC × "
             f"{peaks.cube_freq_mhz:.0f} MHz × {peaks.cube_m}³ MAC × 2）"
         )
     elif not peak_flops:
-        result.mfu_note = "缺少 AIC 数量或频率，无法计算 MFU"
+        result.mfu_note = "AIC count or clock unavailable; MFU cannot be computed"
     else:
-        result.mfu_note = "kernel 没有发出 cube 指令，MFU 不适用（可能是 vector 算子）"
+        result.mfu_note = "the kernel issued no cube instruction; MFU does not apply (likely a vector kernel)"
 
     # -- MAC usage ---------------------------------------------------------
     # Of the time the cube pipe was busy, how much was it issuing MACs?
@@ -175,11 +175,11 @@ def compute(analysis: Dict[str, Any], peaks: PlatformPeaks) -> KeyMetrics:
         # back-to-back MMA stream is the 100% reference.
         result.mac_usage_pct = min(cube_ratio, 100.0)
         result.mac_note = (
-            f"cube 流水占用 {cube_ratio:.2f}%，即 MAC 发射机会的比例。"
-            ">70% 表示 cube 基本被乘加填满"
+            f"cube pipe occupancy {cube_ratio:.2f}%, i.e. the share of MAC issue slots. "
+            "Above 70% means the cube is MAC-saturated"
         )
     else:
-        result.mac_note = "cube 流水未活动（vector 算子或本 kernel 不含矩阵乘）"
+        result.mac_note = "the cube pipe was idle (vector kernel, or no matrix multiply here)"
 
     # -- arithmetic intensity ---------------------------------------------
     gm_read = 0.0
@@ -191,7 +191,7 @@ def compute(analysis: Dict[str, Any], peaks: PlatformPeaks) -> KeyMetrics:
     if macs and total_bytes > 0:
         result.arithmetic_intensity = macs * 2 / total_bytes
         result.intensity_note = (
-            f"{macs * 2:.3g} FLOPs ÷ {total_bytes / 1024:.0f} KiB 主存流量"
+            f"{macs * 2:.3g} FLOPs / {total_bytes / 1024:.0f} KiB of main-memory traffic"
         )
 
     # -- what binds --------------------------------------------------------
@@ -200,23 +200,23 @@ def compute(analysis: Dict[str, Any], peaks: PlatformPeaks) -> KeyMetrics:
         top_pct = top.get("mean_ratio_pct") or 0.0
         if top_pct < 30.0:
             result.bound_by = "latency"
-            result.bound_note = (f"最高流水占用仅 {top_pct:.1f}%，"
-                                 "没有任何单元成为瓶颈，时间花在依赖等待/气泡上")
+            result.bound_note = (f"the busiest pipe reaches only {top_pct:.1f}%, "
+                                 "so no unit is the bottleneck; time goes to dependency stalls and bubbles")
         else:
             result.bound_by = top.get("pipe", "?")
-            result.bound_note = f"{top.get('label')} 占用 {top_pct:.1f}%，是最忙的单元"
+            result.bound_note = f"{top.get('label')} at {top_pct:.1f}% is the busiest unit"
     return result
 
 
 def render(metrics: KeyMetrics, peaks: PlatformPeaks) -> list:
     """Markdown lines for the key-metrics section."""
-    lines = ["## 2. 关键指标（MFU / MAC / Roofline）", ""]
-    lines.append("> 本节全部为 **D 级**：分母是理论峰值，不是实测值。用于横向比较，"
-                 "不能当作「实测算力」。")
+    lines = ["## 2. Key metrics (MFU / MAC / Roofline)", ""]
+    lines.append("> Every value here is **tier D**: the denominators are theoretical peaks, not measurements. Use for comparison, "
+                 "not as measured compute.")
     lines.append("")
 
     peak = peaks.as_dict()
-    lines.append("理论峰值（来自 platform_config）：")
+    lines.append("Theoretical peak (from platform_config):")
     lines.append("")
     lines.append(f"- Cube: {peak['cube_shape']} MAC/cycle × {peak['ai_core_cnt']} AIC"
                  f" × {peak['cube_freq_mhz']} MHz = **{peak['cube_tflops_per_s']} TFLOPS**")
@@ -224,7 +224,7 @@ def render(metrics: KeyMetrics, peaks: PlatformPeaks) -> list:
                  f" × {peak['vec_freq_mhz']} MHz = **{peak['vector_tops_per_s']} TOPS**")
     lines.append("")
 
-    lines.append("| 指标 | 值 | 说明 |")
+    lines.append("| Metric | Value | Note |")
     lines.append("|---|---:|---|")
     if metrics.mfu_pct is not None:
         lines.append(f"| **MFU** | {metrics.mfu_pct:.3f}% | {metrics.mfu_note} |")
@@ -235,11 +235,11 @@ def render(metrics: KeyMetrics, peaks: PlatformPeaks) -> list:
     else:
         lines.append(f"| MAC usage | n/a | {metrics.mac_note} |")
     if metrics.achieved_tflops is not None:
-        lines.append(f"| 达成算力 | {metrics.achieved_tflops:.4f} TFLOPS | "
+        lines.append(f"| Achieved compute | {metrics.achieved_tflops:.4f} TFLOPS | "
                      f"{metrics.achieved_tmacs:.4f} TMAC/s |")
     if metrics.arithmetic_intensity is not None:
-        lines.append(f"| 算术强度 | {metrics.arithmetic_intensity:.3f} FLOP/B | "
+        lines.append(f"| Arithmetic intensity | {metrics.arithmetic_intensity:.3f} FLOP/B | "
                      f"{metrics.intensity_note} |")
-    lines.append(f"| 受限因素 | **{metrics.bound_by}** | {metrics.bound_note} |")
+    lines.append(f"| Binding constraint | **{metrics.bound_by}** | {metrics.bound_note} |")
     lines.append("")
     return lines

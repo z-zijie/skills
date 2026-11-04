@@ -1,49 +1,45 @@
-# 平台常量快照
+# Platform constant snapshot
 
-工具在采集机上直接读 `$ASCEND_HOME_PATH/x86_64-linux/data/platform_config/<soc>.ini`。
-本文件是同一组键的副本，供**不在采集机上的分析**使用（例如把 capture 拷回本地重跑
-`kernel_perf.py analyze`）。
+The tool reads `$ASCEND_HOME_PATH/x86_64-linux/data/platform_config/<soc>.ini` directly on the collection host. This file is a copy of the same keys for analysis **off** the collection host (for example, copying a capture back and re-running `kernel_perf.py analyze`).
 
-只有从 ini 读不到时才会用到这里的值；两者不一致时以 ini 为准，并在报告里注明。
+These values are used only when the ini cannot be read. Where the two disagree, the ini wins and the report says so.
 
-## Ascend950PR_9579（实测，CANN 9.3.0~weekly.20261009.01）
+## Ascend950PR_9579 (measured, CANN 9.3.0~weekly.20261009.01)
 
-| 键 | 值 | 含义 |
+| Key | Value | Meaning |
 |---|---:|---|
-| `NpuArch` | 3510 | 架构号，对应 `--npu-arch=dav-3510` |
-| `Short_SoC_version` | Ascend950 | 短名 |
-| `ai_core_cnt` | 28 | AIC 数量，cube 计算的并行度上限 |
-| `cube_core_cnt` | 28 | 同上（本芯片 AIC 全带 cube） |
-| `vector_core_cnt` | 56 | AIV 数量，注意是 AIC 的两倍 |
+| `NpuArch` | 3510 | Architecture number, corresponding to `--npu-arch=dav-3510` |
+| `Short_SoC_version` | Ascend950 | Short name |
+| `ai_core_cnt` | 28 | AIC count; the parallelism limit for cube work |
+| `cube_core_cnt` | 28 | Same as above (every AIC on this part has a cube) |
+| `vector_core_cnt` | 56 | AIV count; note this is twice the AIC count |
 | `cube_freq` | 1650 | MHz |
 | `vec_freq` | 1650 | MHz |
-| `cube_m_size` / `cube_n_size` / `cube_k_size` | 16 / 16 / 16 | 单指令 MMA 形状 |
-| `vec_calc_size` | 128 | vector lane 数 |
-| `l0_a_size` / `l0_b_size` / `l0_c_size` | 65536 / 65536 / 262144 | B |
-| `l1_size` | 524288 | B（512 KiB） |
-| `ub_size` | 253952 | B（248 KiB） |
-| `l2_size` | 134217728 | B（128 MiB） |
-| `ddr_rate`（`[AICoreMemoryRates]`） | 31 | 无量纲等级，**不能**当带宽分母 |
-| `ddr_rate`（`[VectorCoreMemoryRates]` | 16 | 同上，且与 AICore 段不同 |
-| `l2_rate` | 100 | 无量纲等级 |
-| `l1_to_ub_rate` / `ub_to_l2_rate` / `ub_to_ddr_rate` | 128 / 128 / 128 | 无量纲等级 |
+| `cube_m_size` / `cube_n_size` / `cube_k_size` | 16 / 16 / 16 | Shape of one MMA instruction |
+| `vec_calc_size` | 128 | Vector lane count |
+| `l0_a_size` / `l0_b_size` / `l0_c_size` | 65536 / 65536 / 262144 | Bytes |
+| `l1_size` | 524288 | Bytes (512 KiB) |
+| `ub_size` | 253952 | Bytes (248 KiB) |
+| `l2_size` | 134217728 | Bytes (128 MiB) |
+| `ddr_rate` (`[AICoreMemoryRates]`) | 31 | Dimensionless class value; **not** usable as a bandwidth denominator |
+| `ddr_rate` (`[VectorCoreMemoryRates]`) | 16 | As above, and different from the AICore section |
+| `l2_rate` | 100 | Dimensionless class value |
+| `l1_to_ub_rate` / `ub_to_l2_rate` / `ub_to_ddr_rate` | 128 / 128 / 128 | Dimensionless class values |
+| `io_die_num` (`[DieInfo]`) | 2 | Dual-die part; L2 is interleaved and remote access traverses SIO |
 
-## 由这些常量推出的理论峰值
+## Theoretical peaks derived from these constants
 
 ```
-Cube   = 28 AIC × 1650 MHz × 16×16×16 MAC/cycle × 2 FLOP/MAC = 378.47 TFLOPS
-Vector = 56 AIV × 1650 MHz × 128 lane                      =  11.83 TOPS
+Cube   = 28 AIC x 1650 MHz x 16x16x16 MAC/cycle x 2 FLOP/MAC = 378.47 TFLOPS
+Vector = 56 AIV x 1650 MHz x 128 lane                        =  11.83 TOPS
 ```
 
-Cube 的 378 TFLOPS 是本工具 MFU 的分母。核对方式：`28 × 1.65e9 × 4096 × 2 = 3.78e14`。
+The cube figure is the MFU denominator. Verification: `28 * 1.65e9 * 4096 * 2 = 3.78e14`.
 
-## 为什么 ini 里的 `*_rate` 不能当带宽分母
+## Why the ini `*_rate` keys cannot serve as bandwidth denominators
 
-`ddr_rate=31`、`l2_rate=100` 是无量纲的等级值，不是「每秒多少字节」。把实测 GB/s 除以
-它们会得到荒谬的百分比。工具的真实分母从采集数据自身反解（见
-`references/measurements.md` 的单位反解一节），ini 值仅在报告里作为参考列出。
+`ddr_rate=31` and `l2_rate=100` are dimensionless class values, not bytes per second. Dividing a measured GB/s by them produces nonsensical percentages. The tool inverts the real denominator from the capture itself (see the unit derivation in `references/measurements.md`), and lists the ini values as reference only.
 
-## 其他 SoC
+## Other SoCs
 
-同一目录下有 `Ascend950DT_*`、`Ascend910B*` 等 ini。工具按 capture 里的 `soc` 字段
-匹配同名 ini，匹配不到就退化为「只用采集数据能推出的信息」，并在报告里标注。
+The same directory holds `Ascend950DT_*`, `Ascend910B*` and other ini files. The tool matches the ini by the capture's `soc` field and degrades to "only what the capture itself implies" when no match exists, saying so in the report.

@@ -42,11 +42,11 @@ from typing import Callable, Dict, List, Optional
 TIER_ORDER = ["A", "B", "C", "D", "E"]
 
 TIER_DESCRIPTION = {
-    "A": "直接计数器，重复采集一致到末位",
-    "B": "由 A 级值精确推导，无采样无模型假设",
-    "C": "采样统计，短 kernel 上有混叠风险",
-    "D": "依赖硬件理论常量，不是实测值",
-    "E": "已知不稳定或在常见情形下无意义",
+    "A": "Direct counter, reproduces to the last digit",
+    "B": "Exact derivation from tier-A values, no sampling, no model assumption",
+    "C": "Sampled statistic, aliasing risk on short kernels",
+    "D": "Depends on a hardware constant, not measured",
+    "E": "Known unstable or meaningless in common cases",
 }
 
 
@@ -89,202 +89,202 @@ def build_catalogue() -> List[Metric]:
     M = Metric
     return [
         # ---- identity / basic -------------------------------------------
-        M("duration_us", "Kernel 耗时", "us", "A", "OpBasicInfo.csv:Task Duration(us)",
-          note="单次 kernel 任务时长，含核启动与排空"),
+        M("duration_us", "Kernel duration", "us", "A", "OpBasicInfo.csv:Task Duration(us)",
+          note="Duration of one kernel task, including launch and drain"),
         M("block_dim", "Block Dim", "core", "A", "OpBasicInfo.csv:Block Dim",
-          note="实际使用的核数；小于芯片核数说明 tiling 只用了一部分"),
-        M("freq_mhz", "当前频率", "MHz", "A", "OpBasicInfo.csv:Current Freq",
-          note="与 Rated Freq 不一致说明发生了降频"),
-        M("cycles", "核周期数", "cycle", "A", "PipeUtilization.csv:aiv_total_cycles",
-          note="cycles/time 应等于频率，可用来交叉校验"),
+          note="Cores actually used; below the chip core count means tiling covered only part of it"),
+        M("freq_mhz", "Current clock", "MHz", "A", "OpBasicInfo.csv:Current Freq",
+          note="A mismatch against Rated Freq indicates throttling"),
+        M("cycles", "Core cycles", "cycle", "A", "PipeUtilization.csv:aiv_total_cycles",
+          note="cycles/time should equal the clock; use it as a cross-check"),
 
         # ---- pipe occupancy ---------------------------------------------
-        M("vec_ratio", "Vector 流水占用", "%", "B", "PipeUtilization.csv:aiv_vec_ratio",
-          note="vec 忙时间/核总时间，跨核平均"),
-        M("scalar_ratio", "Scalar 流水占用", "%", "B", "PipeUtilization.csv:aiv_scalar_ratio"),
-        M("mte2_ratio", "MTE2 (GM→UB) 占用", "%", "B", "PipeUtilization.csv:aiv_mte2_ratio"),
-        M("mte3_ratio", "MTE3 (UB→GM) 占用", "%", "B", "PipeUtilization.csv:aiv_mte3_ratio"),
-        M("cube_ratio", "Cube 流水占用", "%", "B", "PipeUtilization.csv:aic_cube_ratio"),
-        M("mte1_ratio", "MTE1 (L1→L0) 占用", "%", "B", "PipeUtilization.csv:aic_mte1_ratio"),
-        M("fixpipe_ratio", "FixPipe 占用", "%", "B", "PipeUtilization.csv:aic_fixpipe_ratio"),
-        M("aic_scalar_ratio", "AIC Scalar 占用", "%", "B", "PipeUtilization.csv:aic_scalar_ratio"),
+        M("vec_ratio", "Vector pipe occupancy", "%", "B", "PipeUtilization.csv:aiv_vec_ratio",
+          note="vec busy time / core total time, averaged across cores"),
+        M("scalar_ratio", "Scalar pipe occupancy", "%", "B", "PipeUtilization.csv:aiv_scalar_ratio"),
+        M("mte2_ratio", "MTE2 (GM->UB) occupancy", "%", "B", "PipeUtilization.csv:aiv_mte2_ratio"),
+        M("mte3_ratio", "MTE3 (UB->GM) occupancy", "%", "B", "PipeUtilization.csv:aiv_mte3_ratio"),
+        M("cube_ratio", "Cube pipe occupancy", "%", "B", "PipeUtilization.csv:aic_cube_ratio"),
+        M("mte1_ratio", "MTE1 (L1->L0) occupancy", "%", "B", "PipeUtilization.csv:aic_mte1_ratio"),
+        M("fixpipe_ratio", "FixPipe occupancy", "%", "B", "PipeUtilization.csv:aic_fixpipe_ratio"),
+        M("aic_scalar_ratio", "AIC Scalar occupancy", "%", "B", "PipeUtilization.csv:aic_scalar_ratio"),
 
         # ---- wait / stall ------------------------------------------------
-        M("vec_wait_ratio", "Vector 等待占比", "%", "B",
+        M("vec_wait_ratio", "Vector wait ratio", "%", "B",
           "ResourceConflictRatio.csv:aiv_vec_wait_ratio",
-          note="流水在等数据/等队列的时间比例，气泡的直接证据"),
-        M("mte3_wait_ratio", "MTE3 等待占比", "%", "B",
+          note="Share of time a pipe spends waiting for data or queue space; direct evidence of bubbles"),
+        M("mte3_wait_ratio", "MTE3 wait ratio", "%", "B",
           "ResourceConflictRatio.csv:aiv_mte3_wait_ratio"),
-        M("mte2_wait_ratio", "MTE2 等待占比", "%", "B",
+        M("mte2_wait_ratio", "MTE2 wait ratio", "%", "B",
           "ResourceConflictRatio.csv:aiv_mte2_wait_ratio"),
-        M("wait_cycles", "各流水 wait cycles", "cycle", "A",
+        M("wait_cycles", "Per-pipe wait cycles", "cycle", "A",
           "visualize_data.bin 0x09 table 'Pipe' column 'wait cycles'",
-          note="逐核累计，比 ratio 更接近原始计数器"),
+          note="Accumulated per core; closer to a raw counter than the ratio"),
 
         # ---- conflicts ---------------------------------------------------
-        M("bank_stu_cflt", "Store bank 冲突率", "%", "B",
+        M("bank_stu_cflt", "Store bank conflict rate", "%", "B",
           "ResourceConflictRatio.csv:aiv_vec_stu_cflt_ratio",
-          note=">5% 需要调整 UB 地址或加 padding"),
-        M("bank_ldu_cflt", "Load bank 冲突率", "%", "B",
+          note="Above 5% warrants UB address adjustment or padding"),
+        M("bank_ldu_cflt", "Load bank conflict rate", "%", "B",
           "ResourceConflictRatio.csv:aiv_vec_ldu_cflt_ratio"),
-        M("sfu_cflt", "SFU 冲突率", "%", "B",
+        M("sfu_cflt", "SFU conflict rate", "%", "B",
           "ResourceConflictRatio.csv:aiv_vec_sfu_cflt_ratio"),
 
         # ---- bandwidth ---------------------------------------------------
-        M("gm_to_ub_gbps", "GM→UB 带宽", "GiB/s", "B", "Memory.csv:aiv_gm_to_ub_bw(GB/s)",
-          note="profiler 标 GB/s，实测为 GiB/s（1024³）"),
-        M("gm_to_ub_pct", "GM→UB 占峰值", "%", "B",
+        M("gm_to_ub_gbps", "GM->UB bandwidth", "GiB/s", "B", "Memory.csv:aiv_gm_to_ub_bw(GB/s)",
+          note="The profiler labels it GB/s; measured to be GiB/s (1024^3)"),
+        M("gm_to_ub_pct", "GM->UB share of peak", "%", "B",
           "Memory.csv:GM_to_UB_bw_usage_rate(%)",
-          caveat="分母由同一次采集反解，跨机型不可比"),
-        M("ub_to_gm_gbps", "UB→GM 带宽", "GiB/s", "B", "Memory.csv:aiv_ub_to_gm_bw(GB/s)"),
-        M("main_mem_read_gbps", "主存读带宽", "GiB/s", "B",
+          caveat="The denominator is inverted from the same capture; not comparable across parts"),
+        M("ub_to_gm_gbps", "UB->GM bandwidth", "GiB/s", "B", "Memory.csv:aiv_ub_to_gm_bw(GB/s)"),
+        M("main_mem_read_gbps", "Main-memory read bandwidth", "GiB/s", "B",
           "Memory.csv:aiv_main_mem_read_bw(GB/s)"),
-        M("main_mem_write_gbps", "主存写带宽", "GiB/s", "B",
+        M("main_mem_write_gbps", "Main-memory write bandwidth", "GiB/s", "B",
           "Memory.csv:aiv_main_mem_write_bw(GB/s)"),
-        M("ub_read_vec_gbps", "UB 读 (vector) 带宽", "GiB/s", "B",
+        M("ub_read_vec_gbps", "UB read (vector) bandwidth", "GiB/s", "B",
           "MemoryUB.csv:aiv_ub_read_bw_vector(GB/s)"),
-        M("ub_write_vec_gbps", "UB 写 (vector) 带宽", "GiB/s", "B",
+        M("ub_write_vec_gbps", "UB write (vector) bandwidth", "GiB/s", "B",
           "MemoryUB.csv:aiv_ub_write_bw_vector(GB/s)"),
-        M("l1_read_gbps", "L1 读带宽", "GiB/s", "B", "Memory.csv:aic_l1_read_bw(GB/s)"),
-        M("l1_write_gbps", "L1 写带宽", "GiB/s", "B", "Memory.csv:aic_l1_write_bw(GB/s)"),
-        M("l0a_read_gbps", "L0A 读带宽", "GiB/s", "B", "MemoryL0.csv:aic_l0a_read_bw(GB/s)"),
-        M("l0b_read_gbps", "L0B 读带宽", "GiB/s", "B", "MemoryL0.csv:aic_l0b_read_bw(GB/s)"),
-        M("l0c_write_gbps", "L0C 写带宽", "GiB/s", "B", "MemoryL0.csv:aic_l0c_write_bw_cube(GB/s)"),
+        M("l1_read_gbps", "L1 read bandwidth", "GiB/s", "B", "Memory.csv:aic_l1_read_bw(GB/s)"),
+        M("l1_write_gbps", "L1 write bandwidth", "GiB/s", "B", "Memory.csv:aic_l1_write_bw(GB/s)"),
+        M("l0a_read_gbps", "L0A read bandwidth", "GiB/s", "B", "MemoryL0.csv:aic_l0a_read_bw(GB/s)"),
+        M("l0b_read_gbps", "L0B read bandwidth", "GiB/s", "B", "MemoryL0.csv:aic_l0b_read_bw(GB/s)"),
+        M("l0c_write_gbps", "L0C write bandwidth", "GiB/s", "B", "MemoryL0.csv:aic_l0c_write_bw_cube(GB/s)"),
 
         # ---- datapath detail (CSV-invisible, viz only) --------------------
-        M("memory_paths", "8 条内存通路带宽", "GiB/s", "B",
+        M("memory_paths", "Bandwidth of the 8 memory paths", "GiB/s", "B",
           "visualize_data.bin 0x08 core_memory_map[].memory_unit[]",
-          note="逐核逐通路的带宽与请求数，CSV 不含"),
-        M("pipe_wait_table", "逐核逐流水 wait", "cycle", "A",
+          note="Per-core per-path bandwidth and request counts; absent from the CSVs"),
+        M("pipe_wait_table", "Per-core per-pipe wait", "cycle", "A",
           "visualize_data.bin 0x09 table 'Pipe'"),
 
         # ---- cache -------------------------------------------------------
-        M("l2_read_hit", "L2 读命中率", "%", "C", "L2Cache.csv:aiv_read_hit_rate(%)",
-          note="读命中率重复性好（实测 CV 0.6%）",
-          caveat="分母只统计 close/far 请求，不含 iCache"),
-        M("l2_write_hit", "L2 写命中率", "%", "E", "L2Cache.csv:aiv_write_hit_rate(%)",
-          note="写回策略使分母随工作负载相位变化",
-          caveat="实测 5 次重复 CV 14.4%、极差 34%，不可当稳定指标"),
-        M("l2_read_miss", "L2 读 miss 次数", "count", "A",
+        M("l2_read_hit", "L2 read hit rate", "%", "C", "L2Cache.csv:aiv_read_hit_rate(%)",
+          note="Read hit rate reproduces well (measured CV 0.6%)",
+          caveat="The denominator counts only close/far requests and excludes iCache"),
+        M("l2_write_hit", "L2 write hit rate", "%", "E", "L2Cache.csv:aiv_write_hit_rate(%)",
+          note="Write-back policy makes the denominator depend on workload phase",
+          caveat="Measured CV 14.4% over five repeats with a 34% range; not a stable metric"),
+        M("l2_read_miss", "L2 read miss count", "count", "A",
           "L2Cache.csv:aiv_read_close_miss"),
-        M("icache_hit", "iCache 命中率", "%", "B",
+        M("icache_hit", "iCache hit rate", "%", "B",
           "visualize_data.bin 0x09 table 'Cache' row 'iCache Total'",
-          note="miss 率高说明代码量过大，考虑拆分 kernel"),
-        M("l2_hit_viz", "L2 总命中率 (逐核)", "%", "B",
+          note="A high miss rate means the code footprint is too large; consider splitting the kernel"),
+        M("l2_hit_viz", "L2 total hit rate (per core)", "%", "B",
           "visualize_data.bin 0x08 core_memory_map[].L2cache.hit_ratio",
-          caveat="读+写加权，与 CSV 分读写口径不同"),
-        M("dcache", "DCache 请求与吞吐", "-", "B",
+          caveat="Weighted over read and write, unlike the split CSV columns"),
+        M("dcache", "DCache requests and throughput", "-", "B",
           "visualize_data.bin 0x09 table 'DCache'",
-          note="GM/Vector 三个方向的请求数与吞吐；与 L2 是不同层级",
-          caveat="vector 算子通常全为 0——DCache 主要服务于 scalar 访存"),
-        M("outstanding", "Outstanding 未完成请求数", "-", "C",
-          "不可用（unavailable）",
-          note="reviewer 点名要的一项",
-          caveat="实测在本芯片任何 --aic-metrics 取值下均无输出通路"
-                 "（visualize_data.bin 全文搜 outstanding/inflight 命中 0 次）"),
+          note="Requests and throughput for the three GM/Vector directions; a different level from L2",
+          caveat="Vector kernels usually show zero; DCache mainly serves scalar access"),
+        M("outstanding", "Outstanding (in-flight) requests", "-", "C",
+          "unavailable",
+          note="A metric the reviewer asked for specifically",
+          caveat="No output path under any --aic-metrics value on this part"
+                 "(searching visualize_data.bin for outstanding/inflight returns zero hits)"),
 
         # ---- compute -----------------------------------------------------
-        M("cube_instr", "Cube 指令数", "count", "A",
+        M("cube_instr", "Cube instruction count", "count", "A",
           "ArithmeticUtilization.csv:aic_cube_total_instr_number"),
-        M("cube_fp_instr", "Cube 浮点指令数", "count", "A",
+        M("cube_fp_instr", "Cube float instruction count", "count", "A",
           "ArithmeticUtilization.csv:aic_cube_fp_instr_number"),
-        M("mac_usage", "MAC 利用率", "%", "D", "derived: cube instr × 16³ MAC / peak",
-          note="关键指标：cube 有多大比例在真正做乘加",
-          caveat="依赖 16×16×16 的硬编码维度与 1650 MHz 额定频率"),
-        M("mfu", "MFU (模型算力利用率)", "%", "D", "derived: achieved FLOPs / 378.5 TFLOPS",
-          note="关键指标：与训练/推理框架口径对齐",
-          caveat="分母是理论峰值；实际可达峰值受缓存在内，MFU 天然偏低"),
-        M("vec_lane_usage", "Vector lane 利用率", "%", "D",
-          "derived: vec_ratio × 有效 lane 数 / 128"),
+        M("mac_usage", "MAC utilisation", "%", "D", "derived: cube instr × 16³ MAC / peak",
+          note="Key metric: what fraction of cube time actually issues multiply-accumulate",
+          caveat="Relies on the hardcoded 16x16x16 shape and the 1650 MHz rated clock"),
+        M("mfu", "MFU (model FLOPs utilisation)", "%", "D", "derived: achieved FLOPs / 378.5 TFLOPS",
+          note="Key metric: aligned with the convention used by training and inference frameworks",
+          caveat="The denominator is the theoretical peak; the achievable peak is lower due to caching, so MFU is inherently conservative"),
+        M("vec_lane_usage", "Vector lane utilisation", "%", "D",
+          "derived: vec_ratio x effective lanes / 128"),
 
         # ---- instruction level ------------------------------------------
-        M("instr_timeline", "逐指令耗时", "us", "C",
+        M("instr_timeline", "Instruction-level cost", "us", "C",
           "trace.json traceEvents[] with args.pc_addr",
-          note="InstrTimeline 采集，给出每条指令的 pc 与耗时",
-          caveat="需要 --instr-timeline-pipe 指定流水；与 PipeTimeline 互斥"),
-        M("instr_region_map", "PC→opcode 映射", "-", "A",
+          note="From InstrTimeline; reports the PC and the cost of each instruction",
+          caveat="Requires --instr-timeline-pipe; mutually exclusive with PipeTimeline"),
+        M("instr_region_map", "PC->opcode map", "-", "A",
           "dump/dfx_region_map.txt",
-          note="把 pc 映射到 pipe 与 opcode，是逐指令归属的关键"),
-        M("source_attribution", "源码行归属", "-", "C",
-          "visualize_data.bin 0x01 源代码包 + PC 映射",
-          caveat="显示的是内联展开后的头文件行，不是用户 kernel 行"),
+          note="Maps a PC to its pipe and opcode; the key to instruction attribution"),
+        M("source_attribution", "Source-line attribution", "-", "C",
+          "visualize_data.bin 0x01 source bundle plus the PC map",
+          caveat="Shows inlined header lines, not the user's kernel lines"),
 
         # ---- timeline ----------------------------------------------------
-        M("pipe_timeline", "逐流水时间线", "us", "C", "trace.json (PipeTimeline)",
-          note="每个流水的忙闲区间", caveat="只覆盖被采集的核；实测常只有 1 个核"),
+        M("pipe_timeline", "Per-pipe timeline", "us", "C", "trace.json (PipeTimeline)",
+          note="Busy and idle intervals per pipe", caveat="Covers only the instrumented cores; measurements often show just one"),
 
         # ---- scheduling / block timeline ---------------------------------
-        M("block_timeline", "block 启动/结束时间", "us", "C",
-          "trace.json (PipeTimeline) 的 pid=core<N>.veccore<M> 事件",
-          note="每个 block 的首个活动与最后完成，是分析多核不同步与拖尾的唯一来源",
-          caveat="PipeTimeline 只插桩部分核：56 block 的 kernel 实测只拿到 12 个 subcore，"
-                 "所以 skew 是下界不是全片上真值"),
-        M("launch_skew", "启动偏移", "us", "C", "derived: last_start - first_start",
-          note="这段时间内芯片只有部分核在工作；与流水线优化无关"),
-        M("tail_effect", "拖尾", "us", "C", "derived: last_end - first_end",
-          note="最慢核比最快核晚收工的时间；典型原因是尾块不均或被抢占"),
+        M("block_timeline", "Block start/end timestamps", "us", "C",
+          "trace.json (PipeTimeline) events with pid=core<N>.veccore<M>",
+          note="First activity and last completion of each block; the only source for launch skew and tail analysis",
+          caveat="PipeTimeline instruments only a subset of cores: a 56-block kernel yielded 12 subcores, "
+                 "so the skew is a lower bound, not a chip-wide truth"),
+        M("launch_skew", "Launch skew", "us", "C", "derived: last_start - first_start",
+          note="Only part of the chip works during this interval; pipeline tuning cannot help"),
+        M("tail_effect", "Tail", "us", "C", "derived: last_end - first_end",
+          note="How much later the slowest core finishes than the fastest; usually an uneven final tile or preemption"),
 
         # ---- VF (Vector Fusion) ------------------------------------------
-        M("vf_ratio", "VF 占比", "%", "B", "ArithmeticUtilization.csv:aiv_vec_vf_ratio",
-          note="VF（Vector Fusion）在 vector 时间里的占比"),
-        M("simt_vf_ratio", "SIMT VF 占比", "%", "B",
+        M("vf_ratio", "VF share", "%", "B", "ArithmeticUtilization.csv:aiv_vec_vf_ratio",
+          note="Share of vector time spent in VF (Vector Fusion)"),
+        M("simt_vf_ratio", "SIMT VF share", "%", "B",
           "ArithmeticUtilization.csv:aiv_vec_simt_vf_ratio"),
-        M("vf_internal", "VF 内部：PUSHQ/RVECEX/RVECLD/RVECSU/PUSH_PB", "cycle", "C",
-          "不可用（仅 cannsim）",
-          note="cann-samples 的 simd_vf_story 用这些量判断 VF 是否过碎",
-          caveat="这组细分计数只在 cannsim trace 里出现；上板 msopprof 只给 vf_ratio。"
-                 "本 skill 限定只上板实采，故标注不可用而不以仿真值代替"),
+        M("vf_internal", "VF internals: PUSHQ/RVECEX/RVECLD/RVECSU/PUSH_PB", "cycle", "C",
+          "unavailable (cannsim only)",
+          note="simd_vf_story in cann-samples uses these to judge whether VF calls are too fragmented",
+          caveat="These detailed counters appear only in cannsim traces; on-device msopprof reports only vf_ratio. "
+                 "This skill is restricted to on-device capture, so the value is marked unavailable rather than substituted from simulation"),
 
         # ---- load/store & icache (scalar story) --------------------------
-        M("load_store_ratio", "Load/Store 指令占比", "%", "C",
-          "不可用（需 instr_popped_log.dump）",
-          note="Scalar Story 判定寄存器 spill 的核心依据，>30% 即疑似 spill",
-          caveat="instr_popped 日志需 --dump=true，而 --dump 要求 TimelineDetail；"
-                 "后者在 dav-3510 上直接失败，故上板取不到"),
-        M("pc_cycle", "PC 停留（icache miss 诊断）", "us", "C",
-          "trace.json (InstrTimeline) 的 pc_addr + ts",
-          note="同一 PC 长时间不动＝在等取指；这是 scalar_story 的 PC-Cycle 图的数值等价物",
-          caveat="需要 --with-instructions；实测 vector_add 71 事件 0 处停留，"
-                 "短 kernel 上事件太少不足以判定"),
-        M("load_store_via_pc", "Load/Store 热点（按 PC 归属）", "us", "C",
-          "derived: InstrTimeline 的 pc + dfx_region_map 的 opcode",
-          note="能看到 LD/ST 类 opcode 各自耗时，但没有指令总数口径",
-          caveat="不是 scalar_story 的 Load/Store 占比（那需要 instr_popped 全量指令流）"),
+        M("load_store_ratio", "Load/Store instruction share", "%", "C",
+          "unavailable (requires instr_popped_log.dump)",
+          note="The core evidence scalar_story uses to infer register spill; above 30% suggests spill",
+          caveat="The instr_popped log needs --dump=true, and --dump requires TimelineDetail; "
+                 "the latter fails outright on dav-3510, so this cannot be obtained on-device"),
+        M("pc_cycle", "PC residence (icache-miss diagnosis)", "us", "C",
+          "trace.json (InstrTimeline): pc_addr + ts",
+          note="A PC that stops advancing means waiting on instruction fetch; the numeric equivalent of scalar_story's PC-vs-cycle plot",
+          caveat="Requires --with-instructions; measured on vector_add: 71 events, zero residences, "
+                 "too few events on a short kernel to decide"),
+        M("load_store_via_pc", "Load/Store hot spots (attributed by PC)", "us", "C",
+          "derived: InstrTimeline pc + dfx_region_map opcode",
+          note="Shows the cost of each LD/ST-class opcode, but not a total instruction count",
+          caveat="Not scalar_story's Load/Store share (that needs the full instr_popped instruction stream)"),
 
         # ---- sector / coalescing / cross-die ------------------------------
-        M("sector_efficiency", "Sector 利用率 / Coalescing", "%", "C",
-          "不可用（无直接计数器）",
-          note="NCU 用 sectors/request 度量合并访存效率；CANN 未暴露该计数",
-          caveat="上板 msopprof 任何 metric 组都不输出 sectors。可用的间接证据是 "
-                 "GM_to_UB_datas(KB) 与实际搬运次数的比值，以及 L2 请求数 vs miss 数"),
-        M("cross_die_bw", "跨 die 流量 (SIO)", "GB/s", "C",
+        M("sector_efficiency", "Sector utilisation / coalescing", "%", "C",
+          "unavailable (no direct counter)",
+          note="NCU measures coalescing as sectors per request; CANN exposes no such counter",
+          caveat="No metric set emits sectors on-device. The available indirect evidence is "
+                 "the ratio of GM_to_UB_datas(KB) to actual transfer count, and L2 requests against misses"),
+        M("cross_die_bw", "Cross-die traffic (SIO)", "GB/s", "C",
           "visualize_data.bin 0x08 memory_unit[memory_path in {2,6,7,8,37,38}]",
-          note="双 die 上访问对端 L2 走 SIO，延迟显著高于本 die",
-          caveat="path id 含义 CANN 未公开，跨 die 归属是推断；置信度按推断给"),
-        M("cross_die_pct", "跨 die 流量占比", "%", "C",
+          note="On a dual-die part, reaching the remote die's L2 traverses SIO at materially higher latency",
+          caveat="CANN does not document the path ids, so the cross-die grouping is inferred and tiered accordingly"),
+        M("cross_die_pct", "Cross-die traffic share", "%", "C",
           "derived: cross_die_bw / (cross_die + on_die)",
-          note=">20% 时值得按 GM 地址交织关系调整写分布"),
-        M("die_count", "DIE 数量", "-", "A", "platform_config:DieInfo/io_die_num",
-          note="Ascend950PR 为 2"),
+          note="Above 20%, adjust the write distribution to match the GM address interleave"),
+        M("die_count", "Die count", "-", "A", "platform_config:DieInfo/io_die_num",
+          note="2 on Ascend950PR"),
 
         # ---- runtime / driver REA outcomes --------------------------------
         M("op_timeline", "per-op start/end/duration", "ns", "A",
           "libprofapi.so: aclprofGetOpStart/GetOpEnd/GetOpDuration（acl_prof.h）",
-          note="算子级时间轴，可区分每个下发算子的起止；比 CSV 的单个总时长细",
-          caveat="仍是 op 级，不是 block 级；不含硬件计数"),
-        M("stream_correlation", "stream / correlationId 关联", "-", "A",
+          note="Operator-level timeline distinguishing each dispatched operator's start and end; finer than the single CSV duration",
+          caveat="Still operator level, not block level, and carries no hardware counters"),
+        M("stream_correlation", "stream / correlationId association", "-", "A",
           "mspti: msptiActivityKernel{start,end,streamId,correlationId}",
-          note="可判断 kernel 在哪个 stream、对应哪次 host 调用",
-          caveat="需要改用 mspti 采集，与 msopprof 是两套通路；本工具默认不启用"),
-        M("pmu_via_driver", "driver 直读 PMU", "-", "C",
-          "不可用（unavailable）: libascend_hal.so 无对应导出",
-          note="1757 个导出符号里只有 dmanage_get_pmu_voltage（电源，非性能计数）",
-          caveat="计数器通路在 profiler 驱动内部，不经 HAL 导出；只能走 msopprof"),
+          note="Determines which stream a kernel ran on and which host call it corresponds to",
+          caveat="Needs mspti collection, a separate path from msopprof; not enabled by default"),
+        M("pmu_via_driver", "Driver-level PMU access", "-", "C",
+          "unavailable: libascend_hal.so exports no such symbol",
+          note="Of 1757 exported symbols only dmanage_get_pmu_voltage is PMU-related, and it is power management",
+          caveat="Counter access lives inside the profiler driver and is not exported through HAL; msopprof is the only route"),
 
         # ---- rock-bottom reliability ------------------------------------
-        M("imbalance", "核间离散度", "%", "B", "derived: (max-min)/mean of per-core time",
-          note=">30% 说明 tiling 切分不均；短 kernel 上主要是启动开销"),
-        M("advice", "厂商建议", "-", "A", "visualize_data.bin advice 字段"),
+        M("imbalance", "Core-to-core spread", "%", "B", "derived: (max-min)/mean of per-core time",
+          note="Above 30% means uneven tiling; on short kernels it is mostly launch overhead"),
+        M("advice", "Vendor advice", "-", "A", "visualize_data.bin advice field"),
     ]
 
 
@@ -335,11 +335,11 @@ def confidence_of(key: str) -> str:
 def render_catalogue() -> str:
     """Human-readable catalogue, grouped by tier."""
     metrics = build_catalogue()
-    lines = ["# 指标目录", ""]
-    lines.append("每个指标都标注产出口径与置信度。置信度不是主观评级，而是按"
-                 "「这个数是怎么来的」划分，并用 5 次重复采集的变异系数校准。")
+    lines = ["# Metric catalogue", ""]
+    lines.append("Every metric states its provenance and confidence. The tier is not a subjective rating: it follows "
+                 "how the value is produced, calibrated against the coefficient of variation over five repeat collections.")
     lines.append("")
-    lines.append("| 级别 | 含义 |")
+    lines.append("| Tier | Meaning |")
     lines.append("|---|---|")
     for tier in TIER_ORDER:
         lines.append(f"| {tier} | {TIER_DESCRIPTION[tier]} |")
@@ -348,14 +348,14 @@ def render_catalogue() -> str:
         group = [m for m in metrics if m.tier == tier]
         if not group:
             continue
-        lines.append(f"## {tier} 级（{len(group)} 项）")
+        lines.append(f"## Tier {tier} ({len(group)} entries)")
         lines.append("")
-        lines.append("| 指标 | 单位 | 来源 | 说明 |")
+        lines.append("| Metric | Unit | Source | Note |")
         lines.append("|---|---|---|---|")
         for m in group:
             note = m.note
             if m.caveat:
-                note = (note + "；" if note else "") + "**注意**：" + m.caveat
+                note = (note + "；" if note else "") + "**Caveat**: " + m.caveat
             lines.append(f"| {m.label} | {m.unit} | `{m.source}` | {note} |")
         lines.append("")
     return "\n".join(lines)
@@ -379,9 +379,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             "  metric_catalogue.py --tier E   # only the unreliable ones\n"
         ),
     )
-    parser.add_argument("--json", action="store_true", help="以 JSON 输出")
+    parser.add_argument("--json", action="store_true", help="emit JSON")
     parser.add_argument("--tier", choices=TIER_ORDER, default=None,
-                       help="只列出指定置信度的指标")
+                       help="list only metrics of the given tier")
     args, _extra = parser.parse_known_args(argv)
 
     if args.tier:
@@ -398,17 +398,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             indent=2, ensure_ascii=False))
     else:
         if args.tier:
-            print(f"# {args.tier} 级指标（{len(metrics)} 项）\n")
+            print(f"# Tier {args.tier} metrics ({len(metrics)} entries)\n")
             for m in metrics:
                 print(f"- **{m.label}** (`{m.key}`) — {m.unit}")
-                print(f"  来源: `{m.source}`")
+                print(f"  Source: `{m.source}`")
                 if m.note:
-                    print(f"  说明: {m.note}")
+                    print(f"  Note: {m.note}")
                 if m.caveat:
-                    print(f"  **注意**: {m.caveat}")
+                    print(f"  **Caveat**: {m.caveat}")
                 measured = stability_for(m.key)
                 if measured:
-                    print(f"  实测 CV: {measured['cv_pct']}%（{measured['runs']} 次）")
+                    print(f"  Measured CV: {measured['cv_pct']}% ({measured['runs']} runs)")
         else:
             print(render_catalogue())
     return 0

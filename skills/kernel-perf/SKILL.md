@@ -1,195 +1,153 @@
 ---
 name: kernel-perf
-description: 在 Ascend NPU（含 Ascend950PR / dav-3510）上对指定 kernel 做上板实采的性能分析，目标是对齐 NVIDIA NCU 的信息密度：逐核逐流水的占用与等待、全带宽通路、L2/iCache、bank 冲突、MFU/MAC usage 等关键指标、以及逐指令耗时与 PC→opcode 归属。每个指标按「怎么来的」分 A–E 五级置信度，并用重复采集的变异系数校准。当用户要"分析某个 kernel 的性能""看某个算子慢在哪""拿 kernel 的详细性能指标""对比两次 kernel 性能""算一下 MFU"时使用。
+description: On-device kernel performance collection and analysis for Ascend NPUs (Ascend950PR / dav-3510 included), targeting the information density of NVIDIA NCU — per-core per-pipe occupancy and stalls, every bandwidth path, L2/iCache/DCache behaviour, bank conflicts, MFU/MAC usage, per-block launch timeline, cross-die (SIO) traffic, and instruction-level cost with PC→opcode attribution. Every metric carries an A–E confidence tier calibrated by measured run-to-run variance. Use when asked to profile a kernel, localise an operator's bottleneck, obtain detailed kernel performance metrics, compute MFU, compare two kernel runs, or diagnose multi-core launch skew and tail effects.
 ---
 
-# Ascend Kernel 上板性能采集
+# Ascend kernel performance collection
 
-给一个可执行文件和 kernel 名，把这颗芯片上能采到的性能数据全部拉下来，换算成可判读的形式，并标明每个数字有多可信。
+Given an executable and a kernel name, collect everything the chip exposes about that kernel, reduce it to a form that can be acted on, and state how far each number can be trusted.
 
-只走上板实采（`msopprof`），不跑 npusim 仿真。
+On-device capture only (`msopprof`). No npusim simulation.
 
-## 快速开始
+## Quick start
 
 ```shell
-# 标准采集 + 分析 + 校验
+# Standard collection, analysis and validation
 python3 scripts/kernel_perf.py profile --app ./vector_add --kernel add_kernel --out ./out
 
-# 加上逐指令耗时（慢，另起一趟，1–4 分钟）
+# Add instruction-level cost (slower: a separate pass, 1-4 minutes)
 python3 scripts/kernel_perf.py profile --app ./vector_add --kernel add_kernel --out ./out \
     --with-instructions --instr-pipes="vector|mte2|mte3"
 
-# 校验这次采集和报告（18 条检查，退出码可当门禁）
+# Validate the capture and the report (exit code gates delivery)
 python3 scripts/critic.py --out ./out --report ./out/report.md
 
-# 稳定性：同一 kernel 重复采集，量化每个指标的抖动
+# Repeatability: quantify per-metric jitter across identical runs
 python3 scripts/stability.py --app ./vector_add --kernel add_kernel --runs 5
 
-# 列出全部指标及其产出口径与置信度
+# Enumerate every metric with its provenance and confidence tier
 python3 scripts/metric_catalogue.py
 
-# 优化前后对比
+# Compare two captures
 python3 scripts/kernel_perf.py diff ./before ./after
 
-# 完整实跑样例（cann-samples vector_add，含真实输出）
-#   → references/example-vector-add.md
-
-# 不需要 NPU 的自测（70+ 项，含反例）
+# Off-device self-tests (no NPU required)
 python3 scripts/selftest.py
 ```
 
-## 信息分层
+## Information layers
 
-指标按「描述机器哪一层」组织，报告按这个顺序读——这也是排查的顺序。
+Metrics are organised by which part of the machine they describe; the report reads in this order, which is also the debugging order.
 
-| 层 | 内容 | 这一层回答 |
+| Layer | Contents | The question it answers |
 |---|---|---|
-| **SoC** | 数据搬运带宽、总线、L2、跨 die（SIO）、die 数量 | 算法规格/tiling 总量对不对 |
-| **核内** | MTE2/MTE3/Cube/Vector/Scalar/FixPipe 占用、冲突、UB/L0/L1、iCache/DCache、VF 占比 | 瓶颈是哪个单元 |
-| **调度** | 每个 block 的启动/结束时间、启动偏移、拖尾 | 核有没有一起开工、有没有拖尾 |
+| **SoC** | Data-movement bandwidth, interconnect, L2, cross-die (SIO), die count | Is the algorithmic shape or total tiling wrong? |
+| **Core** | MTE2/MTE3/Cube/Vector/Scalar/FixPipe occupancy, conflict rates, UB/L0/L1 bandwidth, iCache/DCache, VF ratio | Which unit is the bottleneck? |
+| **Schedule** | Per-block start/end timestamps, launch skew, tail | Did the cores start together, did any straggle? |
 
-`scripts/layers.py` 是这一层的单一事实来源；`kernel_perf.py --json` 的 `layers` 字段给出每个指标的归属。
+`scripts/layers.py` is the single source of truth for layer assignment; the `layers` field of `kernel_perf.py --json` maps each metric to its layer.
 
-### 调度层：block 时间轴
+### Schedule layer: block timeline
 
-Ascend950PR 有 56 个核，每个核是一个 block（含 1 个 AIC subcore 与 2 个 AIV subcore）。用
-`--metrics=...,PipeTimeline` 单独采一趟，从 `trace.json` 的每 `pid`（`core<N>.veccore<M>`）取
-`min(ts)` 与 `max(ts+dur)`，就得到每个 block 的首个活动与最后完成：
+Ascend950PR carries 56 cores. Each core is one block (one AIC subcore plus two AIV subcores). Collect one extra pass with `PipeTimeline`, then take `min(ts)` and `max(ts + dur)` per `pid` (`core<N>.veccore<M>`) from `trace.json` to obtain each block's first activity and last completion:
 
 ```shell
 python3 scripts/kernel_perf.py profile --app ./x --kernel k --out ./o \
     --metrics=PipeUtilization,...,PipeTimeline
 ```
 
-报告第 7 节给出：
+Report section 7 gives:
 
-- **启动偏移 (launch skew)** = last_start − first_start，占 kernel 时长比例
-- **拖尾 (tail)** = last_end − first_end
-- 最慢 block 列表
+- **Launch skew** = `last_start - first_start`, as an absolute value and a fraction of kernel duration
+- **Tail** = `last_end - first_end`
+- The slowest blocks
 
-实测 vector_add：偏移 0.864 us（20.2%）、拖尾 0.753 us（17.6%）。这两个量在流水线层面完全看不见。
+Measured on vector_add: skew 0.864 us (20.2%), tail 0.753 us (17.6%). Neither is visible from the pipe-level view.
 
-> **覆盖限制**：PipeTimeline 只插桩部分核。56 block 的 kernel 实测只拿到 12 个 subcore，
-> 所以 skew 是**下界**，不是全片真值。报告里固定写出来。
+> **Coverage limit**: PipeTimeline instruments only a subset of cores. A 56-block kernel yielded 12 subcores, so the skew is a **lower bound**, not a chip-wide truth. The report always states the covered count next to the number.
 
-### SoC 层：跨 die 流量
+### SoC layer: cross-die traffic
 
-平台 ini 的 `[DieInfo] io_die_num=2` 说明是双 die。L2 跨 die 交织，访问对端 L2 走 SIO。
-`visualize_data.bin` 的 `memory_unit[]` 里 `memory_path` 为 2/6/7/8/37/38 的通路只在 cube
-kernel 上出现且有流量，判定为跨 die：
+The platform ini declares `[DieInfo] io_die_num=2`, so the part is dual-die. L2 is interleaved across dies and remote-die L2 access traverses SIO. Inside `visualize_data.bin`, `memory_unit[]` entries with `memory_path` in {2, 6, 7, 8, 37, 38} appear only on the cube kernel and carry real traffic, so they are attributed to the remote die.
 
-实测 matmul：跨 die 合计 47.05 GB/s，片内 30.52 GB/s，**跨 die 占 60.6%**（path 8 单项 36.2 GB/s）。
+Measured on matmul: 47.05 GB/s cross-die against 30.52 GB/s on-die — **60.6% cross-die**, with path 8 alone at 36.2 GB/s.
 
-> **path id 含义 CANN 未公开**，命名是推断（依据见 `references/measurements.md`），
-> 所以置信度给 C。跨 die 占比高时，可行方向是按 GM 地址的 L2 交织关系让核只写本 die 的
-> cacheline、减少多核写同一 cacheline、或减少参与同地址写的核数。
+> **The `memory_path` ids are undocumented in CANN**, so the names and the cross-die grouping are inferred, and the confidence tier is C. When cross-die traffic is high, the available levers are: map GM addresses to the L2 interleave so each core writes only its local die's cachelines, reduce the number of cores writing the same cacheline, or reduce same-address write participation.
 
-## 采什么
+## What is collected
 
-一次采集（必要时分多趟）拿到的东西：
+One collection, split across passes where metric sets cannot coexist:
 
-| 层 | 内容 | 主要来源 |
+| Layer | Contents | Primary source |
 |---|---|---|
-| 身份 | kernel 名、耗时、Block Dim、频率、SoC | `OpBasicInfo.csv` |
-| 流水 | 每核每流水的忙时间/占比/活跃带宽 | `PipeUtilization.csv` |
-| 等待 | 各流水 wait 占比 + 逐核累计 wait cycles | `ResourceConflictRatio.csv`、`visualize_data.bin` |
-| 冲突 | store/load bank 冲突、SFU 冲突 | `ResourceConflictRatio.csv` |
-| 带宽 | GM↔UB、UB↔GM、主存读写、L1、L0A/B/C | `Memory*.csv` |
-| 通路 | 8 条 memory_path 的带宽与请求数（CSV 不含） | `visualize_data.bin` 0x08 |
-| Cache | L2 close/far × hit/miss/victim、iCache、逐核命中 | `L2Cache.csv`、`visualize_data.bin` |
-| 计算 | cube 指令数、浮点/整型指令数 | `ArithmeticUtilization.csv` |
-| 关键指标 | MFU、MAC usage、算术强度、受限因素 | 由上面推导 |
-| 指令 | 逐 opcode 耗时、逐 PC 耗时、流水归属 | `trace.json` + `dfx_region_map.txt` |
+| Identity | Kernel name, duration, Block Dim, clock, SoC | `OpBasicInfo.csv` |
+| Pipes | Per-core per-pipe busy time, ratio, active bandwidth | `PipeUtilization.csv` |
+| Stalls | Per-pipe wait ratio, per-core accumulated wait cycles | `ResourceConflictRatio.csv`, `visualize_data.bin` |
+| Conflicts | Store/load bank conflicts, SFU conflicts | `ResourceConflictRatio.csv` |
+| Bandwidth | GM↔UB, UB↔GM, main memory, L1, L0A/B/C | `Memory*.csv` |
+| Paths | 8+ memory paths with bandwidth and request counts (absent from CSV) | `visualize_data.bin` 0x08 |
+| Cache | L2 close/far × hit/miss/victim, iCache, DCache, per-core hit rates | `L2Cache.csv`, `visualize_data.bin` |
+| Compute | Cube instruction counts, FP/integer instruction split | `ArithmeticUtilization.csv` |
+| Key metrics | MFU, MAC usage, arithmetic intensity, binding constraint | Derived |
+| Instructions | Per-opcode cost, per-PC cost, pipe attribution | `trace.json` + `dfx_region_map.txt` |
+| Schedule | Per-block start/end, launch skew, tail | `trace.json` (PipeTimeline) |
 
-## 三个支柱
+## Key metrics (section 2)
 
-### 1. 稳定且准确
-
-同一 kernel 连采 5 次，量化每个指标的变异系数（`stability.py`，结果写进报告）。
-
-实测（vector_add，warm-up=5，launch-count=3）：
-
-| 指标 | CV | 判读 |
-|---|---:|---|
-| 耗时 | 1.84% | 稳定 |
-| MTE2 占用 | 1.38% | 稳定 |
-| Vector 占用 | 0.82% | 稳定 |
-| GM→UB 带宽 | 0.82% | 稳定 |
-| L2 **读**命中 | 0.57% | 稳定 |
-| L2 **写**命中 | **14.36%** | **不可单独引用** |
-
-结论：流水与带宽类指标重复性好到可以直接比较优化前后；Cache 写侧不是。
-
-### 2. 全面
-
-指标目录（`metric_catalogue.py`）枚举 49 项，每项写明来源文件与字段。覆盖度对照：
-
-- CANN 自身 `AI_CORE_CALCULATION_FORMULA` 定义了 74 个可计算指标
-- `msopprof` 的 CSV 只暴露其中 7 个的命名列
-- 本工具额外从 `visualize_data.bin` 解出 34 项 CSV 里没有的行（UB 四向带宽、8 条通路、逐核 L2、wait cycles…）
-
-**已知拿不到的**（如实标注，不猜）：
-- 部分 PMU 计数器（`vec_bankgroup_cflt_ratio`、`*_iq_full_ratio`、`control_flow_*`）在 `msopprof` 任何 metric 组下都没有输出通路，属于工具未暴露而非采集失败
-- 源码行级归属需要内核带 `-g` 重编，且显示的是内联展开后的头文件行，不是用户 kernel 行
-
-### 3. 信息分级
-
-每个指标带 A–E 置信度，按「怎么来的」划分，用实测 CV 校准（CV>10% 自动降为 E）：
-
-| 级 | 含义 | 例 |
+| Metric | Definition | Reference value on this part |
 |---|---|---|
-| A | 直接计数器，重复一致到末位 | 耗时、cycles、cube 指令数、wait cycles |
-| B | 由 A 精确推导，无采样无模型假设 | 各流水占比、带宽、bank 冲突、核间离散度 |
-| C | 采样统计，短 kernel 有混叠风险 | L2 读命中、逐指令耗时、时间线 |
-| D | 依赖理论常量，不是实测 | MFU、MAC usage、算术强度 |
-| E | 已知不稳定或无意义 | **L2 写命中率**（CV 14%） |
+| **MFU** | Achieved TFLOPS ÷ theoretical peak | Peak 378.47 TFLOPS (28 AIC × 1650 MHz × 16³ MAC × 2) |
+| **MAC usage** | Cube pipe occupancy, i.e. the fraction of MAC issue slots | Above 70% means the cube is MAC-saturated |
+| Arithmetic intensity | FLOPs ÷ main-memory bytes | Combined with peak bandwidth, decides compute- vs memory-bound |
 
-报告第 9 节列出本报告里所有 E 级指标及其原因，避免读者误用。
+MFU is always tier D: the denominator is a theoretical peak, so it supports comparison, not a claim about "measured compute".
 
-## 关键指标（第 2 节）
+**Do not infer the bottleneck from the operator type.** A measured `cube` matmul spent 0.08% in the cube pipe and 92.5% in AIC scalar. Classification always follows measured occupancy.
 
-| 指标 | 口径 | 本机参考值 |
+## Instruction-level cost
+
+Requires `--with-instructions`. Produces:
+
+- Cost and share aggregated by opcode
+- Cost aggregated by pipe
+- Hottest instruction sites (PC offset + opcode + pipe)
+
+Method: `args.pc_addr` in `trace.json` is an absolute address; subtracting `pc_start_addr.txt` yields the kernel-relative offset, which aligns with `pc=` in `dfx_region_map.txt` and therefore yields the opcode and pipe owning that instruction.
+
+The report states the **covered fraction** — attributed time as a share of total kernel time. Below 50% it warns explicitly that the breakdown describes the instrumented region, not the whole kernel.
+
+The same trace also drives **PC-vs-cycle icache-miss diagnosis** (the primary technique in `scalar_story`): a run of consecutive events sharing one PC with a gap of at least 0.05 us is treated as waiting on instruction fetch, and the longest-staying PCs are listed. Measured on vector_add: zero such stalls — a small kernel has no icache misses, and the tool reports the honest zero.
+
+## Collection constraints (measured)
+
+- **Collection is split into passes.** `InstrTimeline` and `PipeTimeline` are mutually exclusive; `InstrTimeline` combined with the eight core groups hangs rather than erroring. `plan_passes` performs the split automatically.
+- **No more than eight groups per pass.** Eleven groups return success while writing an all-`NA` capture, caught by the `collection_nonempty` check.
+- **`--instr-timeline-pipe`** accepts only `cube|fixp|vector|mte1|mte2|mte3`; `scalar` is rejected outright.
+- **`dfx_region_map.txt` is deleted by msopprof's later parsing**, so collection archives it into `probe/` immediately.
+- **`TimelineDetail` fails outright** on dav-3510.
+- **Application-level `msprof` (non-`op`) is unusable on this host**: the bundled Python's `_ctypes` does not match the interpreter, so capture data cannot be parsed. Kernel-level analysis is unaffected.
+- **`biprof` is not an on-device tool**: it is a `cannsim` simulator package requiring `plotly`, which is not installed. `msprof op` is itself a wrapper over `msopprof`.
+
+## Confidence tiers
+
+Every metric carries one of five tiers, assigned by how the value is produced and calibrated by measured repeatability. Anything above 10% coefficient of variation is demoted to E automatically.
+
+| Tier | Meaning | Example |
 |---|---|---|
-| **MFU** | 达成 TFLOPS ÷ 理论峰值 | 峰值 378.47 TFLOPS（28 AIC × 1650 MHz × 16³ MAC × 2） |
-| **MAC usage** | cube 流水占用，即 MAC 发射机会比例 | >70% 表示 cube 被乘加填满 |
-| 算术强度 | FLOPs ÷ 主存字节 | 结合峰值带宽判断 compute/memory bound |
+| A | Direct counter, reproduces to the last digit | Duration, cycles, cube instruction count, wait cycles |
+| B | Exact derivation from tier-A values, no sampling, no model assumption | Pipe ratios, bandwidth, bank conflicts, core imbalance |
+| C | Sampled statistic, aliasing risk on short kernels | L2 read hit rate, instruction-level cost, timeline |
+| D | Depends on a theoretical constant, not measured | MFU, MAC usage, arithmetic intensity |
+| E | Known unstable or meaningless in common cases | **L2 write hit rate** (measured CV 14%) |
 
-MFU 一律标 D 级：分母是理论峰值，用于横向比较，不是"实测算力"。
+Report section 10 lists every E-tier metric in that report and why, so an unstable value cannot be quoted by accident.
 
-**别按算子类型猜瓶颈**：实测一个 `cube` 类型的 matmul，cube 流水只占 0.08%、AIC scalar 占 92.5%。归类一律按实测占比。
+## Reading the results
 
-## 逐指令耗时
+Thresholds in `references/interpretation.md`; measured data in `references/measurements.md`; platform constants in `references/platform-constants.md`; container format and capability boundaries in `references/dav3510-notes.md`; worked examples in `references/example-vector-add.md` and `references/example-three-kernels.md`.
 
-需要 `--with-instructions`。产出：
+Three rules:
 
-- 按 opcode 聚合的耗时与占比
-- 按流水聚合
-- 最热指令点（PC 偏移 + opcode + 流水）
-
-原理：`trace.json` 的 `args.pc_addr` 是绝对地址，减去 `pc_start_addr.txt` 得到 kernel 内偏移，再与 `dfx_region_map.txt` 的 `pc=` 对齐，就得到「这条指令属于哪个 opcode、哪条流水」。
-
-报告会明确写出**覆盖率**——已归属耗时占 kernel 总时间的百分比。低于 50% 时给出警告：那描述的是被插桩区间，不是整个 kernel。
-
-同一份 trace 还用来做 **PC-vs-cycle 的 icache miss 诊断**（scalar_story 的手段一）：同一 PC 连续出现
-且间隔 ≥0.05 us 判为「在等取指」，报告列出停留最久的 PC。实测 vector_add 为 0 处——短 kernel
-本来就没有 icache miss，工具如实报 0。
-
-## 约束（实测）
-
-- **采集分趟**：`InstrTimeline` 与 `PipeTimeline` 互斥；`InstrTimeline` 和 8 个核心组混采会挂起。工具自动拆趟（`plan_passes`）。
-- **一次不超过 8 组**：11 组会让所有计数变 `NA` 却仍返回 0，靠 `collection_nonempty` 检查识别。
-- **`--instr-timeline-pipe`** 只接受 `cube|fixp|vector|mte1|mte2|mte3`，给 `scalar` 直接被拒。
-- **`dfx_region_map.txt` 会被 msopprof 后续步骤删除**：工具在采集后立即复制到 `probe/`。
-- **`TimelineDetail` 在 dav-3510 上直接失败**，不要用。
-- **应用级 `msprof`（非 `op`）在本机不可用**：自带 Python 的 `_ctypes` 不匹配，采集到数据但无法解析。kernel 级不受影响。
-- **`biprof` 不是上板工具**：它是 `cannsim` 仿真器的包，需要 `plotly`（未安装）。`msprof op` 本身就是 `msopprof` 的包装。
-
-## 判读
-
-阈值见 `references/interpretation.md`；实测数据见 `references/measurements.md`；平台常量见 `references/platform-constants.md`；容器格式与能力边界见 `references/dav3510-notes.md`。
-
-三条核心：
-
-- 主导流水 >60% 且峰值占比 >70% → 接近硬件极限，优化看算法
-- 没有任何流水 >50% → 流水线气泡，查 wait 占比与 double buffer
-- 核间耗时差 >30% → tiling 切分问题，与流水优化无关
+- A dominant pipe above 60% with peak utilisation above 70%: close to the hardware limit, so the gain must come from the algorithm
+- No pipe above 50%: pipeline bubbles, so read the wait ratios and check double buffering
+- Per-core duration spread above 30%: a tiling problem, unrelated to pipeline tuning
