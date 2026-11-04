@@ -31,3 +31,13 @@
 | `../MTE2建模报告.html` | 建模现状报告 |
 
 列：`launch,core,t_begin,t_issue0..7,t_done0..7,K,S,B`，时间单位 `SYS_CNT` tick ≈ 1.00 ns。
+
+## 硬件计数器（§7）
+
+| 文件 | 内容 |
+|---|---|
+| `hwclean.csv` / `../hw-counters.csv` | 17 个配置 × 4 次发射的原始计数器：`l2_miss`、`aiv_total_cycles` |
+| `../hw-result.json` | 拟合结果与 CV |
+
+关键：`aiv_read_local_l2_miss` 在冷读下**恰好等于 K·B·S/256**，即拆包尺寸 256 字节。
+因它是事务计数而非时间，跨发射 CV 只有 1.2–4.2%，远优于墙钟时间的 7–14%。
