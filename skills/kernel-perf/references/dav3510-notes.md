@@ -121,6 +121,46 @@ Raw PMU event ids:
 
 These are the ids programmed into the hardware. `msopprof`'s `--aic-metrics` is a higher-level preset and does not expose per-event selection, which is why some metrics CANN can compute have no collection path.
 
+### PMU event configuration (from the Ascend/msprof source)
+
+The event ids are configured per chip generation, not selected by the user on
+the command line. `analysis/msconfig/soc_pmu_config.py`:
+
+```python
+DEFAULT_EVENT = [('request_events', '0x8a'),
+                 ('hit_events', '0x8c,0x8d'),
+                 ('miss_events', '0x2')]
+
+DATA = {
+    CHIP_V4_1_0: DEFAULT_EVENT,
+    CHIP_V6_1_0: DEFAULT_EVENT,
+    CHIP_V6_2_0: DEFAULT_EVENT,
+    CHIP_V6_1_1: DEFAULT_EVENT,
+}
+```
+
+Three observations that matter for this skill:
+
+1. **The event set is fixed per chip, not per invocation.** Every v4 and v6
+   part, dav-3510 among them, uses the same triple. There is no user-facing
+   surface for choosing event ids, which is why "collect a specific PMU event"
+   is not reachable through `msopprof`'s `--aic-metrics`: that flag selects a
+   *derived metric group*, not raw events.
+2. **The three events map one-to-one onto the CSV's counters.** `request` feeds
+   the bandwidth denominators, `hit` splits into the two close/far hit columns,
+   and `miss` into the miss columns - the close/far x hit/miss/victim split the
+   L2Cache CSV exposes.
+3. **The AI Core side is richer than the SOC side.** `Constant.L2_CACHE_EVENTS`
+   lists 32 event ids for L2 and `Constant.SOC_PMU_EVENTS` adds
+   `0x2, 0x8a, 0x8b, 0x8b, 0x8c, 0x8d`, while the AI Core groups
+   (`PipeLineUtIndex`, `MemoryIndex`, ...) are computed from a much larger PMU
+   set that `msopprof` programs internally.
+
+So the honest statement is: the PMU event vocabulary is *knowable* from the
+CANN source, but it is *not programmable* from the capture interface. What the
+tool can do is report every metric those events produce, and name the event
+group each metric came from - which is what `metric_catalogue.py` does.
+
 ### Metric index order (from the Ascend/msprof source)
 
 `analysis/csrc/domain/entities/metric/include/metric.h` defines the index enums, and `metric.cpp` binds each enum to its header string. In a PMU result vector the position is the enum value, so this is the authoritative ordering:

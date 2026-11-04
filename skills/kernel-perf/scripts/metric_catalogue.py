@@ -280,6 +280,12 @@ def build_catalogue() -> List[Metric]:
           "unavailable: libascend_hal.so exports no such symbol",
           note="Of 1757 exported symbols only dmanage_get_pmu_voltage is PMU-related, and it is power management",
           caveat="Counter access lives inside the profiler driver and is not exported through HAL; msopprof is the only route"),
+        M("pmu_event_set", "PMU event ids", "-", "A",
+          "Ascend/msprof analysis/msconfig/soc_pmu_config.py",
+          note="request_events=0x8a, hit_events=0x8c,0x8d, miss_events=0x2; "
+               "identical for every v4 and v6 part including dav-3510",
+          caveat="The event set is fixed per chip generation and has no user-facing selector; "
+                 "--aic-metrics chooses a derived metric group, not raw events"),
 
         # ---- rock-bottom reliability ------------------------------------
         M("imbalance", "Core-to-core spread", "%", "B", "derived: (max-min)/mean of per-core time",
