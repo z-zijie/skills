@@ -88,7 +88,7 @@ WARMUP=5 ITERS=10 FLUSH=1 /workspace/cannbench/bin/cnb-npu-lock \
 | `FLUSH=1`（每轮刷 201 MB） | 8.79 µs | 7.15 | 13.33 | 45 |
 | `FLUSH=0` | 5.80 µs | 5.19 | 7.63 | 45 |
 
-差 52%。被测 case 越小、数据段越整块装进 128 MiB L2，差距越大。这也是"A/B 两次测出 20% 收益、其实只是换了探针"的物理来源。
+差 52%。被测 case 越小、数据段越整块装进 128 MiB L2，差距越大。上一个周期里"A/B 两次测出 20% 收益、其实只是换了探针"的物理来源就是这一条。
 
 ## 口径对照
 
@@ -96,7 +96,7 @@ WARMUP=5 ITERS=10 FLUSH=1 /workspace/cannbench/bin/cnb-npu-lock \
 |---|---|---|---:|
 | host-event | bench 的 `aclrtEvent` 计时 | 迭代期快信号 | 8.79 µs（5 进程 × 10 次的合并中位数，骨架默认 `TILES=4`） |
 | kernel-perf | msopprof `Duration` | pipe 画像 + Duration 复核 | 7.73 µs（同骨架同参数，5 次采集中位数） |
-| 评分 | CannBench per-case profiler | 定稿一次 | 3.05–3.20 µs（打榜工程与 harness 自身口径） |
+| 评分 | CannBench per-case profiler | 定稿一次 | 3.05–3.20 µs（上一个周期在打榜工程上量的，非本骨架） |
 
 host-event 比 kernel-perf 高，是因为它把 kernel 之外的派发与同步也圈进了计时区间，而 kernel-perf 只算设备侧 kernel 本体。评分口径更低，是因为打榜 harness 的计时窗口又换了一层。
 
