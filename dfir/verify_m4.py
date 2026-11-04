@@ -47,7 +47,9 @@ aic_mac_us = (m.aic.mac_cyc_per_mmad_128x256x128
               * (2.0 * singleCoreM * K * N) / (2.0 * 128 * 256 * 128)
               / m.aic.aic_cycles_per_us)
 aic_fix_us = m.aic.fixpipe_us_per_launch
-aiv_vec_us = m.vec.cycles(singleCoreM * N, 4, cores_aiv) / (m.clock.ghz * 1000.0)
+# per-core busy time, which is what msprof reports; v2 wrongly used a
+# launch total here and so charged cores*elems instead of elems.
+aiv_vec_us = m.vec.per_core_cycles(singleCoreM * N) / (m.clock.ghz * 1000.0)
 pred2 = aic_load_us + aic_mac_us + aic_fix_us + aiv_vec_us
 
 pred_us = r.cycles / m.aic.aic_cycles_per_us     # v1: Cube expr in AIC cycles
@@ -77,6 +79,16 @@ modelled = sum(us for _, us, s in items if s.startswith("YES"))
 print(f"\n  covered by the model : {modelled:.3f} us ({100*modelled/MEASURED_US:.0f}%)")
 print(f"  not covered          : {MEASURED_US-modelled:.3f} us "
       f"({100*(1-modelled/MEASURED_US):.0f}%)")
+# What would a FULLY itemised model give?
+busy = 3.990 + 2.236 + 0.752 + 0.280 + 0.973 + 0.477 + 0.104 + 0.938
+print()
+print("Upper bound on what itemising every pipe would give:")
+print(f"  sum of all measured pipe busy times = {busy:.2f} us "
+      f"({100*(busy-MEASURED_US)/MEASURED_US:+.1f}%)")
+print(f"  Task Duration                       = {MEASURED_US:.2f} us")
+print("  => even a model that knew every pipe's busy time exactly would still be")
+print("     19% short, because pipe busy times OVERLAP. Predictting elapsed time")
+print("     needs a critical-path/overlap model, not a sum of busy times.")
 print()
 print("Conclusion: the operator is dominated by per-pipe SCALAR work and the")
 print("AIC-side GM->L1 load, neither of which the IR models. MAC is only 6%, so")

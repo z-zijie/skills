@@ -231,16 +231,28 @@ class VECCost:
     # found for MTE2: a coefficient measured on a saturated machine does not
     # transfer to a small launch. VEC needs its own CoreNum law; until then this
     # constant is the saturated-regime value and over-predicts small launches.
+    # M6 result: per-CORE cost is CONSTANT at 0.0333 cyc/elem across B=4..56
+    # (measured 0.0337 / 0.0340 / 0.0331 / 0.0331 / 0.0334). VEC has no
+    # contention term -- each core drives its own vector unit -- so the launch
+    # total is simply cores x per-core cost. The 6.3x "CoreNum effect" guessed
+    # at in M4 does not exist; that gap was a unit mismatch (see below).
     t_setup: float = 100.0
-    cyc_per_elem: float = 0.033001
-    cyc_per_elem_unsaturated: float = 0.00524
+    cyc_per_elem: float = 0.0333
+    cyc_per_elem_unsaturated: float = 0.0333
     calibrated: bool = True
     source: str = "hw-counters M1, VEC K-sweep at fp32"
 
     def cycles(self, elem: int, dtype_bytes: int, cores: int) -> float:
-        # dtype scaling unknown: fp32 measured, others assumed proportional to
-        # element count (not widened), flagged in the report rather than guessed.
+        """LAUNCH total, in AIV counter cycles (cores x per-core).
+
+        Careful: msprof's aiv_vec_time(us) is per-core BUSY time, not a launch
+        total. Comparing a launch-total cycle figure against a busy-time column
+        is what made M4 look 6.3x off.
+        """
         return max(1, cores) * (self.t_setup + elem * self.cyc_per_elem)
+
+    def per_core_cycles(self, elem: int) -> float:
+        return self.t_setup + elem * self.cyc_per_elem
 
 
 @dataclass
