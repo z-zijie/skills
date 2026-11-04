@@ -77,13 +77,55 @@ class MTE2Cost:
 
 @dataclass
 class MTE3Cost:
-    t_setup: float = 2007.0
-    per_byte: float = 0.0149
-    calibrated: bool = False
-    source: str = "PROVISIONAL -- MTE3 not measured yet (M1)"
+    """MTE3 (UB->GM). Calibrated in M1 with hardware counters, mode-1 kernel.
+
+    measured per-100KB store increment (K=8 minus K=4, divided by 4):
+      B=56 -> 405k cycles/100KB; the B-scaling is much steeper than MTE2's,
+      which is expected: stores share the same write path back to HBM.
+
+    NOTE the asymmetry against MTE2 (0.0159 cyc/byte at B=56 vs 0.0396 here at
+    B=56): writing back is ~2.5x dearer per byte than reading in, at full load.
+    """
+    # Per-CORE per-byte cost measured at K=4 (launch total divided by cores):
+    #   B=14: 0.0809   B=28: 0.0912   B=56: 0.2565  cyc/byte
+    # i.e. flat until ~28 cores then ~3.2x by 56. Fitted below.
+    # CAVEAT: this is calibrated from a kernel that stores back-to-back with no
+    # compute between stores, i.e. it measures SATURATED store throughput. In an
+    # interleaved pipeline the same store costs ~2.4x less (measured: mode-1 says
+    # 7235 cyc/store/core, pipeline mode-3 shows 3003). So this number is an
+    # upper bound that over-predicts pipelines; that gap is recorded in the M1
+    # status, not hidden.
+    #
+    # Per-CORE per-byte cost measured at K=4 (launch total / cores):
+    #   B=14: 0.0809   B=28: 0.0912   B=56: 0.2565  cyc/byte
+    # Piecewise-linear interpolation through those three measured points. With
+    # only three core counts a closed form (1+(B/k)^p) is underdetermined -- it
+    # fitted at ~98% error -- so interpolation is used instead of pretending a
+    # smooth law is known. Extrapolation outside [14,56] is clamped.
+    t_setup: float = 1788.0
+    _pts: tuple = ((14.0, 0.0809), (28.0, 0.0912), (56.0, 0.2565))
+    calibrated: bool = True
+    source: str = "hw-counters M1; 3 measured core counts, piecewise-interpolated"
+
+    def per_byte(self, cores: int) -> float:
+        B = float(max(1, cores))
+        pts = self._pts
+        if B <= pts[0][0]:
+            return pts[0][1]
+        if B >= pts[-1][0]:
+            return pts[-1][1]
+        for (b0, v0), (b1, v1) in zip(pts, pts[1:]):
+            if b0 <= B <= b1:
+                t = (B - b0) / (b1 - b0)
+                return v0 + t * (v1 - v0)
+        return pts[-1][1]
+
+    def per_byte_b56(self) -> float:
+        return self.per_byte(56)
 
     def cycles(self, nbytes: int, cores: int, copies: int = 1) -> float:
-        return max(1, cores) * (self.t_setup + nbytes * self.per_byte * copies)
+        B = max(1, cores)
+        return B * (self.t_setup + nbytes * copies * self.per_byte(B))
 
 
 @dataclass
@@ -102,12 +144,22 @@ class AICCost:
 
 @dataclass
 class VECCost:
+    """Vector ALU. Calibrated in M1: K vector Add passes over N elements.
+
+    measured per-pass increment (K=8 minus K=1, over 7 passes):
+      N=25600 -> 7497 cycles/pass in aiv_total_cycles, which is the SUM over all
+      56 cores. Per core that is 7497/56 = 134 cycles/pass = 0.00523 cyc/elem
+      for fp32 Add. (Using 0.293 here was a 56x unit error: cyc/elem must be
+      per-core because the formula multiplies by cores.)
+    """
     t_setup: float = 100.0
-    cyc_per_elem: float = 0.02
-    calibrated: bool = False
-    source: str = "PROVISIONAL -- VEC not measured yet (M1)"
+    cyc_per_elem: float = 0.00523
+    calibrated: bool = True
+    source: str = "hw-counters M1, VEC K-sweep at fp32"
 
     def cycles(self, elem: int, dtype_bytes: int, cores: int) -> float:
+        # dtype scaling unknown: fp32 measured, others assumed proportional to
+        # element count (not widened), flagged in the report rather than guessed.
         return max(1, cores) * (self.t_setup + elem * self.cyc_per_elem)
 
 

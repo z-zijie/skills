@@ -9,7 +9,7 @@
 | 观测量 | 跨发射 CV |
 |---|---|
 | 墙钟时间 | 7–14% |
-| `aiv_total_cycles` / `aic_total_cycles` | **1.2–4.2%** |
+| `aiv_total_cycles` / `aic_total_cycles` | **1–5%** |
 
 墙钟时间下 5% 不可达（已证明：完美模型在同一评分下也只有 8.5% 误差）。
 所以 IR 的时间单位是**周期**，不是微秒。
@@ -18,43 +18,66 @@
 
 ```
 ir.py          IR 定义（node/flow）、解析、拓扑排序
-costs.py       各通路成本模型；MTE2 已标定，其余 calibrated=False
-estimate.py    pipe/stream 调度 + 关键路径估算，输出 per-pipe 与 bottleneck
+costs.py       各通路成本模型
+estimate.py    pipe/stream 调度 + 关键路径估算
 calibrate.py   从计数器 CSV 重新拟合 MTE2Cost，带 LOO-CV
-verify.py      端到端：IR → 估算 vs 实测
+verify.py      MTE2 端到端：IR → 估算 vs 实测
+verify_m1.py   AIV 流水线端到端
+calibration-bsweep.csv / m1b.csv   标定原始数据
 ROADMAP.md     里程碑
-calibration-bsweep.csv  标定用原始数据（65 配置 × 9 次发射）
 ```
 
-## MTE2 已标定模型（M0）
+## 已完成标定的通路
+
+| 通路 | 状态 | 精度 |
+|---|---|---|
+| **MTE2** (GM→UB) | ✅ | LOO **3.91%**，75% 点在 ±5% 内（63 点，B=1..56） |
+| **MTE3** (UB→GM) | ⚠️ | 三点插值（B=14/28/56），**仅覆盖饱和写**，见下 |
+| **VEC** | ⚠️ | 单点标定：fp32 Add 0.00523 cyc/elem（每核） |
+| **AIC / Fixpipe** | ❌ | 未标定（M2） |
+
+## MTE2 模型（M0，最成熟）
 
 ```
 cycles = B*( t_setup + S*r1*(1+(B/k1)^p1) + (K-1)*(c_extra + S*r2*(1+(B/k2)^p2)) )
 ```
 
-参数（`calibrate.py` 拟合，63 点）：
+| 参数 | 值 |
+|---|---|
+| t_setup | 1788 |
+| r1, k1, p1 | 0.01608, 26, 1.20 |
+| c_extra | 230 |
+| r2, k2, p2 | 0.00674, 12, 1.20 |
 
-| 参数 | 值 | 含义 |
-|---|---|---|
-| t_setup | 1788 | 每核固定开销（不随字节变） |
-| r1, k1, p1 | 0.01608, 26, 1.20 | 第一份拷贝的每字节成本及其随核数的增长 |
-| c_extra | 230 | 每多一份拷贝的固定部分 |
-| r2, k2, p2 | 0.00674, 12, 1.20 | 追加拷贝的每字节成本（随核数增长更快） |
+**两个非平凡结构发现**
+1. **固定开销按核计一次，不按字节**（B=4 用两个尺寸相减可精确解出）
+2. **追加拷贝比第一份便宜**（1.2–1.6 倍而非 2 倍），且含与字节无关的成分
 
-**精度**：样本内 MAPE 3.78%，**LOO 交叉验证 3.91%**，中位数 2.09%，75% 的点在 ±5% 内。
+**已知未建模**：`K=2, S=32KB, B≥52` 的 +175k 周期拓扑台阶，显式排除并标注。
 
-### 两个非平凡的结构发现
+## M1 状态：AIV 三通路已测，但流水线预测**不达标**
 
-1. **t_setup 按核计一次，不按字节**。B=4 时用 S=32K 和 64K 两点相减可精确解出：
-   rate=0.0194 cyc/B、t0=2006 cyc。纯 bandwidth 模型会把小包算错几倍。
-2. **追加拷贝比第一份"便宜"但有下限**。K=2/K=1 的耗时比只有 1.2–1.6（不是 2.0），
-   且该比值随 B 上升、随 S 下降 —— 说明追加拷贝有一个**与字节无关**的部分（c_extra）。
+三个通路单独标定都做了，但把它们组合成真实流水线时误差 **174%**，而且方向很说明问题：
 
-### 已知未建模：拓扑断点
+| K=4 @ B=56 | cycles |
+|---|---|
+| mode1 (MTE2 in + 4 MTE3 stores) | 1 470 822 |
+| mode2 (2×MTE2 in + 4 VEC) | 682 344 |
+| mode3 (完整流水线 load→vec→store) | 2 894 400 |
+| **每次迭代** | **723 600** |
+| 若三通路完全串行相加 | ~538 292 |
 
-`K=2, S=32KB, B≥52` 出现 +175k 周期的台阶（B=48→52，K=1 在同一位置只涨 3k）。
-这是**资源/拓扑阈值**，不是字节与核数的光滑函数。当前做法是**显式排除并标注**，
-不把它混进平滑模型里（否则会同时污染两侧的拟合）。建模它是 M1 的后续工作。
+**流水线每次迭代比串行求和还贵**（723k vs 538k）——说明 MTE2 和 MTE3 同时活跃时
+**争用同一条总线**，互相拖慢。估算器当前假设"同 pipe 串行、跨 pipe 完全并行"，
+这个执行模型是错的，缺一个**跨 pipe 的总线争用项**。
+
+这不是标定误差，是**执行模型的缺陷**。所以 M1 的结论是：
+- 单通路标定：完成
+- 多通路流水线预测：**未达标**，缺总线争用模型
+- 修法：给 `estimate.py` 加一个"MTE2+MTE3 同时活跃时按共享带宽串行化"的规则，
+  系数从 mode3 的数据标定
+
+这个缺口已写入 ROADMAP 的 M1 后续项，不会在报告里含糊过去。
 
 ## 用法
 
@@ -62,22 +85,13 @@ cycles = B*( t_setup + S*r1*(1+(B/k1)^p1) + (K-1)*(c_extra + S*r2*(1+(B/k2)^p2))
 from ir import parse
 from estimate import estimate
 
-flow = parse({
-  "name": "load_compute_store", "cores": 56,
-  "nodes": [
-    {"id": "in",  "kind": "copy",    "pipe": "MTE2", "bytes": 102400},
-    {"id": "op",  "kind": "compute", "pipe": "VEC",  "elem": 25600, "deps": ["in"]},
-    {"id": "out", "kind": "copy",    "pipe": "MTE3", "bytes": 102400, "deps": ["op"]},
-  ]})
+flow = parse({"name": "lc", "cores": 56, "nodes": [
+  {"id": "in",  "kind": "copy",    "pipe": "MTE2", "bytes": 102400},
+  {"id": "v",   "kind": "compute", "pipe": "VEC",  "elem": 25600, "deps": ["in"]},
+  {"id": "out", "kind": "copy",    "pipe": "MTE3", "bytes": 102400, "deps": ["v"]},
+]})
 r = estimate(flow)
-print(r.us, r.bottleneck, r.warnings)
+print(r.cycles, r.bottleneck, r.warnings)
 ```
 
-`r.warnings` 会明确列出 flow 用到的**未标定通路**——5% 的结论不会被错误地延伸到未测量的引擎上。
-
-## 当前精度边界
-
-- **MTE2 单通路（AIV）**：3.9% LOO，达标
-- **MTE3 / VEC / AIC / Fixpipe**：未标定，估算仅作占位
-- **多通路重叠（pipe/stream 调度）**：逻辑已实现，但没有实验验证
-- **MIX（AIC+AIV 协同）**：未开始
+`r.warnings` 明确列出 flow 用到的**未标定通路**，5% 结论不会被延伸到未测量的引擎。
