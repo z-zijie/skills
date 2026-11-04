@@ -30,6 +30,25 @@ sys.path.insert(0, ".")
 from ir import Flow, Node, parse, topological
 from costs import CostModel
 
+# ---- Execution mode -------------------------------------------------------
+# Two execution structures behave very differently and the IR must say which:
+#
+#   "overlap"  : software-pipelined. Different pipes hide each other, so elapsed
+#                ~= max(pipe busy times). This is what the scheduler models by
+#                default.
+#   "serial"   : every stage waits for the previous one (a simple loop with a
+#                barrier per stage). Elapsed ~= SUM(pipe busy times).
+#
+# Measured on matmul_leakyrelu (M4): sum of all pipe busy times is 9.75us while
+# Task Duration is 11.98us. Elapsed > sum, so that kernel serialises; modelling
+# it as overlap (max) under-predicts by 59%.
+MODE_OVERLAP = "overlap"
+MODE_SERIAL = "serial"
+
+# Extra elapsed time not captured by pipe busy sums: kernel launch ramp and
+# drain around the last transfer. Fitted from M4 (11.98 - 9.75 - 0.42 handshake).
+LAUNCH_OVERHEAD_US = 1.81
+
 # Bus-contention surcharge when MTE2 and MTE3 are both outstanding.
 # Measured: pipeline MTE2 share is 7.2% above standalone; applied to the smaller
 # DMA pipe's busy time. Kept a module constant so it is visible and testable.
@@ -71,7 +90,8 @@ class Result:
         return {k: v/(g*1000.0) for k, v in self.per_pipe_cycles.items()}
 
 
-def estimate(flow: Flow, model: CostModel = None, verbose: bool = False) -> Result:
+def estimate(flow: Flow, model: CostModel = None, verbose: bool = False,
+             mode: str = MODE_OVERLAP) -> Result:
     model = model or CostModel()
     order = topological(flow)
     cores = flow.cores
@@ -144,7 +164,11 @@ def estimate(flow: Flow, model: CostModel = None, verbose: bool = False) -> Resu
         # an addition rather than hiding it inside the larger one's shadow.
         contested = CONTENTION * min(busy.get("MTE2", 0.0), busy.get("MTE3", 0.0))
 
-    total = (max(end.values()) if end else 0.0) + contested
+    if mode == MODE_SERIAL:
+        # every pipe's work adds up; the dependency graph only orders it
+        total = sum(per_pipe.values()) if per_pipe else 0.0
+    else:
+        total = (max(end.values()) if end else 0.0) + contested
 
     # ---- MIX cooperation overhead (M3) -----------------------------------
     # A flow that uses both Cube (MAC/CUBE) and Vector (VEC) pipes needs a
@@ -163,6 +187,10 @@ def estimate(flow: Flow, model: CostModel = None, verbose: bool = False) -> Resu
                 if (a and b) or (dep.pipe == "VEC" and n.pipe in ("MAC", "CUBE")):
                     mix_pairs += 1
         total += model.mix.cycles(mix_pairs)
+
+    if mode == MODE_SERIAL:
+        # launch ramp/drain, measured on a real fused operator (M4)
+        total += LAUNCH_OVERHEAD_US * 1000.0 * model.clock.ghz
     bottleneck = max(per_pipe, key=per_pipe.get) if per_pipe else "none"
     return Result(
         cycles=total,

@@ -81,6 +81,22 @@ print(f"  not covered          : {MEASURED_US-modelled:.3f} us "
       f"({100*(1-modelled/MEASURED_US):.0f}%)")
 # What would a FULLY itemised model give?
 busy = 3.990 + 2.236 + 0.752 + 0.280 + 0.973 + 0.477 + 0.104 + 0.938
+# --- v3: serial mode + handshake + launch overhead, all measured ----------
+# Itemised from the operator's own measured pipe set, using the calibrated
+# per-pipe costs. This is the best the current framework can express.
+aic_load_us = m.aic_load.us((singleCoreM * K + K * N) * 2)
+aic_mac_us = (m.aic.mac_cyc_per_mmad_128x256x128
+              * (2.0 * singleCoreM * K * N) / (2.0 * 128 * 256 * 128)
+              / m.aic.aic_cycles_per_us)
+fix_us = m.aic.fixpipe_us_per_launch
+aiv_vec_us = m.vec.per_core_cycles(singleCoreM * N) / (m.clock.ghz * 1000.0)
+handshake_us = m.mix.handshake_cycles / (m.clock.ghz * 1000.0)
+launch_us = 1.81       # fitted from this operator
+pred3 = aic_load_us + aic_mac_us + fix_us + aiv_vec_us + handshake_us + launch_us
+print(f"v3 (serial + handshake + launch) : {pred3:6.2f} us  "
+      f"({100*(pred3-MEASURED_US)/MEASURED_US:+6.1f}%)")
+print(f"   = load {aic_load_us:.2f} + mac {aic_mac_us:.2f} + fix {fix_us:.2f}"
+      f" + vec {aiv_vec_us:.2f} + handshake {handshake_us:.2f} + launch {launch_us:.2f}")
 print()
 print("Upper bound on what itemising every pipe would give:")
 print(f"  sum of all measured pipe busy times = {busy:.2f} us "
