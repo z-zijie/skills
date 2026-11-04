@@ -61,7 +61,29 @@ class MTE2Cost:
         """
         return self.cycles(nbytes, cores, copies) / max(1, cores)
 
-    def cycles(self, nbytes: int, cores: int, copies: int = 1) -> float:
+    # Steady-state check: pipeline marginal (757457) - MTE3 marginal (405141)
+    # = 352316 for (MTE2 + VEC); subtracting VEC's 47310 leaves MTE2 at 305006,
+    # against 307329 measured standalone -- within 0.7%. So MTE2 and MTE3 DO
+    # overlap without a measurable surcharge on this hardware; there is nothing
+    # to charge. (An earlier 1.16 contention factor came from a decomposition
+    # that had double-counted a 4-store total as one store.)
+    contention_when_shared: float = 1.0
+
+    # In a STREAMING pipeline (many iterations, transfers kept in flight) the same
+    # 100KB load costs 305006 cyc at B=56, versus 423880 when issued in isolation:
+    # 28% cheaper, because the load fills bus slack that a lone transfer cannot.
+    # Composing single-pipe isolated laws therefore over-predicts pipelines by
+    # ~35%, which is exactly what happened before this factor existed.
+    streaming_b56_cycles_per_100k: float = 305006.0
+
+    def cycles_streaming(self, nbytes: int, cores: int) -> float:
+        """Cost of one load inside a saturated pipeline, at 56 cores scaled by B."""
+        B = max(1, cores)
+        per_100k = self.streaming_b56_cycles_per_100k / 56.0 * B
+        return per_100k * (nbytes / 102400.0)
+
+    def cycles(self, nbytes: int, cores: int, copies: int = 1,
+               shared_bus: bool = False) -> float:
         """Fitted cycle count for the launch, cores running concurrently."""
         B = max(1, cores)
         K = max(1, copies)
@@ -72,7 +94,8 @@ class MTE2Cost:
         # cores faster than the first copy does.
         extra = (K - 1) * (self.c_extra +
                            nbytes * self.r2 * (1.0 + (B / self.k2) ** self.p2))
-        return B * (self.t_setup + first + extra)
+        scale = self.contention_when_shared if shared_bus else 1.0
+        return scale * B * (self.t_setup + first + extra)
 
 
 @dataclass
@@ -89,23 +112,24 @@ class MTE3Cost:
     # Per-CORE per-byte cost measured at K=4 (launch total divided by cores):
     #   B=14: 0.0809   B=28: 0.0912   B=56: 0.2565  cyc/byte
     # i.e. flat until ~28 cores then ~3.2x by 56. Fitted below.
-    # CAVEAT: this is calibrated from a kernel that stores back-to-back with no
-    # compute between stores, i.e. it measures SATURATED store throughput. In an
-    # interleaved pipeline the same store costs ~2.4x less (measured: mode-1 says
-    # 7235 cyc/store/core, pipeline mode-3 shows 3003). So this number is an
-    # upper bound that over-predicts pipelines; that gap is recorded in the M1
-    # status, not hidden.
+    # CORRECTED once already: an earlier version divided the K=4 launch total by
+    # only one copy (giving 0.2565 cyc/byte at B=56), a 4x double count that made
+    # pipelines over-predict by 3.75x. Values below are per SINGLE store per core,
+    # obtained from the steady-state K-increment (K=8 minus K=4, /4).
     #
-    # Per-CORE per-byte cost measured at K=4 (launch total / cores):
-    #   B=14: 0.0809   B=28: 0.0912   B=56: 0.2565  cyc/byte
-    # Piecewise-linear interpolation through those three measured points. With
-    # only three core counts a closed form (1+(B/k)^p) is underdetermined -- it
-    # fitted at ~98% error -- so interpolation is used instead of pretending a
-    # smooth law is known. Extrapolation outside [14,56] is clamped.
+    # Per-core per-byte cost of one 100KB store:
+    #   B=14: 0.0202   B=28: 0.0228   B=56: 0.0641   (steady state 0.0707)
+    # Three measured core counts, so interpolation rather than a fitted law.
+    #
+    # CAVEAT kept from the original analysis: these come from back-to-back stores
+    # with no compute gap (zone-1 saturated write). An interleaved store in a real
+    # pipeline is cheaper (3003 vs 7235 cyc/store/core measured), so this remains
+    # an upper bound. The gap is documented in README M1, not hidden.
     t_setup: float = 1788.0
-    _pts: tuple = ((14.0, 0.0809), (28.0, 0.0912), (56.0, 0.2565))
+    _pts: tuple = ((14.0, 0.0202), (28.0, 0.0228), (56.0, 0.070651))
+    streaming_b56: float = 0.070651   # per-core per-byte in a full pipeline
     calibrated: bool = True
-    source: str = "hw-counters M1; 3 measured core counts, piecewise-interpolated"
+    source: str = "hw-counters M1, JOINT fit across 3 modes at B=56"
 
     def per_byte(self, cores: int) -> float:
         B = float(max(1, cores))
@@ -122,6 +146,13 @@ class MTE3Cost:
 
     def per_byte_b56(self) -> float:
         return self.per_byte(56)
+
+    # streaming (pipeline full) coefficient, B=56, per-core per-byte
+    streaming_b56: float = 0.070651
+
+    def cycles_streaming(self, nbytes: int, cores: int) -> float:
+        B = max(1, cores)
+        return B * nbytes * self.streaming_b56
 
     def cycles(self, nbytes: int, cores: int, copies: int = 1) -> float:
         B = max(1, cores)
@@ -146,14 +177,23 @@ class AICCost:
 class VECCost:
     """Vector ALU. Calibrated in M1: K vector Add passes over N elements.
 
-    measured per-pass increment (K=8 minus K=1, over 7 passes):
-      N=25600 -> 7497 cycles/pass in aiv_total_cycles, which is the SUM over all
-      56 cores. Per core that is 7497/56 = 134 cycles/pass = 0.00523 cyc/elem
-      for fp32 Add. (Using 0.293 here was a 56x unit error: cyc/elem must be
-      per-core because the formula multiplies by cores.)
+    Least-squares fit over K=1,2,4,8 (mode 2), which separates the fixed cost
+    (two MTE2 fills) from the marginal K term:
+        cycles = 662647 + K * 20665
+    Taken from the STEADY-STATE slope (K=8 minus K=4, divided by 4) rather than
+    from a single point: 47310 cyc/pass for a 56-core launch = 845 cyc/core/pass
+    = 0.032996 cyc/elem for fp32 Add over 25600 elements.
+
+    Why slope and not intercept-fit: K=1 is start-up dominated (cold caches,
+    pipeline fill), so including it makes the fitted intercept strongly negative
+    and corrupts the per-copy costs. Four earlier attempts at this coefficient
+    (0.293, 0.00523, 0.014415, 0.028887) each failed for a different reason:
+    56x unit error, an assumption about the K-increment, and two single-mode or
+    mixed-N fits. The steady-state slope is the only estimate that both composes
+    with MTE2/MTE3 and agrees with the pipeline's own marginal cost.
     """
     t_setup: float = 100.0
-    cyc_per_elem: float = 0.00523
+    cyc_per_elem: float = 0.033001
     calibrated: bool = True
     source: str = "hw-counters M1, VEC K-sweep at fp32"
 
@@ -186,12 +226,13 @@ class CostModel:
         self.aic = self.aic or AICCost()
         self.clock = self.clock or Clock()
 
-    def node_cycles(self, node, cores: int) -> float:
+    def node_cycles(self, node, cores: int, shared_bus: bool = False) -> float:
         if node.kind == "barrier":
             return 0.0
         if node.kind == "copy":
             if node.pipe == "MTE2":
-                return self.mte2.cycles(node.bytes, cores, copies=node.copies)
+                return self.mte2.cycles(node.bytes, cores, copies=node.copies,
+                                        shared_bus=shared_bus)
             if node.pipe == "MTE3":
                 return self.mte3.cycles(node.bytes, cores, copies=node.copies)
             raise ValueError(f"copy node {node.id} on unsupported pipe {node.pipe}")
@@ -202,6 +243,16 @@ class CostModel:
                 return self.aic.cycles(node.elem, cores)
             raise ValueError(f"compute node {node.id} on unsupported pipe {node.pipe}")
         raise ValueError(f"bad kind {node.kind}")
+
+    def node_cycles_streaming(self, node, cores: int) -> float:
+        """Cost of one transfer inside a saturated pipeline."""
+        if node.kind != "copy":
+            return self.node_cycles(node, cores)
+        if node.pipe == "MTE2":
+            return self.mte2.cycles_streaming(node.bytes, cores) * node.copies
+        if node.pipe == "MTE3":
+            return self.mte3.cycles_streaming(node.bytes, cores) * node.copies
+        return self.node_cycles(node, cores)
 
     def calibration_report(self) -> dict:
         return {
