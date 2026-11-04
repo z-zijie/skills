@@ -46,7 +46,7 @@ aic_load_us = m.aic_load.us((singleCoreM * K + K * N) * 2)
 aic_mac_us = (m.aic.mac_cyc_per_mmad_128x256x128
               * (2.0 * singleCoreM * K * N) / (2.0 * 128 * 256 * 128)
               / m.aic.aic_cycles_per_us)
-aic_fix_us = m.aic.fixpipe_us_per_launch
+aic_fix_us = m.aic.fixpipe_us(singleCoreM * N)
 # per-core busy time, which is what msprof reports; v2 wrongly used a
 # launch total here and so charged cores*elems instead of elems.
 aiv_vec_us = m.vec.per_core_cycles(singleCoreM * N) / (m.clock.ghz * 1000.0)
@@ -88,7 +88,7 @@ aic_load_us = m.aic_load.us((singleCoreM * K + K * N) * 2)
 aic_mac_us = (m.aic.mac_cyc_per_mmad_128x256x128
               * (2.0 * singleCoreM * K * N) / (2.0 * 128 * 256 * 128)
               / m.aic.aic_cycles_per_us)
-fix_us = m.aic.fixpipe_us_per_launch
+fix_us = m.aic.fixpipe_us(singleCoreM * N)
 aiv_vec_us = m.vec.per_core_cycles(singleCoreM * N) / (m.clock.ghz * 1000.0)
 handshake_us = m.mix.handshake_cycles / (m.clock.ghz * 1000.0)
 launch_us = 1.81       # fitted from this operator
@@ -97,6 +97,12 @@ print(f"v3 (serial + handshake + launch) : {pred3:6.2f} us  "
       f"({100*(pred3-MEASURED_US)/MEASURED_US:+6.1f}%)")
 print(f"   = load {aic_load_us:.2f} + mac {aic_mac_us:.2f} + fix {fix_us:.2f}"
       f" + vec {aiv_vec_us:.2f} + handshake {handshake_us:.2f} + launch {launch_us:.2f}")
+# --- v4: add the scalar pipes (M8) ---------------------------------------
+pred4 = pred3 + m.scalar.aic_us_per_launch + m.scalar.aiv_us_per_launch
+print(f"v4 (+ scalar pipes)              : {pred4:6.2f} us  "
+      f"({100*(pred4-MEASURED_US)/MEASURED_US:+6.1f}%)")
+print(f"   = v3 {pred3:.2f} + aic_scalar {m.scalar.aic_us_per_launch:.2f}"
+      f" + aiv_scalar {m.scalar.aiv_us_per_launch:.2f}")
 print()
 print("Upper bound on what itemising every pipe would give:")
 print(f"  sum of all measured pipe busy times = {busy:.2f} us "

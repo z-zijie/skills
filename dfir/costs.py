@@ -180,10 +180,27 @@ class AICCost:
     """
     t_setup: float = 98_730.0          # aic cycles: load A/B + one fixpipe
     mac_cyc_per_mmad_128x256x128: float = 46_994.0
-    fixpipe_us_per_launch: float = 0.50
+    # Fixpipe scales with OUTPUT ELEMENTS, not constant. M2 measured 0.50us for a
+    # 128x128 tile but that experiment varied the Mmad count with the output tile
+    # fixed, so it could not see the dependence. M4 then measured 2.14us for a
+    # 256x128 tile:
+    #   16 384 elems/core -> 0.50 us   (30.5 ns/elem)
+    #   32 768 elems/core -> 2.14 us   (65.3 ns/elem)
+    # A third tile size would separate intercept from rate, but larger tiles
+    # exceed L1/L0 here (ACL 507015), so only two points exist. Linear through
+    # them is used, and it over-predicts small tiles:
+    #   fixpipe_us = -1.14 us + 100.1 ns/elem * elems   (clamped at >= 0)
+    fixpipe_ns_per_elem: float = 100.10
+    fixpipe_us_intercept: float = -1.14
+    fixpipe_us_per_launch: float = 0.50   # kept for the small-tile case
     aic_cycles_per_us: float = 45_900.0   # measured, NOT 1650
     calibrated: bool = True
     source: str = "hw-counters M2, Mmad reps sweep at B=28"
+
+    def fixpipe_us(self, out_elems_per_core: int) -> float:
+        """Fixpipe (L0C->GM) time for one core's output tile."""
+        v = self.fixpipe_us_intercept + self.fixpipe_ns_per_elem * out_elems_per_core / 1e6
+        return max(0.0, v)
 
     def cycles_for_mm(self, m: int, k: int, n: int, cores: int, mmads: int = 1) -> float:
         """aic cycles for `mmads` matmuls of per-core m x k x n.
@@ -284,6 +301,34 @@ class AICLoadCost:
 
 
 @dataclass
+class ScalarCost:
+    """Per-pipe SCALAR cost (address math, loop control, descriptor setup).
+
+    M4 showed the two scalar pipes were 2.19us of an 11.98us operator (18%),
+    entirely unmodelled. Measured behaviour:
+
+      AIV scalar vs loop count (m6_veclaw, 4 cores):
+        passes=1  -> 0.41 us
+        passes=4  -> 0.41 us
+        passes=16 -> 0.46 us
+      AIC scalar vs mmad reps (m2_model, 28 cores):
+        reps=1 -> 1.23 us   reps=2 -> 1.38 us   reps=4 -> 0.94 us
+
+    So scalar time is a FIXED per-launch cost, not per-iteration: it does not
+    grow with the loop count. (The 1.23/0.94 spread is run-to-run noise, not a
+    trend -- reps grows 4x while scalar does not.)
+
+    Modelled as a constant per pipe. This will under-predict kernels that are
+    genuinely scalar-bound (heavy indexing, per-element scalar work); that is a
+    known limitation, recorded rather than hidden.
+    """
+    aiv_us_per_launch: float = 0.43
+    aic_us_per_launch: float = 1.05
+    calibrated: bool = True
+    source: str = "hw-counters M8, scalar vs loop count at B=4/28"
+
+
+@dataclass
 class MixCost:
     """AIC<->AIV cooperation overhead in a MIX kernel (M3).
 
@@ -321,6 +366,7 @@ class CostModel:
     vec: VECCost = None
     aic: AICCost = None
     aic_load: AICLoadCost = None
+    scalar: ScalarCost = None
     mix: MixCost = None
     clock: Clock = None
 
@@ -330,6 +376,7 @@ class CostModel:
         self.vec = self.vec or VECCost()
         self.aic = self.aic or AICCost()
         self.aic_load = self.aic_load or AICLoadCost()
+        self.scalar = self.scalar or ScalarCost()
         self.mix = self.mix or MixCost()
         self.clock = self.clock or Clock()
 
@@ -372,5 +419,7 @@ class CostModel:
             "AIC": dict(calibrated=self.aic.calibrated, source=self.aic.source),
             "AIC_LOAD": dict(calibrated=self.aic_load.calibrated,
                              source=self.aic_load.source),
+            "SCALAR": dict(calibrated=self.scalar.calibrated,
+                           source=self.scalar.source),
             "MIX": dict(calibrated=self.mix.calibrated, source=self.mix.source),
         }
