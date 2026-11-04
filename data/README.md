@@ -19,3 +19,15 @@
 
 派生量：`T1 = t_end1 - t_begin`，`W2 = t_issue2 - t_issue1`，
 `SPAN = t_end2 - t_begin`。时间单位是 `SYS_CNT` tick，1 tick = 0.998 ns。
+
+## MTE2 建模章节的额外产物
+
+| 文件 | 内容 |
+|---|---|
+| `m2_train.csv` | 建模训练网格 33 点 × 40 次发射 × 56 核 |
+| `m2_valid.csv` | 留出验证 12 点（不在训练网格上） |
+| `bsweep.csv` | 核数细扫 18 个 B × K=1,2 |
+| `../mte2-points-summary.csv` | 上述三份的逐点聚合（C_min / C_med），随仓库提交 |
+| `../MTE2建模报告.html` | 建模现状报告 |
+
+列：`launch,core,t_begin,t_issue0..7,t_done0..7,K,S,B`，时间单位 `SYS_CNT` tick ≈ 1.00 ns。

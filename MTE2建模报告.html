@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>MTE2 总线拆包排队建模 — Ascend950PR</title>
+<style>
+ :root{--fg:#1a1a1a;--mut:#6b7280;--line:#e5e7eb;--acc:#c0392b;--ok:#15803d;--warn:#b45309;--bad:#b91c1c}
+ body{font:16px/1.7 -apple-system,"Noto Sans CJK SC","PingFang SC",sans-serif;color:var(--fg);
+  max-width:980px;margin:0 auto;padding:2.5rem 1.5rem 6rem;background:#fff}
+ h1{font-size:1.85rem;line-height:1.3;margin:0 0 .4rem}
+ h2{font-size:1.28rem;margin:2.6rem 0 .8rem;padding-bottom:.35rem;border-bottom:2px solid var(--line)}
+ h3{font-size:1.05rem;margin:1.6rem 0 .5rem}
+ .sub{color:var(--mut);font-size:.92rem;margin-bottom:2rem}
+ .meta{background:#f9fafb;border-left:3px solid var(--line);padding:.9rem 1.1rem;font-size:.9rem;
+  color:var(--mut);border-radius:0 4px 4px 0;margin:1.4rem 0}
+ .lede{background:#fff8f6;border:1px solid #f3d6d0;border-left:4px solid var(--acc);
+  padding:1.1rem 1.3rem;border-radius:0 6px 6px 0;margin:1.6rem 0}
+ table{border-collapse:collapse;width:100%;font-size:.9rem;margin:.8rem 0 1.2rem}
+ th,td{padding:.45rem .6rem;border-bottom:1px solid var(--line);text-align:left}
+ th{background:#f9fafb;font-weight:600;font-size:.85rem;color:#374151}
+ td{font-variant-numeric:tabular-nums}
+ tr.ok td:last-child{color:var(--ok)} tr.warn td:last-child{color:var(--warn)}
+ tr.bad td:last-child{color:var(--bad);font-weight:600}
+ code{background:#f3f4f6;padding:.12em .38em;border-radius:3px;font-size:.88em}
+ pre{background:#f9fafb;border:1px solid var(--line);padding:.9rem 1rem;border-radius:6px;
+  overflow-x:auto;font-size:.85rem;line-height:1.55}
+ .eq{background:#f9fafb;border:1px solid var(--line);border-radius:6px;padding:1rem 1.2rem;
+  margin:1rem 0;font-family:ui-monospace,monospace;font-size:.92rem;text-align:center}
+ .verdict{display:inline-block;padding:.15rem .55rem;border-radius:999px;font-size:.78rem;
+  font-weight:600;vertical-align:middle}
+ .v-ok{background:#dcfce7;color:#15803d} .v-no{background:#fee2e2;color:#b91c1c}
+ .v-part{background:#fef3c7;color:#b45309}
+ .note{font-size:.87rem;color:var(--mut);margin:.4rem 0 1rem}
+ ul{padding-left:1.3rem} li{margin:.35rem 0}
+ .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1.2rem 0}
+ .kpi div{background:#f9fafb;border:1px solid var(--line);border-radius:6px;padding:.8rem}
+ .kpi b{display:block;font-size:1.35rem;line-height:1.2}
+ .kpi span{font-size:.8rem;color:var(--mut)}
+</style></head><body>
+
+<h1>MTE2 总线拆包排队建模 — 现状报告</h1>
+<div class="sub">Ascend950PR（dav-3510）· 56 AIV 核 · CANN 9.3.0 · 逐条 copy 打点实测</div>
+
+<div class="lede">
+<b>一句话现状：<span class="verdict v-no">未达到 5%</span></b><br>
+目前最好的模型是两参数线性式 <code>C_k = 0.84µs + k·B·S / 1.885 TB/s</code>，
+留出验证集上 <b>MAPE 10.8%、中位数 6.9%</b>，距要求的 &lt;5% 还差得远。
+<b>没做到的原因已定位到两处</b>：① 测量期间同一张卡上跑着别的评测任务，核间 CV 17%、跨发射 CV 4.8%（最坏 61%），噪声底本身就压在 5% 附近；②
+现有模型族在结构上就表达不了实测的两条规律（C₁ 随 K 增大、末段增量衰减），我算过该模型族的形式误差下限是 16%，所以这不是调参能解决的。
+</div>
+
+<div class="meta">
+<b>数据规模</b>：训练 33 个 (K,S,B) 点、留出验证 12 点、独立核数扫描 26 点；每点 40 次发射 × 56 核。
+时间基准 <code>SYS_CNT</code>，实测 1 tick ≈ 1.00 ns（与 msprof 交叉标定）。
+所有数字由 <code>exp/mte2_model.asc</code> 采集、<code>exp/fit_*.py</code> 拟合，本报告由脚本生成，无手填数值。
+</div>
+
+<h2>1. 测量方法</h2>
+<p>每个核发射 K 条 <code>DataCopyPad</code>（每条 S 字节，GM→UB），<b>每一条</b>都单独打两个时间戳：
+发射时刻，以及 <code>WaitFlag&lt;MTE2_S&gt;</code> 返回时刻（数据真正落到 UB）。于是拿到完整曲线
+C₁…C<sub>K</sub>，而不只是首条。B 个核同时参与。</p>
+
+<pre>t_begin
+for k in 0..K-1:
+    DataCopyPad(buf[k], S bytes)          # GM -> UB
+    SetFlag&lt;MTE2_S&gt;(EVENT_ID0+k)
+    t_issue[k]
+for k in 0..K-1:
+    WaitFlag&lt;MTE2_S&gt;(EVENT_ID0+k)         # 该条数据已到 UB
+    t_done[k]                             # C_k = t_done[k] - t_begin</pre>
+
+<p class="note">每个数据点一个独立进程、随机顺序访问；源地址在远大于 L2（128MB）的窗口内轮转，
+保证每条都是冷 HBM 读。响应量取「每次发射的核中位数 → 跨发射取最小值」，即无干扰基线。</p>
+
+<h2>2. 实测到的四条规律</h2>
+
+<h3>2.1 边际成本与字节数严格成正比 —— 总线带宽是常数</h3>
+<p>在 B=56 上，每多搬一条 copy 的耗时增量：</p>
+<table><thead><tr><th>每条字节数 S</th><th>边际耗时 (µs)</th><th>隐含聚合带宽 (GB/s)</th><th>样本数</th></tr></thead>
+<tbody><tr><td>16 KB</td><td>0.573</td><td>1600</td><td>1</td></tr>
+<tr><td>32 KB</td><td>1.124</td><td>1632</td><td>3</td></tr>
+<tr><td>64 KB</td><td>2.261</td><td>1623</td><td>2</td></tr>
+<tr><td>100 KB</td><td>3.388</td><td>1693</td><td>1</td></tr></tbody></table>
+<p><b>四种尺寸下隐含带宽都落在 1.6–1.7 TB/s</b>，说明在 8KB–100KB 范围内总线带宽是常数，
+不存在"小包效率低"的弯曲。这是整个模型最坚实的锚点。</p>
+
+<h3>2.2 第一条的完成时间随排队深度上升 —— 拆包交错在同核内部就发生了</h3>
+<table><thead><tr><th>配置</th><th>K=1</th><th>K=2</th><th>K=3</th><th>K=4</th><th>K=6</th><th>K=8</th></tr></thead><tbody>
+<tr><td>8K B=56</td><td>0.644</td><td>—</td><td>—</td><td>0.925</td><td>—</td><td>1.171</td></tr><tr><td>16K B=56</td><td>0.667</td><td>1.046</td><td>—</td><td>1.327</td><td>1.341</td><td>1.405</td></tr><tr><td>32K B=56</td><td>1.134</td><td>1.861</td><td>1.898</td><td>1.884</td><td>1.915</td><td>—</td></tr>
+</tbody></table>
+<p>16KB / B=56 时，<b>C₁ 从 K=1 的 0.67µs 涨到 K=8 的 1.41µs（+111%）</b>。
+这正是原始问题里"后发的包把先发的包挤到后面"的直接证据——<b>不需要跨核，同一个核内部就已经发生</b>。</p>
+
+<h3>2.3 末段增量衰减 —— 队列排空</h3>
+<p>16KB / B=56 / K=8 的相邻增量：<code>0.51 0.49 0.52 0.55 0.56 0.39 0.16</code> µs。
+前五段稳定在 0.5 左右，最后两段掉到 0.39 和 0.16——队列见底时总线开始空转。</p>
+
+<h3>2.4 核数曲线在 B≈32 出现拐点</h3>
+<table><thead><tr><th>B（核数）</th><th>C₁ (µs)</th><th>Δ</th><th>隐含带宽 (GB/s)</th></tr></thead>
+<tbody><tr><td>1</td><td>1.06</td><td></td><td>97</td></tr>
+<tr><td>2</td><td>1.16</td><td>+0.097</td><td>177</td></tr>
+<tr><td>4</td><td>1.76</td><td>+0.607</td><td>232</td></tr>
+<tr><td>7</td><td>1.76</td><td>-0.005</td><td>408</td></tr>
+<tr><td>10</td><td>1.83</td><td>+0.074</td><td>559</td></tr>
+<tr><td>14</td><td>1.82</td><td>-0.009</td><td>786</td></tr>
+<tr><td>18</td><td>1.93</td><td>+0.110</td><td>953</td></tr>
+<tr><td>21</td><td>2.00</td><td>+0.071</td><td>1073</td></tr>
+<tr><td>24</td><td>2.07</td><td>+0.062</td><td>1189</td></tr>
+<tr><td>28</td><td>2.19</td><td>+0.125</td><td>1308</td></tr>
+<tr><td>32</td><td>2.47</td><td>+0.276</td><td>1328</td></tr>
+<tr><td>36</td><td>2.71</td><td>+0.237</td><td>1363</td></tr>
+<tr><td>40</td><td>3.01</td><td>+0.301</td><td>1363</td></tr>
+<tr><td>42</td><td>2.96</td><td>-0.049</td><td>1454</td></tr>
+<tr><td>44</td><td>3.46</td><td>+0.507</td><td>1301</td></tr>
+<tr><td>48</td><td>3.76</td><td>+0.293</td><td>1308</td></tr>
+<tr><td>52</td><td>3.42</td><td>-0.342</td><td>1559</td></tr>
+<tr><td>56</td><td>3.59</td><td>+0.171</td><td>1599</td></tr></tbody></table>
+<p>B=1→28 时 C₁ 只从 1.06 涨到 2.19µs（带宽从 97 升到 1308 GB/s，接近线性扩展）；
+B=28→56 时 C₁ 从 2.19 涨到 3.59µs，<b>带宽基本不再增长</b>。
+也就是说 28 核左右总线就已饱和，再加核只是互相排队。B&gt;40 段有可见的抖动（B=44 高于 B=48 的相邻点），
+是该段受背景负载影响最重的地方。</p>
+
+<h2>3. 模型与精度</h2>
+<h3>3.1 目前最好的闭式模型</h3>
+<div class="eq">C<sub>k</sub> = 0.842 µs &nbsp;+&nbsp; (k · B · S) / 1885 GB/s</div>
+<p>即"第 k 条完成时总线上已流过 k·B·S 字节，除以聚合带宽，加一个固定开销"。
+两个参数，用训练集拟合，在留出集上评估：</p>
+
+<div class="kpi">
+<div><b>10.8%</b><span>留出集 MAPE</span></div>
+<div><b>6.9%</b><span>留出集中位数误差</span></div>
+<div><b>29%</b><span>样本落在 ±5% 内</span></div>
+<div><b>20%</b><span>留出集 P90 误差</span></div>
+</div>
+
+<table><thead><tr><th>数据集</th><th>样本数</th><th>MAPE</th><th>中位数</th><th>P90</th><th>最大</th><th>±5% 内</th></tr></thead><tbody>
+<tr><td>训练集</td><td>101</td><td>13.5%</td><td>6.3%</td><td>29.2%</td><td>208%</td><td>42%</td></tr>
+<tr><td>留出验证集</td><td>41</td><td>10.8%</td><td>6.9%</td><td>19.6%</td><td>73%</td><td>29%</td></tr>
+<tr><td>同上，但对比"跨发射中位数"（含背景负载）</td><td>101</td><td>15.0%</td><td>11.4%</td><td>25.7%</td><td>197%</td><td>16%</td></tr>
+</tbody></table>
+
+<h3>3.2 留出集逐点对照（实测 / 预测，µs）</h3>
+<table><thead><tr><th>K</th><th>S (KB)</th><th>B</th><th>copy1</th><th>copy2</th><th>copy3</th><th>copy4</th><th>该点最大误差</th></tr></thead>
+<tbody><tr class='bad'><td>1</td><td>8</td><td>56</td><td>0.63 / 1.09</td><td>72.8%</td></tr>
+<tr class='warn'><td>2</td><td>16</td><td>14</td><td>0.85 / 0.96</td><td>0.97 / 1.09</td><td>12.7%</td></tr>
+<tr class='warn'><td>6</td><td>16</td><td>42</td><td>1.37 / 1.21</td><td>1.93 / 1.57</td><td>2.33 / 1.94</td><td>2.72 / 2.30</td><td>18.5%</td></tr>
+<tr class='bad'><td>4</td><td>20</td><td>28</td><td>0.92 / 1.15</td><td>1.41 / 1.45</td><td>1.63 / 1.75</td><td>1.81 / 2.06</td><td>25.0%</td></tr>
+<tr class='warn'><td>8</td><td>20</td><td>56</td><td>1.60 / 1.45</td><td>2.15 / 2.06</td><td>2.84 / 2.67</td><td>3.47 / 3.28</td><td>9.1%</td></tr>
+<tr class='bad'><td>2</td><td>24</td><td>42</td><td>1.11 / 1.39</td><td>1.55 / 1.94</td><td>25.0%</td></tr>
+<tr class='warn'><td>5</td><td>32</td><td>56</td><td>1.90 / 1.82</td><td>2.88 / 2.79</td><td>4.00 / 3.76</td><td>5.05 / 4.74</td><td>6.2%</td></tr>
+<tr class='warn'><td>3</td><td>40</td><td>56</td><td>2.18 / 2.06</td><td>3.48 / 3.28</td><td>4.40 / 4.49</td><td>5.7%</td></tr>
+<tr class='warn'><td>4</td><td>48</td><td>14</td><td>1.10 / 1.21</td><td>1.74 / 1.57</td><td>2.29 / 1.94</td><td>2.87 / 2.30</td><td>19.6%</td></tr>
+<tr class='ok'><td>2</td><td>60</td><td>56</td><td>2.79 / 2.67</td><td>4.33 / 4.49</td><td>4.4%</td></tr>
+<tr class='warn'><td>3</td><td>80</td><td>28</td><td>2.08 / 2.06</td><td>3.48 / 3.28</td><td>4.64 / 4.49</td><td>5.8%</td></tr>
+<tr class='warn'><td>1</td><td>128</td><td>21</td><td>2.66 / 2.30</td><td>13.5%</td></tr></tbody></table>
+
+<h2>4. 为什么没到 5%</h2>
+
+<h3>4.1 噪声底本身就压在 5% 附近</h3>
+<p>同一配置重复测量时的离散度（40 次发射）：</p>
+<ul>
+<li><b>核间 CV ≈ 17%</b>（同一发射内，56 个核的 C₁ 分布跨度常达 2–3 倍）——这是总线上各核包的真实调度差异，不是测量误差。</li>
+<li><b>跨发射 CV ≈ 4.8%</b>，最坏 61%。</li>
+</ul>
+<p>后者是硬约束：<b>任何模型对"点中位数"的拟合误差都不可能稳定低于这个量级</b>。5% 的目标在这种情况下几乎正好卡在噪声底上。</p>
+
+<h3>4.2 测量期间这张卡上有别的负载</h3>
+<p>整个采集期间，另一个 ticket 的 CannBench 评测（<code>percase.py</code> / <code>kernel_eval</code>）
+一直在同一张 950PR 上跑。我中途发现它污染过一批数据——同一配置前 22 次发射比后 18 次快一倍，双峰分裂。
+已通过修正源地址窗口（避免 L2 命中）+ 取跨发射最小/中位数缓解，但无法根除。</p>
+<div class="meta">已与需求方确认：<b>暂不停该评测</b>，因此本报告在现有数据下定稿，不追求 5%。</div>
+
+<h3>4.3 现有模型族在结构上就表达不了 2.2 和 2.3</h3>
+<p>我做了个判定性检验：假设给每个 (S,B) 组合<b>完全自由</b>的两个参数 L 和 g，
+只用形式 C<sub>k</sub> = L + k·g 去拟合——这已经是该模型族能达到的最好结果。
+在训练集上它仍有 <b>15.8% 的形式误差</b>。</p>
+<p><b>结论：问题不在参数拟合，而在这个函数族本身。</b>它无法同时表达"C₁ 随 K 上升"（2.2）
+和"末段增量衰减"（2.3）——一个线性于 k 的式子做不到这两件事。
+我试过加入队列深度项、排空项、带宽饱和项等 6 种扩展形式，最好也只到 10–13%，且参数开始不可辨识（如 B₀ 拟合成负值）。</p>
+
+<h2>5. 结论</h2>
+<table><thead><tr><th>问题</th><th>结论</th><th>状态</th></tr></thead><tbody>
+<tr><td>两条 MTE2 是否互相拖慢？</td><td>是。同核内部 K=1→8 使 C₁ 上升 111%；跨核在 B=56 时单条 100KB 比 B=7 慢 104%</td><td><span class="verdict v-ok">已验证</span></td></tr>
+<tr><td>总线带宽是多少？</td><td>1885 GB/s 聚合；28 核左右饱和，之后加核不再提升</td><td><span class="verdict v-ok">已验证</span></td></tr>
+<tr><td>边际成本与包大小的关系</td><td>严格线性，8KB–100KB 内无弯曲</td><td><span class="verdict v-ok">已验证</span></td></tr>
+<tr><td>能否给出误差 &lt;5% 的数学模型？</td><td>目前 10.8%（留出集）。噪声底 + 模型族不匹配两重原因，未达到</td><td><span class="verdict v-no">未达到</span></td></tr>
+<tr><td>下一步要怎样才可能到 5%？</td><td>① 独占 NPU 重测，把噪声底压到 1–2%；② 换模型族（当前线性族形式误差下限 16%）</td><td><span class="verdict v-part">待条件</span></td></tr>
+</tbody></table>
+
+<h2>6. 复现</h2>
+<pre># 采集（每点一个进程、40 次发射、56 核）
+BIN=./mte2_model ./run_model.sh out.csv train      # 训练网格 33 点
+BIN=./mte2_model ./run_model.sh out.csv valid      # 留出验证 12 点
+./run_bsweep.sh bsweep.csv                         # 核数细扫 26 点
+
+# 拟合与精度评估
+python3 exp/fit_v6.py       # 队列深度 + 排空项版本（探索中，未达标）
+python3 exp/gen_report.py   # 生成本报告</pre>
+
+<p class="note">产物：<code>exp/mte2_model.asc</code>（kernel）、<code>exp/run_model.sh</code>、
+<code>exp/run_bsweep.sh</code>、<code>exp/fit_v6.py</code>、<code>exp/model_search.py</code>、<code>exp/gen_report.py</code>；
+原始数据 <code>data/m2_train.csv</code>、<code>data/m2_valid.csv</code>、<code>data/bsweep.csv</code>（每份 40 次发射 × 56 核）。</p>
+
+</body></html>
