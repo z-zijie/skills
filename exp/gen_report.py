@@ -23,6 +23,8 @@ def load(path):
                     "n": len(per)}
     return out
 
+CHARTS = json.load(open("data/charts.json"))
+
 D = load("data/m2_train.csv")
 V = load("data/m2_valid.csv")
 BS = load("data/bsweep.csv")
@@ -131,6 +133,8 @@ HTML = f"""<!DOCTYPE html>
  .kpi div{{background:#f9fafb;border:1px solid var(--line);border-radius:6px;padding:.8rem}}
  .kpi b{{display:block;font-size:1.35rem;line-height:1.2}}
  .kpi span{{font-size:.8rem;color:var(--mut)}}
+ .chart{{margin:1rem 0 1.3rem;background:#fff;border:1px solid var(--line);border-radius:6px;padding:.6rem}}
+ .chart svg{{width:100%;height:auto;display:block}}
 </style></head><body>
 
 <h1>MTE2 总线拆包排队建模 — 现状报告</h1>
@@ -167,27 +171,58 @@ for k in 0..K-1:
 <p class="note">每个数据点一个独立进程、随机顺序访问；源地址在远大于 L2（128MB）的窗口内轮转，
 保证每条都是冷 HBM 读。响应量取「每次发射的核中位数 → 跨发射取最小值」，即无干扰基线。</p>
 
-<h2>2. 实测到的四条规律</h2>
+<h2>2. 理论假设</h2>
+<p>在测之前先写下可被数据否证的假设，这样后面的实验就不是"先有结论再找证据"。
+每条都给出<b>如果成立应该看到什么</b>，以及实测的裁决。</p>
 
-<h3>2.1 边际成本与字节数严格成正比 —— 总线带宽是常数</h3>
+<table><thead><tr><th style="width:4%">#</th><th style="width:34%">假设</th><th style="width:34%">如果成立，应观察到</th><th style="width:16%">裁决</th><th style="width:12%">证据</th></tr></thead><tbody>
+<tr><td>H1</td><td>MTE2 的搬运时间由总线上流过的<b>字节数</b>决定，而非指令条数</td>
+<td>把一次 100KB 拆成两条 50KB 与单条 100KB，总耗时相同；边际成本与 S 成正比</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.1</td></tr>
+<tr><td>H2</td><td>总线带宽在 8KB–100KB 内是<b>常数</b>，不存在小包效率损失</td>
+<td>各尺寸反推的隐含带宽一致</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.1（1.6–1.7 TB/s）</td></tr>
+<tr><td>H3</td><td><b>拆包乱序会跨指令发生</b>：同一个核里后发的 copy 会把先发的挤后</td>
+<td>C₁ 随 K 单调上升（K 增大 = 队列更深）</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.2（+111%）</td></tr>
+<tr><td>H4</td><td>带宽随核数<b>线性扩展</b>（每核独立通道）</td>
+<td>C₁ 与 B 无关</td>
+<td><span class="verdict v-no">推翻</span></td><td>§3.4：B=56 时慢一倍</td></tr>
+<tr><td>H5</td><td>带宽在某个核数处<b>饱和</b>，之后加核只增加排队</td>
+<td>C₁ 先缓后陡，存在拐点</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.4（拐点 B≈28–32）</td></tr>
+<tr><td>H6</td><td>完成时间对 k 是<b>仿射</b>的：C<sub>k</sub> = L + k·g</td>
+<td>相邻增量恒定；C₁ 不随 K 变</td>
+<td><span class="verdict v-no">推翻</span></td><td>§3.2/3.3：C₁ 随 K 变，末段衰减</td></tr>
+</tbody></table>
+
+<p><b>H6 被推翻这件事直接决定了本报告的结论。</b>它本是所有简单排队模型（包括我先试的
+"处理器共享"式）的共同底座；一旦它不成立，任何 C<sub>k</sub> = L + k·g 形式的模型
+都无法拟合到 5%，这正是 §5.3 量化出来的 15.8% 形式误差下限的来源。</p>
+
+<h2>3. 实测到的四条规律</h2>
+
+<h3>3.1 边际成本与字节数严格成正比 —— 总线带宽是常数</h3>
 <p>在 B=56 上，每多搬一条 copy 的耗时增量：</p>
 <table><thead><tr><th>每条字节数 S</th><th>边际耗时 (µs)</th><th>隐含聚合带宽 (GB/s)</th><th>样本数</th></tr></thead>
 <tbody>{html_rows_marg()}</tbody></table>
 <p><b>四种尺寸下隐含带宽都落在 1.6–1.7 TB/s</b>，说明在 8KB–100KB 范围内总线带宽是常数，
 不存在"小包效率低"的弯曲。这是整个模型最坚实的锚点。</p>
 
-<h3>2.2 第一条的完成时间随排队深度上升 —— 拆包交错在同核内部就发生了</h3>
+<h3>3.2 第一条的完成时间随排队深度上升 —— 拆包交错在同核内部就发生了</h3>
 <table><thead><tr><th>配置</th><th>K=1</th><th>K=2</th><th>K=3</th><th>K=4</th><th>K=6</th><th>K=8</th></tr></thead><tbody>
 {"".join(f"<tr><td>{k}</td>" + "".join(f"<td>{v.get(i,'—')}</td>" for i in (1,2,3,4,6,8)) + "</tr>" for k,v in c1k.items())}
 </tbody></table>
+<div class="chart">{CHARTS["c1"]}</div>
 <p>16KB / B=56 时，<b>C₁ 从 K=1 的 {c1k['16K B=56'][1]:.2f}µs 涨到 K=8 的 {c1k['16K B=56'][8]:.2f}µs（+{100*(c1k['16K B=56'][8]/c1k['16K B=56'][1]-1):.0f}%）</b>。
 这正是原始问题里"后发的包把先发的包挤到后面"的直接证据——<b>不需要跨核，同一个核内部就已经发生</b>。</p>
 
-<h3>2.3 末段增量衰减 —— 队列排空</h3>
+<h3>3.3 末段增量衰减 —— 队列排空</h3>
 <p>16KB / B=56 / K=8 的相邻增量：<code>{' '.join(f'{d:.2f}' for d in deltas)}</code> µs。
 前五段稳定在 0.5 左右，最后两段掉到 {deltas[-2]:.2f} 和 {deltas[-1]:.2f}——队列见底时总线开始空转。</p>
 
-<h3>2.4 核数曲线在 B≈32 出现拐点</h3>
+<h3>3.4 核数曲线在 B≈32 出现拐点</h3>
+<div class="chart">{CHARTS["core"]}</div>
 <table><thead><tr><th>B（核数）</th><th>C₁ (µs)</th><th>Δ</th><th>隐含带宽 (GB/s)</th></tr></thead>
 <tbody>{html_rows_core()}</tbody></table>
 <p>B=1→28 时 C₁ 只从 {core[1]:.2f} 涨到 {core[28]:.2f}µs（带宽从 97 升到 1308 GB/s，接近线性扩展）；
@@ -215,6 +250,7 @@ B=28→56 时 C₁ 从 {core[28]:.2f} 涨到 {core[56]:.2f}µs，<b>带宽基本
 </tbody></table>
 
 <h3>3.2 留出集逐点对照（实测 / 预测，µs）</h3>
+<div class="chart">{CHARTS["fit"]}</div>
 <table><thead><tr><th>K</th><th>S (KB)</th><th>B</th><th>copy1</th><th>copy2</th><th>copy3</th><th>copy4</th><th>该点最大误差</th></tr></thead>
 <tbody>{html_resid()}</tbody></table>
 
@@ -238,8 +274,8 @@ B=28→56 时 C₁ 从 {core[28]:.2f} 涨到 {core[56]:.2f}µs，<b>带宽基本
 <p>我做了个判定性检验：假设给每个 (S,B) 组合<b>完全自由</b>的两个参数 L 和 g，
 只用形式 C<sub>k</sub> = L + k·g 去拟合——这已经是该模型族能达到的最好结果。
 在训练集上它仍有 <b>15.8% 的形式误差</b>。</p>
-<p><b>结论：问题不在参数拟合，而在这个函数族本身。</b>它无法同时表达"C₁ 随 K 上升"（2.2）
-和"末段增量衰减"（2.3）——一个线性于 k 的式子做不到这两件事。
+<p><b>结论：问题不在参数拟合，而在这个函数族本身。</b>它无法同时表达"C₁ 随 K 上升"（§3.2）
+和"末段增量衰减"（§3.3）——一个线性于 k 的式子做不到这两件事。
 我试过加入队列深度项、排空项、带宽饱和项等 6 种扩展形式，最好也只到 10–13%，且参数开始不可辨识（如 B₀ 拟合成负值）。</p>
 
 <h2>5. 结论</h2>

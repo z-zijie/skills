@@ -34,6 +34,8 @@
  .kpi div{background:#f9fafb;border:1px solid var(--line);border-radius:6px;padding:.8rem}
  .kpi b{display:block;font-size:1.35rem;line-height:1.2}
  .kpi span{font-size:.8rem;color:var(--mut)}
+ .chart{margin:1rem 0 1.3rem;background:#fff;border:1px solid var(--line);border-radius:6px;padding:.6rem}
+ .chart svg{width:100%;height:auto;display:block}
 </style></head><body>
 
 <h1>MTE2 总线拆包排队建模 — 现状报告</h1>
@@ -70,9 +72,38 @@ for k in 0..K-1:
 <p class="note">每个数据点一个独立进程、随机顺序访问；源地址在远大于 L2（128MB）的窗口内轮转，
 保证每条都是冷 HBM 读。响应量取「每次发射的核中位数 → 跨发射取最小值」，即无干扰基线。</p>
 
-<h2>2. 实测到的四条规律</h2>
+<h2>2. 理论假设</h2>
+<p>在测之前先写下可被数据否证的假设，这样后面的实验就不是"先有结论再找证据"。
+每条都给出<b>如果成立应该看到什么</b>，以及实测的裁决。</p>
 
-<h3>2.1 边际成本与字节数严格成正比 —— 总线带宽是常数</h3>
+<table><thead><tr><th style="width:4%">#</th><th style="width:34%">假设</th><th style="width:34%">如果成立，应观察到</th><th style="width:16%">裁决</th><th style="width:12%">证据</th></tr></thead><tbody>
+<tr><td>H1</td><td>MTE2 的搬运时间由总线上流过的<b>字节数</b>决定，而非指令条数</td>
+<td>把一次 100KB 拆成两条 50KB 与单条 100KB，总耗时相同；边际成本与 S 成正比</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.1</td></tr>
+<tr><td>H2</td><td>总线带宽在 8KB–100KB 内是<b>常数</b>，不存在小包效率损失</td>
+<td>各尺寸反推的隐含带宽一致</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.1（1.6–1.7 TB/s）</td></tr>
+<tr><td>H3</td><td><b>拆包乱序会跨指令发生</b>：同一个核里后发的 copy 会把先发的挤后</td>
+<td>C₁ 随 K 单调上升（K 增大 = 队列更深）</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.2（+111%）</td></tr>
+<tr><td>H4</td><td>带宽随核数<b>线性扩展</b>（每核独立通道）</td>
+<td>C₁ 与 B 无关</td>
+<td><span class="verdict v-no">推翻</span></td><td>§3.4：B=56 时慢一倍</td></tr>
+<tr><td>H5</td><td>带宽在某个核数处<b>饱和</b>，之后加核只增加排队</td>
+<td>C₁ 先缓后陡，存在拐点</td>
+<td><span class="verdict v-ok">成立</span></td><td>§3.4（拐点 B≈28–32）</td></tr>
+<tr><td>H6</td><td>完成时间对 k 是<b>仿射</b>的：C<sub>k</sub> = L + k·g</td>
+<td>相邻增量恒定；C₁ 不随 K 变</td>
+<td><span class="verdict v-no">推翻</span></td><td>§3.2/3.3：C₁ 随 K 变，末段衰减</td></tr>
+</tbody></table>
+
+<p><b>H6 被推翻这件事直接决定了本报告的结论。</b>它本是所有简单排队模型（包括我先试的
+"处理器共享"式）的共同底座；一旦它不成立，任何 C<sub>k</sub> = L + k·g 形式的模型
+都无法拟合到 5%，这正是 §5.3 量化出来的 15.8% 形式误差下限的来源。</p>
+
+<h2>3. 实测到的四条规律</h2>
+
+<h3>3.1 边际成本与字节数严格成正比 —— 总线带宽是常数</h3>
 <p>在 B=56 上，每多搬一条 copy 的耗时增量：</p>
 <table><thead><tr><th>每条字节数 S</th><th>边际耗时 (µs)</th><th>隐含聚合带宽 (GB/s)</th><th>样本数</th></tr></thead>
 <tbody><tr><td>16 KB</td><td>0.573</td><td>1600</td><td>1</td></tr>
@@ -82,18 +113,20 @@ for k in 0..K-1:
 <p><b>四种尺寸下隐含带宽都落在 1.6–1.7 TB/s</b>，说明在 8KB–100KB 范围内总线带宽是常数，
 不存在"小包效率低"的弯曲。这是整个模型最坚实的锚点。</p>
 
-<h3>2.2 第一条的完成时间随排队深度上升 —— 拆包交错在同核内部就发生了</h3>
+<h3>3.2 第一条的完成时间随排队深度上升 —— 拆包交错在同核内部就发生了</h3>
 <table><thead><tr><th>配置</th><th>K=1</th><th>K=2</th><th>K=3</th><th>K=4</th><th>K=6</th><th>K=8</th></tr></thead><tbody>
 <tr><td>8K B=56</td><td>0.644</td><td>—</td><td>—</td><td>0.925</td><td>—</td><td>1.171</td></tr><tr><td>16K B=56</td><td>0.667</td><td>1.046</td><td>—</td><td>1.327</td><td>1.341</td><td>1.405</td></tr><tr><td>32K B=56</td><td>1.134</td><td>1.861</td><td>1.898</td><td>1.884</td><td>1.915</td><td>—</td></tr>
 </tbody></table>
+<div class="chart"><svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" role="img"><line x1="58" y1="256" x2="622" y2="256" stroke="#d1d5db"/><line x1="58" y1="16" x2="58" y2="256" stroke="#d1d5db"/><line x1="58.0" y1="256" x2="58.0" y2="260" stroke="#9ca3af"/><text x="58.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">1</text><line x1="138.6" y1="256" x2="138.6" y2="260" stroke="#9ca3af"/><text x="138.6" y="274" font-size="10" fill="#6b7280" text-anchor="middle">2</text><line x1="219.1" y1="256" x2="219.1" y2="260" stroke="#9ca3af"/><text x="219.1" y="274" font-size="10" fill="#6b7280" text-anchor="middle">3</text><line x1="299.7" y1="256" x2="299.7" y2="260" stroke="#9ca3af"/><text x="299.7" y="274" font-size="10" fill="#6b7280" text-anchor="middle">4</text><line x1="460.9" y1="256" x2="460.9" y2="260" stroke="#9ca3af"/><text x="460.9" y="274" font-size="10" fill="#6b7280" text-anchor="middle">6</text><line x1="622.0" y1="256" x2="622.0" y2="260" stroke="#9ca3af"/><text x="622.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">8</text><line x1="54" y1="256.0" x2="622" y2="256.0" stroke="#f3f4f6"/><text x="50" y="259.5" font-size="10" fill="#6b7280" text-anchor="end">0.0</text><line x1="54" y1="201.5" x2="622" y2="201.5" stroke="#f3f4f6"/><text x="50" y="205.0" font-size="10" fill="#6b7280" text-anchor="end">0.5</text><line x1="54" y1="146.9" x2="622" y2="146.9" stroke="#f3f4f6"/><text x="50" y="150.4" font-size="10" fill="#6b7280" text-anchor="end">1.0</text><line x1="54" y1="92.4" x2="622" y2="92.4" stroke="#f3f4f6"/><text x="50" y="95.9" font-size="10" fill="#6b7280" text-anchor="end">1.5</text><line x1="54" y1="37.8" x2="622" y2="37.8" stroke="#f3f4f6"/><text x="50" y="41.3" font-size="10" fill="#6b7280" text-anchor="end">2.0</text><text x="340.0" y="294" font-size="10.5" fill="#374151" text-anchor="middle">K（同一核内的 copy 条数）</text><text x="12" y="136.0" font-size="10.5" fill="#374151" text-anchor="middle" transform="rotate(-90 12 136.0)">C₁（第一条完成耗时, µs）</text><polyline points="58.0,183.2 138.6,141.9 299.7,111.2 460.9,109.7 622.0,102.7" fill="none" stroke="#c0392b" stroke-width="2"/><circle cx="58.0" cy="183.2" r="3" fill="#c0392b"/><circle cx="138.6" cy="141.9" r="3" fill="#c0392b"/><circle cx="299.7" cy="111.2" r="3" fill="#c0392b"/><circle cx="460.9" cy="109.7" r="3" fill="#c0392b"/><circle cx="622.0" cy="102.7" r="3" fill="#c0392b"/><polyline points="58.0,132.3 138.6,52.9 219.1,48.9 299.7,50.5 460.9,47.0" fill="none" stroke="#2c3e50" stroke-width="2"/><circle cx="58.0" cy="132.3" r="3" fill="#2c3e50"/><circle cx="138.6" cy="52.9" r="3" fill="#2c3e50"/><circle cx="219.1" cy="48.9" r="3" fill="#2c3e50"/><circle cx="299.7" cy="50.5" r="3" fill="#2c3e50"/><circle cx="460.9" cy="47.0" r="3" fill="#2c3e50"/><polyline points="58.0,185.7 299.7,155.1 622.0,128.3" fill="none" stroke="#16a085" stroke-width="2"/><circle cx="58.0" cy="185.7" r="3" fill="#16a085"/><circle cx="299.7" cy="155.1" r="3" fill="#16a085"/><circle cx="622.0" cy="128.3" r="3" fill="#16a085"/><line x1="482" y1="28" x2="500" y2="28" stroke="#c0392b" stroke-width="2"/><text x="506" y="31" font-size="10" fill="#374151">S=16KB B=56</text><line x1="482" y1="44" x2="500" y2="44" stroke="#2c3e50" stroke-width="2"/><text x="506" y="47" font-size="10" fill="#374151">S=32KB B=56</text><line x1="482" y1="60" x2="500" y2="60" stroke="#16a085" stroke-width="2"/><text x="506" y="63" font-size="10" fill="#374151">S=8KB B=56</text></svg></div>
 <p>16KB / B=56 时，<b>C₁ 从 K=1 的 0.67µs 涨到 K=8 的 1.41µs（+111%）</b>。
 这正是原始问题里"后发的包把先发的包挤到后面"的直接证据——<b>不需要跨核，同一个核内部就已经发生</b>。</p>
 
-<h3>2.3 末段增量衰减 —— 队列排空</h3>
+<h3>3.3 末段增量衰减 —— 队列排空</h3>
 <p>16KB / B=56 / K=8 的相邻增量：<code>0.51 0.49 0.52 0.55 0.56 0.39 0.16</code> µs。
 前五段稳定在 0.5 左右，最后两段掉到 0.39 和 0.16——队列见底时总线开始空转。</p>
 
-<h3>2.4 核数曲线在 B≈32 出现拐点</h3>
+<h3>3.4 核数曲线在 B≈32 出现拐点</h3>
+<div class="chart"><svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" role="img"><line x1="58" y1="256" x2="622" y2="256" stroke="#d1d5db"/><line x1="58" y1="16" x2="58" y2="256" stroke="#d1d5db"/><line x1="58.0" y1="256" x2="58.0" y2="260" stroke="#9ca3af"/><text x="58.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">1</text><line x1="119.5" y1="256" x2="119.5" y2="260" stroke="#9ca3af"/><text x="119.5" y="274" font-size="10" fill="#6b7280" text-anchor="middle">7</text><line x1="191.3" y1="256" x2="191.3" y2="260" stroke="#9ca3af"/><text x="191.3" y="274" font-size="10" fill="#6b7280" text-anchor="middle">14</text><line x1="263.1" y1="256" x2="263.1" y2="260" stroke="#9ca3af"/><text x="263.1" y="274" font-size="10" fill="#6b7280" text-anchor="middle">21</text><line x1="334.9" y1="256" x2="334.9" y2="260" stroke="#9ca3af"/><text x="334.9" y="274" font-size="10" fill="#6b7280" text-anchor="middle">28</text><line x1="416.9" y1="256" x2="416.9" y2="260" stroke="#9ca3af"/><text x="416.9" y="274" font-size="10" fill="#6b7280" text-anchor="middle">36</text><line x1="498.9" y1="256" x2="498.9" y2="260" stroke="#9ca3af"/><text x="498.9" y="274" font-size="10" fill="#6b7280" text-anchor="middle">44</text><line x1="622.0" y1="256" x2="622.0" y2="260" stroke="#9ca3af"/><text x="622.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">56</text><line x1="54" y1="256.0" x2="622" y2="256.0" stroke="#f3f4f6"/><text x="50" y="259.5" font-size="10" fill="#6b7280" text-anchor="end">0</text><line x1="54" y1="196.0" x2="622" y2="196.0" stroke="#f3f4f6"/><text x="50" y="199.5" font-size="10" fill="#6b7280" text-anchor="end">1</text><line x1="54" y1="136.0" x2="622" y2="136.0" stroke="#f3f4f6"/><text x="50" y="139.5" font-size="10" fill="#6b7280" text-anchor="end">2</text><line x1="54" y1="76.0" x2="622" y2="76.0" stroke="#f3f4f6"/><text x="50" y="79.5" font-size="10" fill="#6b7280" text-anchor="end">3</text><line x1="54" y1="16.0" x2="622" y2="16.0" stroke="#f3f4f6"/><text x="50" y="19.5" font-size="10" fill="#6b7280" text-anchor="end">4</text><text x="340.0" y="294" font-size="10.5" fill="#374151" text-anchor="middle">B（参与核数）</text><text x="12" y="136.0" font-size="10.5" fill="#374151" text-anchor="middle" transform="rotate(-90 12 136.0)">C₁（单条 100KB, µs）</text><line x1="334.9" y1="16" x2="334.9" y2="256" stroke="#e5e7eb" stroke-dasharray="4 3"/><text x="339.9" y="30" font-size="9.5" fill="#9ca3af">B≈28 饱和拐点</text><polyline points="58.0,192.4 68.3,186.6 88.8,150.2 119.5,150.5 150.3,146.1 191.3,146.6 232.3,140.0 263.1,135.7 293.9,132.0 334.9,124.5 375.9,107.9 416.9,93.7 457.9,75.6 478.4,78.6 498.9,48.2 540.0,30.6 581.0,51.1 622.0,40.8" fill="none" stroke="#c0392b" stroke-width="2"/><circle cx="58.0" cy="192.4" r="2.6" fill="#c0392b"/><circle cx="68.3" cy="186.6" r="2.6" fill="#c0392b"/><circle cx="88.8" cy="150.2" r="2.6" fill="#c0392b"/><circle cx="119.5" cy="150.5" r="2.6" fill="#c0392b"/><circle cx="150.3" cy="146.1" r="2.6" fill="#c0392b"/><circle cx="191.3" cy="146.6" r="2.6" fill="#c0392b"/><circle cx="232.3" cy="140.0" r="2.6" fill="#c0392b"/><circle cx="263.1" cy="135.7" r="2.6" fill="#c0392b"/><circle cx="293.9" cy="132.0" r="2.6" fill="#c0392b"/><circle cx="334.9" cy="124.5" r="2.6" fill="#c0392b"/><circle cx="375.9" cy="107.9" r="2.6" fill="#c0392b"/><circle cx="416.9" cy="93.7" r="2.6" fill="#c0392b"/><circle cx="457.9" cy="75.6" r="2.6" fill="#c0392b"/><circle cx="478.4" cy="78.6" r="2.6" fill="#c0392b"/><circle cx="498.9" cy="48.2" r="2.6" fill="#c0392b"/><circle cx="540.0" cy="30.6" r="2.6" fill="#c0392b"/><circle cx="581.0" cy="51.1" r="2.6" fill="#c0392b"/><circle cx="622.0" cy="40.8" r="2.6" fill="#c0392b"/></svg></div>
 <table><thead><tr><th>B（核数）</th><th>C₁ (µs)</th><th>Δ</th><th>隐含带宽 (GB/s)</th></tr></thead>
 <tbody><tr><td>1</td><td>1.06</td><td></td><td>97</td></tr>
 <tr><td>2</td><td>1.16</td><td>+0.097</td><td>177</td></tr>
@@ -138,6 +171,7 @@ B=28→56 时 C₁ 从 2.19 涨到 3.59µs，<b>带宽基本不再增长</b>。
 </tbody></table>
 
 <h3>3.2 留出集逐点对照（实测 / 预测，µs）</h3>
+<div class="chart"><svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" role="img"><line x1="58" y1="256" x2="622" y2="256" stroke="#d1d5db"/><line x1="58" y1="16" x2="58" y2="256" stroke="#d1d5db"/><line x1="58.0" y1="256" x2="58.0" y2="260" stroke="#9ca3af"/><text x="58.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">0</text><line x1="199.0" y1="256" x2="199.0" y2="260" stroke="#9ca3af"/><text x="199.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">2</text><line x1="340.0" y1="256" x2="340.0" y2="260" stroke="#9ca3af"/><text x="340.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">4</text><line x1="481.0" y1="256" x2="481.0" y2="260" stroke="#9ca3af"/><text x="481.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">6</text><line x1="622.0" y1="256" x2="622.0" y2="260" stroke="#9ca3af"/><text x="622.0" y="274" font-size="10" fill="#6b7280" text-anchor="middle">8</text><line x1="54" y1="256.0" x2="622" y2="256.0" stroke="#f3f4f6"/><text x="50" y="259.5" font-size="10" fill="#6b7280" text-anchor="end">0</text><line x1="54" y1="196.0" x2="622" y2="196.0" stroke="#f3f4f6"/><text x="50" y="199.5" font-size="10" fill="#6b7280" text-anchor="end">2</text><line x1="54" y1="136.0" x2="622" y2="136.0" stroke="#f3f4f6"/><text x="50" y="139.5" font-size="10" fill="#6b7280" text-anchor="end">4</text><line x1="54" y1="76.0" x2="622" y2="76.0" stroke="#f3f4f6"/><text x="50" y="79.5" font-size="10" fill="#6b7280" text-anchor="end">6</text><line x1="54" y1="16.0" x2="622" y2="16.0" stroke="#f3f4f6"/><text x="50" y="19.5" font-size="10" fill="#6b7280" text-anchor="end">8</text><text x="340.0" y="294" font-size="10.5" fill="#374151" text-anchor="middle">模型预测 (µs)</text><text x="12" y="136.0" font-size="10.5" fill="#374151" text-anchor="middle" transform="rotate(-90 12 136.0)">实测 (µs)</text><line x1="58.0" y1="256.0" x2="622.0" y2="16.0" stroke="#d1d5db" stroke-dasharray="4 3"/><circle cx="143.1" cy="215.0" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="168.8" cy="198.1" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="194.6" cy="186.2" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="220.3" cy="174.5" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="246.0" cy="165.7" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="271.8" cy="158.8" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="138.8" cy="228.5" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="160.3" cy="213.8" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="181.7" cy="207.1" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="203.1" cy="201.8" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="220.3" cy="176.2" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="186.0" cy="199.0" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="254.6" cy="169.4" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="323.3" cy="136.1" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="391.9" cy="104.6" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="460.5" cy="88.5" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="143.1" cy="223.1" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="168.8" cy="203.8" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="194.6" cy="187.4" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="220.3" cy="170.1" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="203.1" cy="193.7" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="288.9" cy="151.7" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="374.7" cy="116.7" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="125.9" cy="230.3" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="134.5" cy="226.8" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="134.5" cy="237.2" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="156.0" cy="222.6" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="194.6" cy="209.5" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="246.0" cy="172.3" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="374.7" cy="126.1" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="160.3" cy="208.1" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="203.1" cy="191.4" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="246.0" cy="170.7" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="288.9" cy="152.0" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="331.8" cy="130.1" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="374.7" cy="111.2" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="417.6" cy="95.8" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="460.5" cy="88.2" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="203.1" cy="190.7" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="288.9" cy="151.8" r="3.2" fill="#c0392b" fill-opacity="0.75"/><circle cx="374.7" cy="123.9" r="3.2" fill="#15803d" fill-opacity="0.75"/><circle cx="492" cy="29" r="3.2" fill="#15803d" fill-opacity="0.75"/><text x="502" y="32" font-size="10" fill="#374151">±5% 内</text><circle cx="492" cy="45" r="3.2" fill="#c0392b" fill-opacity="0.75"/><text x="502" y="48" font-size="10" fill="#374151">超出 ±5%</text></svg></div>
 <table><thead><tr><th>K</th><th>S (KB)</th><th>B</th><th>copy1</th><th>copy2</th><th>copy3</th><th>copy4</th><th>该点最大误差</th></tr></thead>
 <tbody><tr class='bad'><td>1</td><td>8</td><td>56</td><td>0.63 / 1.09</td><td>72.8%</td></tr>
 <tr class='warn'><td>2</td><td>16</td><td>14</td><td>0.85 / 0.96</td><td>0.97 / 1.09</td><td>12.7%</td></tr>
@@ -172,8 +206,8 @@ B=28→56 时 C₁ 从 2.19 涨到 3.59µs，<b>带宽基本不再增长</b>。
 <p>我做了个判定性检验：假设给每个 (S,B) 组合<b>完全自由</b>的两个参数 L 和 g，
 只用形式 C<sub>k</sub> = L + k·g 去拟合——这已经是该模型族能达到的最好结果。
 在训练集上它仍有 <b>15.8% 的形式误差</b>。</p>
-<p><b>结论：问题不在参数拟合，而在这个函数族本身。</b>它无法同时表达"C₁ 随 K 上升"（2.2）
-和"末段增量衰减"（2.3）——一个线性于 k 的式子做不到这两件事。
+<p><b>结论：问题不在参数拟合，而在这个函数族本身。</b>它无法同时表达"C₁ 随 K 上升"（§3.2）
+和"末段增量衰减"（§3.3）——一个线性于 k 的式子做不到这两件事。
 我试过加入队列深度项、排空项、带宽饱和项等 6 种扩展形式，最好也只到 10–13%，且参数开始不可辨识（如 B₀ 拟合成负值）。</p>
 
 <h2>5. 结论</h2>
