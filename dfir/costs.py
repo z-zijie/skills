@@ -301,6 +301,47 @@ class AICLoadCost:
 
 
 @dataclass
+class MultiCoreCost:
+    """Multi-core launch skew and straggler tail.
+
+    A kernel does not start on all cores at once, and it ends when the SLOWEST
+    core finishes -- neither effect is a property of a single core's work, so a
+    per-core cost model cannot express them.
+
+    Measured over 1320 launches of the MTE2 sweep (per-core SYS_CNT stamps):
+
+      B   start skew (median)   slowest core / median core
+      7        0.233 us                 1.03x
+     14        0.283 us                 1.06x
+     21        0.319 us                 1.08x
+     28        0.438 us                 1.12x
+     56        0.903 us                 1.15x
+
+    Both grow with CoreNum: more cores means a longer launch ramp and a wider
+    statistical tail. The kernel time is therefore
+        elapsed ~= per-core work x straggler(B) + start_skew(B)
+    rather than the median core's time.
+    """
+    # Linear fits through the five measured core counts. A sqrt/log form was
+    # tried first and fitted worse (MAPE 20%/30% vs 11% for the ramp, and the
+    # straggler ratio fits linearly to 1.0%).
+    skew_us_at_0: float = 0.0779
+    skew_us_per_core: float = 0.01418
+    straggler_at_0: float = 1.0281
+    straggler_per_core: float = 0.00238
+    calibrated: bool = True
+    source: str = "hw-counters, 1320 launches, per-core SYS_CNT stamps"
+
+    def start_skew_us(self, cores: int) -> float:
+        """Spread of core start times; grows ~linearly with CoreNum."""
+        return self.skew_us_at_0 + self.skew_us_per_core * max(1, cores)
+
+    def straggler_ratio(self, cores: int) -> float:
+        """slowest core / median core. Fitted to 1.0% over B=7..56."""
+        return self.straggler_at_0 + self.straggler_per_core * max(1, cores)
+
+
+@dataclass
 class ScalarCost:
     """Per-pipe SCALAR cost (address math, loop control, descriptor setup).
 
@@ -367,6 +408,7 @@ class CostModel:
     aic: AICCost = None
     aic_load: AICLoadCost = None
     scalar: ScalarCost = None
+    multicore: MultiCoreCost = None
     mix: MixCost = None
     clock: Clock = None
 
@@ -377,6 +419,7 @@ class CostModel:
         self.aic = self.aic or AICCost()
         self.aic_load = self.aic_load or AICLoadCost()
         self.scalar = self.scalar or ScalarCost()
+        self.multicore = self.multicore or MultiCoreCost()
         self.mix = self.mix or MixCost()
         self.clock = self.clock or Clock()
 
@@ -421,5 +464,7 @@ class CostModel:
                              source=self.aic_load.source),
             "SCALAR": dict(calibrated=self.scalar.calibrated,
                            source=self.scalar.source),
+            "MULTICORE": dict(calibrated=self.multicore.calibrated,
+                              source=self.multicore.source),
             "MIX": dict(calibrated=self.mix.calibrated, source=self.mix.source),
         }

@@ -103,6 +103,14 @@ print(f"v4 (+ scalar pipes)              : {pred4:6.2f} us  "
       f"({100*(pred4-MEASURED_US)/MEASURED_US:+6.1f}%)")
 print(f"   = v3 {pred3:.2f} + aic_scalar {m.scalar.aic_us_per_launch:.2f}"
       f" + aiv_scalar {m.scalar.aiv_us_per_launch:.2f}")
+# --- v5: add multi-core skew + straggler tail ----------------------------
+# The operator runs on 2 Cube cores + 4 Vector cores. A kernel ends when its
+# slowest core does, and cores start staggered.
+skew_us = m.multicore.start_skew_us(cores_aiv)
+strag = m.multicore.straggler_ratio(cores_aiv)
+pred5 = pred4 * strag + skew_us
+print(f"v5 (+ skew {skew_us:.2f}us, straggler {strag:.3f}x) : {pred5:6.2f} us  "
+      f"({100*(pred5-MEASURED_US)/MEASURED_US:+6.1f}%)")
 print()
 print("Upper bound on what itemising every pipe would give:")
 print(f"  sum of all measured pipe busy times = {busy:.2f} us "

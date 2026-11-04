@@ -188,6 +188,17 @@ def estimate(flow: Flow, model: CostModel = None, verbose: bool = False,
                     mix_pairs += 1
         total += model.mix.cycles(mix_pairs)
 
+    # ---- multi-core launch skew and straggler tail ----------------------
+    # A kernel ends when its SLOWEST core finishes, and cores do not all start
+    # together. Both scale with CoreNum:
+    #    skew(B)      = 0.078 + 0.0142*B  us   (fitted, MAPE 11%)
+    #    straggler(B) = 1.028 + 0.00238*B       (fitted, MAPE 1.0%)
+    # The per-core work is therefore scaled by the straggler ratio and the launch
+    # ramp added once. Without this the model predicts the median core.
+    straggler = model.multicore.straggler_ratio(cores)
+    total *= straggler
+    total += model.multicore.start_skew_us(cores) * 1000.0 * model.clock.ghz
+
     if mode == MODE_SERIAL:
         # launch ramp/drain, measured on a real fused operator (M4)
         total += LAUNCH_OVERHEAD_US * 1000.0 * model.clock.ghz
