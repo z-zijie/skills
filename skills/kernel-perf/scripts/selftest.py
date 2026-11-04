@@ -371,10 +371,169 @@ def test_reward_model() -> None:
               f"{bad_v['reward']} vs {good_v['reward']}")
 
 
+def test_metric_catalogue() -> None:
+    print("\n[metric catalogue]")
+    import metric_catalogue as MC
+    cat = MC.build_catalogue()
+    check("catalogue is non-trivial", len(cat) >= 40, f"got {len(cat)}")
+    tiers = {m.tier for m in cat}
+    check("catalogue spans all tiers", tiers == {"A", "B", "C", "D", "E"}, str(tiers))
+    keys = [m.key for m in cat]
+    check("catalogue keys are unique", len(keys) == len(set(keys)))
+    # every metric documents where its number comes from
+    missing = [m.key for m in cat if not m.source]
+    check("every metric states its source", not missing, str(missing[:5]))
+    # the unstable write-hit-rate must be demoted by measurement, not opinion
+    check("l2_write_hit demoted to E by measured CV",
+          MC.confidence_of("l2_write_hit") == "E",
+          MC.confidence_of("l2_write_hit"))
+    check("l2_read_hit stays above E", MC.confidence_of("l2_read_hit") != "E")
+
+
+def test_key_metrics() -> None:
+    print("\n[key metrics]")
+    import key_metrics as KM
+    peaks = KM.PlatformPeaks(soc="Ascend950PR_9579", ai_core_cnt=28,
+                             vector_core_cnt=56, cube_freq_mhz=1650,
+                             vec_freq_mhz=1650)
+    # 28 * 1.65e9 * 4096 * 2 = 3.7847e14
+    expected_flops = 28 * 1.65e9 * 4096 * 2
+    check("cube peak matches hand calculation",
+          abs(peaks.cube_flops_per_s - expected_flops) / expected_flops < 1e-3,
+          f"{peaks.cube_flops_per_s:.4g} vs {expected_flops:.4g}")
+
+    # a kernel that issues exactly 1000 MMAs in 1 us
+    analysis = {
+        "kernel": {"duration_us": 1.0},
+        "arithmetic": {"cube_ratio": 80.0, "cube_total_instr": 1000},
+        "pipes": [{"pipe": "cube", "label": "Cube", "mean_ratio_pct": 80.0}],
+        "per_core": [],
+    }
+    m = KM.compute(analysis, peaks)
+    expected_tflops = 1000 * 4096 * 2 / 1e-6 / 1e12
+    check("achieved TFLOPS from MMA count",
+          m.achieved_tflops is not None and abs(m.achieved_tflops - expected_tflops) < 1e-6,
+          f"{m.achieved_tflops} vs {expected_tflops}")
+    check("MFU is achieved/peak",
+          m.mfu_pct is not None and
+          abs(m.mfu_pct - 100.0 * expected_tflops / (expected_flops / 1e12)) < 1e-3,
+          f"{m.mfu_pct}")
+    check("bound_by picks the busiest pipe", m.bound_by == "cube", m.bound_by)
+
+    # a vector kernel must not fabricate a cube MFU
+    vec = {"kernel": {"duration_us": 5.0}, "arithmetic": {"cube_ratio": 0.0},
+           "pipes": [{"pipe": "vec", "label": "Vector", "mean_ratio_pct": 60.0}],
+           "per_core": []}
+    mv = KM.compute(vec, peaks)
+    check("vector kernel reports no MFU", mv.mfu_pct is None, str(mv.mfu_pct))
+    check("vector kernel still classifies a bound", mv.bound_by == "vec", mv.bound_by)
+
+
+def test_instruction_profile() -> None:
+    print("\n[instruction profile]")
+    import instr_profile as IP
+    # a region map line exactly as the profiler writes it
+    with tempfile.TemporaryDirectory() as tmp:
+        dump = Path(tmp) / "dump"
+        dump.mkdir()
+        (dump / "dfx_region_map.txt").write_text(
+            "InstrumentDfxRegion\n"
+            "function=_Z10add_kernelIfEvPhS0_S0_llj\n"
+            "region_id=1536,pipe=mte2,bb_off=0x454,inst_off=0x18,pc=0x0000046c,opcode=GET_BUF\n"
+            "region_id=1540,pipe=vector,bb_off=0x4b0,inst_off=0x194,pc=0x00000644,opcode=GET_BUF_V\n"
+        )
+        (dump / "pc_start_addr.txt").write_text("0x12004100a000")
+        regions = IP.parse_region_map(dump / "dfx_region_map.txt")
+        check("region map parses both lines", len(regions) == 2, str(len(regions)))
+        check("header lines are skipped", all(r.opcode.endswith("BUF") or
+                                             r.opcode.endswith("_V") for r in regions))
+        check("pipe names recovered",
+              {r.pipe for r in regions} == {"mte2", "vector"},
+              str({r.pipe for r in regions}))
+        base = IP.parse_base_pc(dump / "pc_start_addr.txt")
+        check("base pc parses", base == 0x12004100a000, hex(base or 0))
+
+        # now the join: absolute pc in the trace must map onto the region pc
+        trace = {
+            "traceEvents": [
+                {"ph": "X", "tid": "MTE2", "name": "GET_BUF", "dur": 0.5,
+                 "args": {"pc_addr": "0x12004100a46c"}},
+                {"ph": "X", "tid": "VECTOR", "name": "GET_BUF_V", "dur": 1.5,
+                 "args": {"pc_addr": "0x12004100a644"}},
+            ]
+        }
+        (Path(tmp) / "trace.json").write_text(json.dumps(trace))
+        insight = IP.analyze(Path(tmp), kernel_us=10.0)
+        check("join succeeds", insight.available, insight.reason)
+        check("both events attributed", insight.events == 2, str(insight.events))
+        check("durations summed", abs(insight.covered_us - 2.0) < 1e-9,
+              str(insight.covered_us))
+        check("coverage fraction computed",
+              insight.covered_pct is not None and abs(insight.covered_pct - 20.0) < 1e-6,
+              str(insight.covered_pct))
+        ops = {e["opcode"] for e in insight.by_opcode}
+        check("opcodes resolved from region map",
+              ops == {"GET_BUF", "GET_BUF_V"}, str(ops))
+
+    # missing inputs must degrade, not raise
+    with tempfile.TemporaryDirectory() as tmp:
+        insight = IP.analyze(Path(tmp))
+        check("missing dump degrades gracefully",
+              not insight.available and insight.reason, insight.reason)
+
+
+def test_stability_threshold() -> None:
+    print("\n[stability]")
+    import metric_catalogue as MC
+    # the threshold rule must be applied, not hardcoded per metric
+    for key, measured in MC.MEASURED_STABILITY.items():
+        got = MC.confidence_of(key)
+        if measured["cv_pct"] > MC.STABILITY_THRESHOLD_CV:
+            check(f"{key} demoted to E (CV {measured['cv_pct']}%)", got == "E", got)
+    check("all measured entries present", len(MC.MEASURED_STABILITY) >= 8)
+
+
+def test_stability_harness() -> None:
+    print("\n[stability harness]")
+    import stability as ST
+    # build synthetic captures with a known spread: 5 runs, exact values
+    captures = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, vec_ratio in enumerate([0.20, 0.21, 0.19, 0.205, 0.195]):
+            cap = build_capture(Path(tmp) / f"r{i}", vec_time=vec_ratio, total_time=1.0)
+            captures.append(KP.load_capture(cap, None))
+        results = {r.key: r for r in ST.measure(captures)}
+        vec = results["vec_ratio"]
+        check("stability sees all runs", vec.runs == 5, str(vec.runs))
+        check("mean matches hand calculation",
+              abs(vec.mean - 0.20) < 1e-9, str(vec.mean))
+        # CV of [0.20,0.21,0.19,0.205,0.195] is ~3.5%
+        check("CV is a few percent", 3.0 < vec.cv_pct < 4.0, str(vec.cv_pct))
+        check("verdict is 'usable' at this CV", vec.verdict in ("稳定", "可用"),
+              vec.verdict)
+        text = ST.render(list(results.values()), 5)
+        check("render produces a table", "CV%" in text)
+
+
+def test_multipass_planning() -> None:
+    print("\n[multipass planning]")
+    # mutually exclusive sets must never share a pass
+    p1 = KP.plan_passes(["PipeUtilization", "InstrTimeline", "PipeTimeline"])
+    flat = [m for grp in p1 for m in grp]
+    check("no pass contains both timelines",
+          not any("InstrTimeline" in g and "PipeTimeline" in g for g in p1), str(p1))
+    check("all requested metrics survive", sorted(flat) == sorted(
+        ["PipeUtilization", "InstrTimeline", "PipeTimeline"]), str(flat))
+    check("core pass comes first", "PipeUtilization" in p1[0], str(p1))
+    single = KP.plan_passes(["PipeUtilization", "Memory"])
+    check("mergeable metrics stay in one pass", len(single) == 1, str(single))
+
+
 def test_cli_contracts() -> None:
     print("\n[CLI contracts]")
     import subprocess
-    for script in ("kernel_perf.py", "critic.py", "collect_optimize.py"):
+    for script in ("kernel_perf.py", "critic.py", "collect_optimize.py",
+                   "metric_catalogue.py", "stability.py"):
         proc = subprocess.run([sys.executable, str(HERE / script), "--help"],
                               capture_output=True, timeout=60, check=False)
         check(f"{script} --help exits 0", proc.returncode == 0,
@@ -403,6 +562,12 @@ def main() -> int:
     test_analysis_known_values()
     test_critic_catches_breakage()
     test_reward_model()
+    test_metric_catalogue()
+    test_key_metrics()
+    test_instruction_profile()
+    test_stability_threshold()
+    test_stability_harness()
+    test_multipass_planning()
     test_cli_contracts()
     print()
     if FAILURES:

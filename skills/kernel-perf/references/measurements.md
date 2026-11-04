@@ -134,3 +134,64 @@ OpBasicInfo 有 Task Duration = 6.936 us、Block Dim = 56
 3. `launch5`（5 轮取均值）的 coverage 与单轮完全相同，耗时也相同（11s）——多次 launch 并没有带来更多字段，只影响数值平滑。默认仍用 1 轮，需要稳定性时再手动加。
 
 设备当时有 1–2 个其他进程，critic 的 15 条检查全部通过，说明这些恒等式对计数抖动不敏感（它们是算术关系，不是阈值判断）——这正是用恒等式而不是用"经验范围"做校验的理由。
+
+## 稳定性测量（stability.py，2026-11-04 15:5x，3 次重复）
+
+vector_add，`--warm-up=5`，`launch-count=3`，3 次独立采集：
+
+| 指标 | 均值 | CV% | 极差% | 判读 |
+|---|---:|---:|---:|---|
+| 核忙时间 | 3.0993 us | 0.31 | 0.61 | 稳定 |
+| MTE2 占用 | 61.21% | 0.69 | 1.34 | 稳定 |
+| Vector 占用 | 5.19% | 0.21 | 0.42 | 稳定 |
+| Scalar 占用 | 25.26% | 2.41 | 4.75 | 稳定 |
+| GM→UB 带宽 | 17.8484 GiB/s | 0.20 | 0.41 | 稳定 |
+| L2 读命中 | 0.6248% | 0.00 | 0.01 | 稳定 |
+| **L2 写命中** | 76.9353% | **9.57** | **18.78** | 可用（接近阈值） |
+| Vector 等待 | 60.62% | 2.22 | 4.26 | 稳定 |
+
+两次独立测量（5 次与 3 次）都指出同一件事：**L2 写命中率是唯一抖动的指标**（CV 14.4% 与 9.6%），其余全部 <3%。这支撑了把 `l2_write_hit` 定为 E 级、把 `l2_read_hit` 定为 C 级的划分——同一张表里读侧和写侧的可信度完全不同。
+
+## 指标覆盖率（2026-11-04 15:3x）
+
+CANN 自带 `analysis/common_func/constant.py` 的 `AI_CORE_CALCULATION_FORMULA` 定义 **74** 个可计算指标。用 `msopprof` 默认 7 组采集后：
+
+| 口径 | 数量 |
+|---|---:|
+| CSV 实际暴露的字段总数 | 122 |
+| 其中能对应上 CANN 计算口径的命名指标 | **7 / 53** |
+| 通过 `visualize_data.bin` 额外拿到的行 | 34（UB 四向带宽、8 条 memory_path、逐核 L2、wait cycles…） |
+
+未打通的典型项：`vec_bankgroup_cflt_ratio`、`mte*_iq_full_ratio`、`control_flow_prediction_ratio`、`acess_stack_ratio`。这些在 `msopprof` 的任何 `--aic-metrics` 取值下都没有输出通路——是工具未暴露，不是采集失败，报告里如实标注而不猜测数值。
+
+## 逐指令耗时（2026-11-04 15:36）
+
+`--aic-metrics=InstrTimeline --instr-timeline-pipe="vector|mte2|mte3"`，vector_add（`-g` 编译）：
+
+```
+探针指令点 28 个，trace 事件 97 条，已归属耗时 1.423 us（kernel 4.2 us，覆盖 34%）
+```
+
+按 opcode 聚合：
+
+| opcode | 累计 us | 占比 |
+|---|---:|---:|
+| `MOV_UB_TO_OUT_ALIGN_V2` | 1.3248 | 93.1% |
+| `GET_BUF` | 0.0254 | 1.8% |
+| `RLS_BUF` | 0.0254 | 1.8% |
+
+按 PC 聚合后最热点是 `0x824` 的 `MOV_UB_TO_OUT_ALIGN_V2`——即写回搬运，与流水层面「MTE2 主导」的结论互补：MTE2 是**读**的主导，写侧真正的耗时集中在这一条指令上。
+
+## 采集分趟的必要性（2026-11-04 15:4x）
+
+| 组合 | 结果 |
+|---|---|
+| `InstrTimeline,PipeTimeline` | 立刻报错：`'PipeTimeline' and 'InstrTimeline' cannot be specified together` |
+| `InstrTimeline` + 8 个核心组 | **挂起**（不报错，长时间无输出，最终被杀） |
+| `InstrTimeline` 单独 | 正常，约 1–4 分钟，产出 25 MB `timeline.bin` + 189 MB `OperandRecord.bin` |
+
+所以工具自动拆趟：核心组一趟、`InstrTimeline` 一趟、`PipeTimeline` 一趟。
+
+## dfx_region_map.txt 的生命周期
+
+`dfx_region_map.txt`（pc→pipe/opcode）由 `msopprof` 在采集阶段写出，但**后续解析步骤会把它删掉**。实测：同一 capture 在采集刚结束时存在，几分钟后再看已消失。工具在 `run_msopprof` 返回后立即把它和 `pc_start_addr.txt` 复制到 `capture/probe/`，指令级分析优先读这个副本。

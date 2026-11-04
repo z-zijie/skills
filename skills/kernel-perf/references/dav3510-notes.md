@@ -82,3 +82,71 @@ repeat:
 | `ddr_rate`（AICore 段）/ `ddr_rate`（VectorCore 段） | 31 / 16 |
 
 注意 `[AICoreMemoryRates]` 与 `[VectorCoreMemoryRates]` 两段的 `ddr_rate` 不同（31 vs 16），工具只用采集数据反解出的峰值做分母，ini 值仅作交叉校验，避免选错段。
+
+## 指标计算口径（CANN 源码）
+
+`tools/profiler/profiler_tool/analysis/common_func/constant.py` 里有两个关键结构：
+
+- `PmuMetricCalculate.pmu_metric_calculate_with_freq()`：带宽类指标的通用公式
+  ```
+  值 = float_bit × pmu × pip_size × scalar / (task_cyc / freq) / 8589934592.0
+  ```
+  `8589934592 = 8 × 1024³`，即 **8 GiB**。这独立印证了 GB 在这里是 GiB：除数用的是 1024³ 而不是 1e9。
+
+- `PmuMetricCalculate.pmu_metric_calculate_without_freq()`：占比类指标
+  ```
+  值 = float_bit × pmu / task_cyc
+  ```
+  纯比值，无单位换算，因此这类指标是 B 级（精确推导）。
+
+各带宽的 `pip_size × scalar` 实测值：
+
+| 指标 | pip_size | scalar |
+|---|---:|---:|
+| `ub_read_bw` | 256 | 4 |
+| `l2_read_bw` | 256 | 8 |
+| `l1_read_bw` | 256 | 16 |
+| `main_mem_read_bw` | 8 | 8 |
+| `ub_write_bw_scalar` | 128 | 1 |
+| `fixp2ub_write_bw` | 256 | 8 |
+
+- `Constant.L2_CACHE_EVENTS`：L2 采集用的事件号列表（32 个原始 PMU event id）
+- `Constant.SOC_PMU_EVENTS`：SOC 级事件（`0x2, 0x8a, 0x8b, 0x8c, 0x8d`）
+- `msconfig/soc_pmu_config.py`：默认事件三元组
+  `request_events=0x8a`、`hit_events=0x8c,0x8d`、`miss_events=0x2`
+
+这些是打到硬件上的原始事件号。`msopprof` 的 `--aic-metrics` 是更高层的预设，不暴露逐个 event 的选择；因此部分 CANN 能算的指标在采集侧无输出通路。
+
+## InstrTimeline 的输入与输出
+
+输入约束（实测报错原文）：
+
+- `--instr-timeline-pipe` 只接受 `cube|fixp|vector|mte1|mte2|mte3`，`scalar` 被拒：
+  ```
+  [ERROR] --instr-timeline-pipe only support pipes in [cube fixp vector mte1 mte2 mte3]
+  ```
+- 与 `PipeTimeline` 互斥：
+  ```
+  [ERROR] Unexpected argument --aic-metrics, 'PipeTimeline' and 'InstrTimeline' cannot be specified together.
+  ```
+
+输出产物（一次采集）：
+
+| 文件 | 大小量级 | 内容 |
+|---|---:|---|
+| `trace.json` | ~10 KB | Chrome tracing，`X` 事件带 `args.pc_addr` 与 `dur` |
+| `dump/dfx_region_map.txt` | ~3 KB | pc → pipe/opcode 映射 |
+| `dump/pc_start_addr.txt` | 14 B | 绝对基址 |
+| `dump/timeline.bin.0` | ~25 MB | 原始时间线（未公开格式） |
+| `dump/OperandRecord.bin` | ~190 MB | 操作数记录（未公开格式） |
+
+后两个文件格式未公开，本工具不做解码；可用信息已经通过 `trace.json` + region map 拿到。
+
+## 应用级 msprof 失效的根因
+
+```
+ImportError: /opt/buildtools/python-3.12.9/lib/python3.12/lib-dynload/_ctypes.cpython-312-x86_64-linux-gnu.so:
+  undefined symbol: _PyErr_SetLocaleString
+```
+
+`msprof`（非 `op` 模式）用宿主机 `python3` 解析采集数据，而镜像里这个 Python 是自编译的、`_ctypes` 与解释器主版本不匹配。数据本身采到了（`PROF_*/host/data`、`device_0/data` 都有内容），只是解析不出来。改用 CANN 自带的 `python` 或修好 `_ctypes` 可解，本工具不依赖这条路。

@@ -164,9 +164,12 @@ class Critic:
         self.check_viz_l2_matches_csv()
         self.check_pipe_time_can_overlap()
         self.check_advice_not_empty_when_idle()
+        self.check_derived_ratio_bounds()
+        self.check_mfu_denominator_present()
         if self.report is not None:
             self.check_report_mentions_no_data()
             self.check_report_has_per_core_section()
+            self.check_report_labels_confidence()
         return self.findings
 
     # 1. An empty collection looks exactly like a healthy one in the CSV shape:
@@ -568,6 +571,63 @@ class Critic:
             text = self.report or ""
             ok = "逐核明细" in text or "per_core" in text
             return ok, ("报告含逐核明细" if ok else "报告缺少逐核明细"), {}
+        _()
+
+
+    # 16. Derived percentages (MFU, MAC usage, peak_pct) are all fractions of
+    # something; a bug in a denominator shows up as a value outside [0, 100].
+    def check_derived_ratio_bounds(self) -> None:
+        @self.check("derived_ratio_bounds", "PLAUSIBILITY")
+        def _():
+            worst = (None, 0.0)
+            for row in self.tables["Memory"]:
+                for key, value in row.items():
+                    if "bw_usage_rate" not in key:
+                        continue
+                    parsed = num(value)
+                    if parsed is None:
+                        continue
+                    if parsed > worst[1]:
+                        worst = (key, parsed)
+                    if parsed > 100.0 + self.tol:
+                        return False, (f"core {row.get('block_id')} {key}={parsed:.2f}% "
+                                       f"> 100%，分母可疑"), {"field": key, "value": parsed}
+            return True, f"最大带宽峰值占比 {worst[0]}={worst[1]:.2f}%", {"max": worst[1]}
+        _()
+
+    # 17. MFU is only meaningful when its denominator (AIC count AND cube clock)
+    # is actually known. A silent fallback to block_dim would inflate it.
+    def check_mfu_denominator_present(self) -> None:
+        @self.check("mfu_denominator_present", "COVERAGE")
+        def _():
+            arith = self.tables.get("ArithmeticUtilization") or []
+            cube_active = False
+            for row in arith:
+                ratio = num(row.get("aic_cube_ratio"))
+                if ratio is not None and ratio > 0.01:
+                    cube_active = True
+                    break
+            if not cube_active:
+                return True, "无 cube 活动，MFU 不适用", {}
+            if self.report is None:
+                return True, "未提供报告，跳过", {}
+            text = self.report or ""
+            if "MFU" not in text:
+                return False, "cube 活动但报告未给出 MFU", {}
+            if "n/a" in text and "缺少 AIC" in text:
+                return False, "cube 活动但 MFU 分母缺失（AIC 数或频率）", {}
+            return True, "cube 活动且报告给出了 MFU", {}
+        _()
+
+    # 18. A report that presents derived numbers without their tier invites
+    # misuse. Require the confidence legend to be present.
+    def check_report_labels_confidence(self) -> None:
+        @self.check("report_labels_confidence", "COVERAGE")
+        def _():
+            text = self.report or ""
+            has_legend = "置信" in text or "confidence" in text.lower()
+            return has_legend, ("报告含置信度分级" if has_legend
+                                else "报告未标注置信度，读者无法判断哪些数可信"), {}
         _()
 
 

@@ -39,6 +39,22 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+
+# Sibling modules. Imported defensively so the tool still runs if someone
+# copies only kernel_perf.py -- the catalogue and key metrics are enrichments,
+# not prerequisites for reading a capture.
+try:
+    import metric_catalogue as MC
+except ImportError:  # pragma: no cover
+    MC = None
+try:
+    import key_metrics as KM
+except ImportError:  # pragma: no cover
+    KM = None
+try:
+    import instr_profile as IP
+except ImportError:  # pragma: no cover
+    IP = None
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -62,6 +78,25 @@ DEFAULT_METRICS = [
     "ResourceConflictRatio",
     "Roofline",
 ]
+
+# Metric sets that must be collected in their OWN msopprof invocation.
+#
+# Measured on dav-3510 / CANN 9.3.0:
+#   * PipeTimeline and InstrTimeline are mutually exclusive -- passing both is
+#     rejected outright ("cannot be specified together").
+#   * InstrTimeline combined with the 8 core groups does not error; it hangs
+#     the collection instead, which is worse. So it gets its own pass.
+#   * Source / PCSampling require the kernel to be rebuilt with -g and produce
+#     a large visualize_data.bin; keeping them separate stops a missing debug
+#     build from costing the whole collection.
+#
+# The collector therefore runs one pass per group and merges the results.
+MULTIPASS_GROUPS = {
+    "core": DEFAULT_METRICS,
+    "instr": ["InstrTimeline"],
+    "pipe": ["PipeTimeline"],
+    "source": ["Source"],
+}
 
 NA = "NA"
 
@@ -616,6 +651,20 @@ def load_capture(path: Path, home: Optional[Path] = None) -> Capture:
                 capture.roofline = str(text)
                 break
 
+    # Multi-pass collections keep instruction/timeline artefacts in sibling
+    # passes (capture/extra/<pass>/). Adopt them when the core pass has none, so
+    # a single `analyze` call sees everything that was collected.
+    extra_root = root.parent / "extra"
+    if extra_root.is_dir():
+        if not (root / "probe").is_dir():
+            for probe in sorted(extra_root.glob("*/OPPROF_*/probe")):
+                shutil.copytree(probe, root / "probe", dirs_exist_ok=True)
+                break
+        if not (root / "trace.json").is_file():
+            for trace_file in sorted(extra_root.glob("*/OPPROF_*/trace.json")):
+                shutil.copy2(trace_file, root / "trace.json")
+                break
+
     trace = root / "trace.json"
     if trace.is_file():
         capture.trace_path = trace
@@ -1056,6 +1105,44 @@ def analyze(capture: Capture) -> Dict[str, Any]:
     result["timeline"] = summarize_timeline(capture)
     result["subblocks"] = summarize_subblocks(capture)
     result["op_detail"] = summarize_op_detail(capture)
+
+    # Enrichment: theoretical-peak metrics and instruction-level attribution.
+    if KM is not None:
+        peaks = KM.platform_peaks(capture.platform, capture.soc)
+        # platform_config may be unavailable (analysis run off-device, or an
+        # SoC whose ini is missing). Fall back to what the capture itself tells
+        # us -- the measured clock and the block dim -- and record that the
+        # peak is then an underestimate of the whole chip.
+        fallback = False
+        # Block Dim is the number of cores THIS kernel launched, not the chip's
+        # core count. Using it as the chip peak is only sound when the kernel
+        # saturates the device; otherwise it understates the peak and inflates
+        # MFU. We therefore apply it per core type: a vector kernel's block dim
+        # says nothing about how many cube cores exist, so cube stays unknown.
+        if not peaks.vector_core_cnt and capture.block_dim and \
+                (capture.op_type or "").lower() != "cube":
+            peaks.vector_core_cnt = capture.block_dim
+            fallback = True
+        if not peaks.ai_core_cnt and capture.block_dim and \
+                (capture.op_type or "").lower() == "cube":
+            peaks.ai_core_cnt = capture.block_dim
+            fallback = True
+        if not peaks.cube_freq_mhz and capture.cur_freq:
+            peaks.cube_freq_mhz = capture.cur_freq
+            fallback = True
+        if not peaks.vec_freq_mhz and capture.cur_freq:
+            peaks.vec_freq_mhz = capture.cur_freq
+            fallback = True
+        result["platform_peaks"] = peaks.as_dict()
+        result["platform_peaks"]["fallback_from_capture"] = fallback
+        result["key_metrics"] = KM.compute(result, peaks).as_dict()
+    if IP is not None:
+        insight = IP.analyze(capture.root, kernel_us=capture.duration_us)
+        result["instruction_level"] = insight.as_dict()
+    if MC is not None:
+        result["confidence"] = {
+            m.key: MC.confidence_of(m.key) for m in MC.build_catalogue()
+        }
     return result
 
 
@@ -1253,7 +1340,27 @@ def render_markdown(result: Dict[str, Any]) -> str:
             add(f"- {text}")
         add("")
 
-    add("## 2. 流水占用")
+    key = result.get("key_metrics")
+    if key and KM is not None:
+        peaks = KM.PlatformPeaks(soc=(result.get("platform") or {}).get("soc") or "")
+        pk = result.get("platform_peaks") or {}
+        peaks.ai_core_cnt = pk.get("ai_core_cnt")
+        peaks.vector_core_cnt = pk.get("vector_core_cnt")
+        peaks.cube_freq_mhz = pk.get("cube_freq_mhz")
+        peaks.vec_freq_mhz = pk.get("vec_freq_mhz")
+        metrics = KM.KeyMetrics(
+            mfu_pct=key.get("mfu_pct"), mfu_note=key.get("mfu_note") or "",
+            mac_usage_pct=key.get("mac_usage_pct"), mac_note=key.get("mac_note") or "",
+            achieved_tflops=key.get("achieved_tflops"),
+            achieved_tmacs=key.get("achieved_tmacs"),
+            arithmetic_intensity=key.get("arithmetic_intensity"),
+            intensity_note=key.get("intensity_note") or "",
+            bound_by=key.get("bound_by") or "", bound_note=key.get("bound_note") or "",
+        )
+        lines.extend(KM.render(metrics, peaks))
+        lines.append("")
+
+    add("## 3. 流水占用")
     add("")
     add("| 流水 | 平均占用 | 活跃核数 |")
     add("|---|---:|---:|")
@@ -1263,7 +1370,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
     add("> 占用率 = 该流水忙时间 / 该核总时间，跨核取平均。>50% 的流水即瓶颈候选。")
     add("")
 
-    add("## 3. 带宽与峰值占比")
+    add("## 4. 带宽与峰值占比")
     add("")
     peak_model = result["peak_model_gbps"]
     if peak_model:
@@ -1290,7 +1397,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     cache = result["cache"]
     if cache.get("aiv") or cache.get("aic") or cache.get("icache_hit_pct") is not None:
-        add("## 4. Cache 行为")
+        add("## 5. Cache 行为")
         add("")
         add("| 指标 | 值 |")
         add("|---|---:|")
@@ -1310,7 +1417,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     conflicts = result["conflicts"]
     if conflicts.get("available"):
-        add("## 5. 冲突与等待")
+        add("## 6. 冲突与等待")
         add("")
         add("| 指标 | 平均占比 |")
         add("|---|---:|")
@@ -1340,7 +1447,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     imbalance_data = result["imbalance"]
     if imbalance_data:
-        add("## 6. 核间负载")
+        add("## 7. 核间负载")
         add("")
         for core_type, block in imbalance_data.items():
             add(f"- {core_type.upper()}: {block['cores']} 核，"
@@ -1350,7 +1457,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     paths = result["memory_paths"]
     if paths:
-        add("## 7. 内存通路（逐核明细，取核 0）")
+        add("## 8. 内存通路（逐核明细，取核 0）")
         add("")
         add("| 通路 | 带宽 GB/s | 请求数 |")
         add("|---|---:|---:|")
@@ -1359,7 +1466,35 @@ def render_markdown(result: Dict[str, Any]) -> str:
                 f"{int(entry.get('requests') or 0)} |")
         add("")
 
-    add("## 8. 逐核明细")
+    confidence = result.get("confidence") or {}
+    if MC is not None and confidence:
+        add("## 9. 置信度分级")
+        add("")
+        add("每个指标的置信度按「它是怎么来的」划分，并用 5 次重复采集的变异系数校准。"
+            "引用数字前先看这一栏。")
+        add("")
+        add("| 级别 | 含义 | 本报告条目数 |")
+        add("|---|---|---:|")
+        catalogue = MC.build_catalogue()
+        for tier in MC.TIER_ORDER:
+            count = sum(1 for m in catalogue if MC.confidence_of(m.key) == tier)
+            if count:
+                add(f"| {tier} | {MC.TIER_DESCRIPTION[tier]} | {count} |")
+        add("")
+        unstable = [m for m in catalogue if MC.confidence_of(m.key) == "E"]
+        if unstable:
+            add("**本报告中 E 级（不建议单独引用）的指标**：")
+            add("")
+            for m in unstable:
+                measured = MC.stability_for(m.key)
+                detail = (f"；实测 CV {measured['cv_pct']:.1f}%"
+                          if measured else "")
+                add(f"- {m.label} — {m.caveat or m.note}{detail}")
+            add("")
+        add("完整目录（含每个指标的产出口径）：`python3 scripts/metric_catalogue.py`")
+        add("")
+
+    add("## 10. 逐核明细")
     add("")
     add("| core | 类型 | 时间 us | 主导流水 | 占比 | GM→UB GB/s | L2 读命中 |")
     add("|---:|---|---:|---|---:|---:|---:|")
@@ -1371,9 +1506,27 @@ def render_markdown(result: Dict[str, Any]) -> str:
             f"{_fmt(core.get('l2_read_hit_pct'), '%')} |")
     add("")
 
+    instruction = result.get("instruction_level")
+    if IP is not None and instruction is not None:
+        insight = IP.InstrInsight(
+            available=instruction.get("available", False),
+            reason=instruction.get("reason", ""),
+            base_pc=None,
+            regions=instruction.get("regions", 0),
+            events=instruction.get("events", 0),
+            covered_us=instruction.get("covered_us", 0.0) or 0.0,
+            kernel_us=instruction.get("kernel_us"),
+            covered_pct=instruction.get("covered_pct"),
+            by_opcode=instruction.get("by_opcode") or [],
+            by_pipe=instruction.get("by_pipe") or [],
+            hottest=instruction.get("hottest") or [],
+            unmatched_events=instruction.get("unmatched_events", 0),
+        )
+        lines.extend(IP.render(insight))
+
     subblocks = result.get("subblocks") or []
     if subblocks:
-        add("## 9. 子核活动")
+        add("## 12. 子核活动")
         add("")
         add("| 指标 | 类型 | unit | 核数 | 均值 | 最大值 | 原始计数 |")
         add("|---|---|---:|---:|---:|---:|---:|")
@@ -1386,7 +1539,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     op_detail = result.get("op_detail")
     if op_detail:
-        add("## 10. 逐核吞吐（Occupancy）")
+        add("## 13. 逐核吞吐（Occupancy）")
         add("")
         add(f"- {op_detail['cores']} 个核，其中 {op_detail['cores_with_activity']} 个有活动；"
             f"最大 cycles {op_detail['max_cycles']}")
@@ -1401,7 +1554,7 @@ def render_markdown(result: Dict[str, Any]) -> str:
 
     timeline = result.get("timeline")
     if timeline:
-        add("## 11. 逐指令时间线")
+        add("## 14. 时间线事件")
         add("")
         add(f"- 事件数 {timeline['event_count']}，来源 `{timeline['source']}`")
         add("")
@@ -1438,7 +1591,8 @@ def check_device_idle(home: Path) -> Tuple[bool, str]:
 def run_msopprof(home: Path, app: List[str], out_dir: Path,
                  metrics: List[str], warmup: int, launch_count: int,
                  kernel: Optional[str], replay_mode: str,
-                 timeout: int) -> Tuple[int, str, Optional[Path]]:
+                 timeout: int,
+                 instr_pipes: Optional[str] = None) -> Tuple[int, str, Optional[Path]]:
     """Run one msopprof collection. Returns (rc, log, capture_dir)."""
     env = cann_env(home)
     binary = home / "tools" / "msopprof" / "bin" / "msopprof"
@@ -1451,6 +1605,8 @@ def run_msopprof(home: Path, app: List[str], out_dir: Path,
         f"--aic-metrics={','.join(metrics)}",
         f"--output={out_dir}",
     ]
+    if "InstrTimeline" in metrics and instr_pipes:
+        cmd.append(f"--instr-timeline-pipe={instr_pipes}")
     if kernel:
         # msopprof matches --kernel-name as a GLOB against the mangled kernel
         # name, not as a substring: passing "add_kernel" filters everything out
@@ -1477,9 +1633,46 @@ def run_msopprof(home: Path, app: List[str], out_dir: Path,
         key=lambda p: p.stat().st_mtime,
     )
     newest = captures[-1] if captures else None
+    if newest is not None:
+        preserve_probe_artifacts(newest)
     if newest is not None and (newest / "OpBasicInfo.csv").is_file():
         return rc, log, newest
     return rc, log, None
+
+
+def preserve_probe_artifacts(capture_root: Path) -> None:
+    """Copy instrumentation files that msopprof deletes during its own parse.
+
+    ``dfx_region_map.txt`` (pc -> pipe/opcode) and ``pc_start_addr.txt`` (the
+    absolute base) are written during collection but removed by a later parsing
+    pass, so by the time a user inspects the capture they are often gone and
+    instruction-level attribution becomes impossible. We copy them into a
+    stable ``probe/`` directory while they still exist.
+
+    This is a workaround for the profiler's cleanup, not a feature of the
+    format: if the files survive, the copy is skipped.
+    """
+    try:
+        dumps = [capture_root / "dump"]
+        dumps.extend(sorted(capture_root.glob("device*/*/*/dump")))
+        for dump in dumps:
+            if not dump.is_dir():
+                continue
+            wanted = [dump / "dfx_region_map.txt", dump / "pc_start_addr.txt",
+                      dump / "op_basic_info.txt"]
+            existing = [f for f in wanted if f.is_file()]
+            if not existing:
+                continue
+            probe = capture_root / "probe"
+            probe.mkdir(exist_ok=True)
+            for source in existing:
+                target = probe / source.name
+                if not target.is_file():
+                    target.write_bytes(source.read_bytes())
+    except OSError:
+        # Archival is best-effort: losing it degrades the instruction-level
+        # section to "unavailable", which the report states plainly.
+        pass
 
 
 def retry_without_filter(home: Path, app: List[str], out_dir: Path,
@@ -1511,6 +1704,93 @@ def discover_kernels(capture_root: Path) -> List[str]:
     return names
 
 
+# Metric groups that cannot share one collection pass.
+EXCLUSIVE_SETS = [["InstrTimeline"], ["PipeTimeline"], ["Source"], ["PCSampling"]]
+
+
+def plan_passes(metrics: List[str]) -> List[List[str]]:
+    """Split a requested metric list into passes that can coexist.
+
+    Anything in an exclusive set gets its own pass; everything else travels
+    together. Order is preserved so the caller can rely on the core pass
+    running first (it is the one whose CSV drives the report).
+    """
+    exclusive = {m for group in EXCLUSIVE_SETS for m in group}
+    core = [m for m in metrics if m not in exclusive]
+    passes: List[List[str]] = []
+    if core:
+        passes.append(core)
+    for group in EXCLUSIVE_SETS:
+        wanted = [m for m in group if m in metrics]
+        if wanted:
+            passes.append(wanted)
+    return passes or [metrics]
+
+
+def run_multipass(home: Path, app: List[str], capture_dir: Path,
+                  passes: List[List[str]], args: argparse.Namespace
+                  ) -> Tuple[Optional[Path], str]:
+    """Run one collection per pass and merge into a single readable capture.
+
+    msopprof writes one OPPROF_* per invocation. We collect each pass into its
+    own directory, then build a merged view in ``capture_dir`` that points at
+    the *core* pass for the CSVs (that is what the analyzer reads) while making
+    the instruction/timeline artefacts of the other passes discoverable under
+    ``capture/extra/<pass>/``.
+    """
+    logs: List[str] = []
+    core_root: Optional[Path] = None
+    for index, metrics in enumerate(passes):
+        label = "core" if index == 0 and metrics == passes[0] and "PipeUtilization" in metrics else metrics[0].lower()
+        target = capture_dir / f"pass{index}_{label}"
+        print(f"[info]   第 {index + 1} 趟: {metrics}", file=sys.stderr)
+        rc, log, root = run_msopprof(
+            home=home, app=app, out_dir=target, metrics=metrics,
+            warmup=args.warmup, launch_count=args.launch_count,
+            kernel=args.kernel, replay_mode=args.replay_mode,
+            timeout=args.timeout,
+            instr_pipes=getattr(args, "instr_pipes", None),
+        )
+        logs.append(f"=== pass{index} {metrics} rc={rc} ===\n{log}")
+        if "PipeUtilization" in metrics and root is not None and core_root is None:
+            core_root = root
+        if root is None:
+            continue
+        preserve_probe_artifacts(root)
+
+    if core_root is None:
+        # No core pass succeeded; fall back to any pass so the caller still
+        # gets whatever was collected rather than a bare failure.
+        candidates = sorted(capture_dir.glob("pass*/OPPROF_*"))
+        core_root = candidates[0] if candidates else None
+
+    if core_root is not None:
+        # Expose the core pass where the analyzer expects it, and park the rest
+        # beside it so instruction-level analysis can still find them.
+        link = capture_dir / "OPPROF_merged"
+        try:
+            if link.exists() or link.is_symlink():
+                if link.is_symlink() or link.is_file():
+                    link.unlink()
+                else:
+                    shutil.rmtree(link)
+            link.symlink_to(core_root.resolve())
+        except OSError:
+            pass
+        extra = capture_dir / "extra"
+        extra.mkdir(exist_ok=True)
+        for child in sorted(capture_dir.glob("pass*")):
+            if child == core_root.parent:
+                continue
+            marker = extra / child.name
+            try:
+                if not marker.exists():
+                    marker.symlink_to(child.resolve())
+            except OSError:
+                continue
+    return core_root, "\n".join(logs)
+
+
 def command_profile(args: argparse.Namespace) -> int:
     home = find_cann_home()
     if home is None:
@@ -1537,18 +1817,27 @@ def command_profile(args: argparse.Namespace) -> int:
             metrics.append("BasicInfo")
         if args.metrics:
             metrics = [m.strip() for m in args.metrics.split(",") if m.strip()]
-        print(f"[info] 采集 {metrics} → {capture_dir}", file=sys.stderr)
-        rc, log, capture_root = run_msopprof(
-            home=home,
-            app=app_cmd,
-            out_dir=capture_dir,
-            metrics=metrics,
-            warmup=args.warmup,
-            launch_count=args.launch_count,
-            kernel=args.kernel,
-            replay_mode=args.replay_mode,
-            timeout=args.timeout,
-        )
+        if getattr(args, "with_instructions", False) and "InstrTimeline" not in metrics:
+            metrics.append("InstrTimeline")
+
+        # Split the requested metrics into the passes that can actually coexist.
+        passes = plan_passes(metrics)
+        rc, log, capture_root = 0, "", None
+        if len(passes) <= 1:
+            print(f"[info] 采集 {metrics} → {capture_dir}", file=sys.stderr)
+            rc, log, capture_root = run_msopprof(
+                home=home, app=app_cmd, out_dir=capture_dir, metrics=metrics,
+                warmup=args.warmup, launch_count=args.launch_count,
+                kernel=args.kernel, replay_mode=args.replay_mode,
+                timeout=args.timeout,
+            )
+        else:
+            print(f"[info] 分 {len(passes)} 趟采集（这些 metric 集合无法合并）→ {capture_dir}",
+                  file=sys.stderr)
+            capture_root, log = run_multipass(
+                home, app_cmd, capture_dir, passes, args
+            )
+            rc = 0 if capture_root is not None else 1
         (out_dir / "collect.log").write_text(log, errors="replace")
         if capture_root is None and args.kernel and not args.no_kernel_retry:
             # The kernel filter matched nothing (wrong name, or the program did
@@ -1684,6 +1973,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="逗号分隔的 msopprof metric 集合（覆盖默认 7 组）")
     profile.add_argument("--with-timeline", action="store_true",
                          help="额外采集 BasicInfo（pipeline 时间线需要）")
+    profile.add_argument("--with-instructions", action="store_true",
+                         help="额外分一趟采集 InstrTimeline，产出逐指令耗时"
+                              "（慢：数十 MB~数百 MB 中间文件，通常 1-4 分钟）")
+    profile.add_argument("--instr-pipes", default="vector|mte2|mte3",
+                         help="InstrTimeline 的流水，取值限 "
+                              "cube|fixp|vector|mte1|mte2|mte3，用 | 分隔"
+                              "（默认 vector|mte2|mte3，适配 vector 算子）")
     profile.add_argument("--timeout", type=int, default=1800, help="单次采集超时秒数")
     profile.add_argument("--json", action="store_true", help="以 JSON 打印全量结果")
     profile.add_argument("--analyze-only", action="store_true",
