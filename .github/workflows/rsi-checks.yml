@@ -16,10 +16,20 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.9", "3.12"]
+        # ubuntu-latest is Ubuntu 26.04, where setup-python has no 3.9 build. The framework claims
+        # 3.9 compatibility because that is what the target machines run, so the floor is checked
+        # on a runner image that still provides it, and the current version on the default image.
+        include:
+          - python-version: "3.9"
+            os: ubuntu-24.04
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -103,14 +103,18 @@ def result_schema(root: Optional[Path] = None) -> Dict[str, Any]:
     return jsonschema_lite.load_schema(str(_schema_file("result.schema.json", root)))
 
 
-def validate_result(result: Dict[str, Any], root: Optional[Path] = None) -> None:
+def validate_result(result: Dict[str, Any], root: Optional[Path] = None,
+                    key: Optional[bytes] = None) -> None:
     """Verify the signature first, then the shape.
 
     Order matters for the message a caller gets: an unsigned result is a forgery, not a schema
     violation, and saying so is the difference between "retry the step" and "someone edited a
     result file".
+
+    ``key`` lets a caller verify against a key it supplies instead of the machine's key file,
+    which is what makes a signature test independent of local deployment state.
     """
-    verify(result, root=root)
+    verify(result, key=key, root=root)
     jsonschema_lite.check(result, result_schema(root), label="result")
 
 

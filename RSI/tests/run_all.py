@@ -47,6 +47,11 @@ def case(name):
     return decorator
 
 
+#: A fixed key for the signature tests. They must not depend on the machine having run `keygen`,
+#: because a test that only passes after a deployment step is a test that fails in CI.
+TEST_KEY = b"rsi-test-key-not-a-secret-0123456789"
+
+
 def expect(condition, message):
     if not condition:
         raise AssertionError(message)
@@ -159,12 +164,12 @@ def _():
         pass
     else:
         raise AssertionError("an unsigned result was accepted")
-    signed = ledger.sign(result)
-    ledger.validate_result(signed)
+    signed = ledger.sign(result, key=TEST_KEY)
+    ledger.validate_result(signed, key=TEST_KEY)
     tampered = dict(signed)
     tampered["timing"] = dict(signed["timing"], candidate_us=0.1)
     try:
-        ledger.validate_result(tampered)
+        ledger.validate_result(tampered, key=TEST_KEY)
     except ledger.SignatureError:
         return
     raise AssertionError("a modified result kept a valid signature")
@@ -439,8 +444,8 @@ def _():
         "timing": {key: timing_block[key] for key in
                    ("candidate_us", "baseline_us", "speedup", "samples", "setup_us")},
     }
-    signed = ledger.sign(result)
-    ledger.validate_result(signed)
+    signed = ledger.sign(result, key=TEST_KEY)
+    ledger.validate_result(signed, key=TEST_KEY)
     expect(signed["timing"]["samples"] == 6, "the sample count did not survive")
 
 
