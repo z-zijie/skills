@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/propose-hypothesis/output.schema.json",
+  "title": "propose-hypothesis output",
+  "description": "One to three ranked cards in the object schemas/hypothesis.schema.json defines, plus the ideas that were rejected and why. The shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "cards", "rejected", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "no_card", "schema_invalid"]
+    },
+    "cards": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "op", "parent", "signature_tags", "transformation", "mechanism",
+          "predictions", "evidence_of_implementation", "scope_of_change"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^H-[0-9]+$"},
+          "op": {"type": "string", "minLength": 1},
+          "parent": {"type": "string", "minLength": 1},
+          "signature_tags": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "transformation": {"type": "string", "minLength": 1},
+          "mechanism": {"type": "string", "minLength": 20},
+          "predictions": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["counters", "speedup"],
+            "properties": {
+              "counters": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["metric", "direction"],
+                  "properties": {
+                    "metric": {"type": "string"},
+                    "direction": {"type": "string", "enum": ["up", "down"]},
+                    "expect": {"type": "string"},
+                    "min_delta": {"type": "number", "minimum": 0}
+                  }
+                }
+              },
+              "speedup": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["expect", "low", "high"],
+                "properties": {
+                  "expect": {"type": "number", "exclusiveMinimum": 0},
+                  "low": {"type": "number", "exclusiveMinimum": 0},
+                  "high": {"type": "number", "exclusiveMinimum": 0}
+                }
+              }
+            }
+          },
+          "evidence_of_implementation": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 10}
+          },
+          "scope_of_change": {"type": "string", "minLength": 1},
+          "based_on": {"type": "array", "items": {"type": "string"}},
+          "risk": {"type": "string"},
+          "priority": {"type": "integer", "minimum": 1},
+          "created": {"type": "string"}
+        }
+      }
+    },
+    "rejected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["transformation", "reason"],
+        "properties": {
+          "transformation": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 10},
+          "metric": {"type": "string"}
+        }
+      }
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

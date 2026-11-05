@@ -1,0 +1,14 @@
+{
+  "name": "fewer repeats than the protocol requires yields no decision",
+  "input": {
+    "fixture": "skills/replay-benchmark/tests/fixtures/replay_too_few_repeats.json",
+    "repeats": 2
+  },
+  "expected": {
+    "status": "needs_more_repeats",
+    "decision": "needs_more_repeats",
+    "excludes_zero": null
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a two-repeat replay: model output is stochastic, so two repeats cannot separate signal from noise"
+}

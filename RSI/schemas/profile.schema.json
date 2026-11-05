@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/profile.schema.json",
+  "title": "Normalized profile",
+  "description": "Profiler output reduced to canonical metrics. Raw vendor reports stay archived beside this file and are never parsed by a model.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "candidate", "hw_id", "env_fingerprint", "adapter", "metrics", "unavailable", "raw_report"],
+  "properties": {
+    "op": {"type": "string"},
+    "candidate": {"type": "string"},
+    "hw_id": {"type": "string"},
+    "env_fingerprint": {"type": "string"},
+    "created": {"type": "string"},
+    "adapter": {"type": "string", "description": "Which profiler adapter produced this, e.g. ncu, msopprof, null."},
+    "adapter_version": {"type": "string"},
+    "transaction_granularity_bytes": {"type": "integer", "description": "Granularity behind sectors_per_request on this device."},
+    "metrics": {
+      "type": "object",
+      "description": "Canonical metric name to value.",
+      "additionalProperties": {"type": ["number", "null"]}
+    },
+    "unavailable": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Canonical metrics this device or adapter cannot produce. Downstream skills treat them as unknown, never as zero."
+    },
+    "raw_report": {"type": "string", "description": "Archive path of the unmodified profiler report."},
+    "notes": {"type": "string"}
+  }
+}

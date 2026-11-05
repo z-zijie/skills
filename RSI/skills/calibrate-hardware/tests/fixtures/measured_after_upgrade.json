@@ -1,0 +1,68 @@
+{
+  "hw_id": "accel-a",
+  "hw_class": "npu",
+  "model": "accel-a-1",
+  "env_fingerprint": "hw=accel-a|device=accel-a-1|runtime=rt-2.0|driver=d-1.0|compiler=c-1.0|flags=default|os=Linux-x86_64",
+  "measured_at": "2026-11-01T00:00:00Z",
+  "calibration_suite": "core",
+  "peak_bandwidth_gbps": 984.0,
+  "peak_flops": {
+    "fp32": 80000000000000.0,
+    "fp16": 160000000000000.0
+  },
+  "noise_floor": {
+    "threshold": 1.06,
+    "relative_spread": 0.017,
+    "measured_at": "2026-11-01T00:00:00Z"
+  },
+  "launch": {
+    "overhead_us": 9.1
+  },
+  "coalescing": {
+    "1": 100.0,
+    "2": 71.0,
+    "4": 44.0,
+    "random": 12.0
+  },
+  "history": [
+    {
+      "at": "2026-10-01T00:00:00Z",
+      "suite": "core",
+      "fingerprint": "hw=accel-a|device=accel-a-1|runtime=rt-1.0|driver=d-1.0|compiler=c-1.0|flags=default|os=Linux-x86_64",
+      "moved": [],
+      "skipped": []
+    },
+    {
+      "at": "2026-11-01T00:00:00Z",
+      "suite": "core",
+      "fingerprint": "hw=accel-a|device=accel-a-1|runtime=rt-2.0|driver=d-1.0|compiler=c-1.0|flags=default|os=Linux-x86_64",
+      "moved": [
+        {
+          "parameter": "peak_bandwidth_gbps",
+          "before": 1200.0,
+          "after": 984.0,
+          "relative_change": 0.18,
+          "threshold": 0.1
+        },
+        {
+          "parameter": "launch",
+          "before": 4.2,
+          "after": 9.1,
+          "relative_change": 1.167,
+          "threshold": 0.3
+        }
+      ],
+      "skipped": [
+        "atomics"
+      ]
+    }
+  ],
+  "under_review": true,
+  "skipped": [
+    {
+      "name": "atomics",
+      "reason": "backend lacks contention metering"
+    }
+  ],
+  "under_review_reason": "parameters moved beyond their thresholds: rules that depend on them go under review"
+}

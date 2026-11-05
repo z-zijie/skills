@@ -1,0 +1,27 @@
+# Pattern: pay one fixed launch cost instead of many.
+id: P-015
+name: merge-small-kernels
+statement: >
+  When launch overhead is a material fraction of measured time and several launches operate on
+  the same data in sequence, folding them into one launch lowers the total fixed cost and, where
+  the intermediate never needs to reach device_mem, also lowers device_mem_bytes.
+mechanism: >
+  A launch costs a fixed amount that does not shrink with the shape, so at small shapes the
+  fixed charge dominates and total time is roughly the launch count times that charge. One launch
+  that does the work of several pays it once. When the merged stages are adjacent elementwise
+  operations, the intermediate value can stay in registers, which additionally removes a full
+  write-and-read round trip to device_mem.
+expected_counters: [launch_overhead_us, device_mem_bytes, occupancy_pct]
+implementation_traps:
+  - Merging the launches but keeping the intermediate in a device_mem buffer, which removes the
+    launch cost and leaves the traffic.
+  - Merging across a dependency that needs a global reduction or a full barrier, which cannot be
+    expressed inside one work_group and silently produces wrong results.
+  - A merged kernel whose group count must cover the largest shape, leaving the device idle for
+    the small ones.
+  - Merging at small shapes only while the campaign target is dominated by the large shapes,
+    where the launch cost was never material.
+scope_tags: [launch_dominated]
+scope:
+  tags_any: [launch_dominated]
+  classes: [latency_bound]

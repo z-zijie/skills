@@ -1,0 +1,20 @@
+{
+  "name": "a toolchain that reports fewer facts yields unknowns, never zeros",
+  "input": {
+    "disassembly_file": "skills/inspect-binary/tests/fixtures/sparse.dump.txt",
+    "work_group": 64,
+    "lane_count": 1048576
+  },
+  "expected": {
+    "status": "ok",
+    "instruction_total": 3,
+    "registers_per_lane": null,
+    "scratchpad_bytes_per_workgroup": null,
+    "spill_bytes": null,
+    "missing": ["registers_per_lane", "scratchpad_bytes_per_workgroup", "spill_bytes"],
+    "launch_source": "derived",
+    "work_groups": 16384
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a dump with no metadata lines: the summary is still usable, and the three figures a verifier might cite are plainly absent"
+}

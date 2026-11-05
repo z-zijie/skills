@@ -1,0 +1,39 @@
+# Anti-pattern A-001 — a memory-bound kernel with no reuse gets a scratchpad tile.
+# EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger, and this entry is
+# a seed to be replaced by one distilled from real refutations.
+id: A-001
+statement: >
+  Adding a scratchpad tile to a kernel that consumes each element exactly once does not lower
+  device_mem_bytes; it adds a fill pass, a barrier and scratchpad capacity pressure, and it is
+  slower whenever the working set does not fit.
+mechanism: >
+  A scratchpad tile pays for itself only when an element is read more than once after being
+  staged, because the saving is (reuses minus one) times the cost of a device_mem trip. With a
+  reuse count of one the staged copy is a strict addition: one extra read to fill, one extra
+  read from on chip, and a barrier. The measured symptom is device_mem_bytes unchanged or
+  higher, scratchpad_throughput_pct up, and no change in attained_pct.
+expected_counters: [device_mem_bytes, scratchpad_throughput_pct, stall_barrier]
+implementation_traps:
+  - A staged tile that the compiler already had in registers, so the change is a copy with no reuse.
+  - A tile sized from a nominal capacity rather than the measured cache curve, so it straddles a step.
+scope:
+  hw: [accel-a]
+  tags_all: [mem_saturated]
+  classes: [memory_bound]
+effect:
+  metric: device_mem_bytes
+  direction: up
+  speedup_median: 0.93
+  range: [0.81, 1.01]
+evidence:
+  confirmed: []
+  refuted: [exp-0041, exp-0042]
+confirm_rate: 0.0
+mean_prediction_error: 0.11
+status: deprecated
+last_verified: 2026-10-26
+counter_example_note: >
+  Recorded as an anti-pattern, so the evidence lists only refutations: every attempt to make
+  this pay on a single-use kernel failed. The refuted ids are the experiments where the
+  transformation was applied and did not help, which is what makes the entry usable as a
+  "do not" in the memory playbooks.

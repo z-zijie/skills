@@ -1,0 +1,18 @@
+{
+  "op": "vec_add",
+  "hw_id": "accel-z",
+  "class": "latency_bound",
+  "tags": [
+    "occupancy_low"
+  ],
+  "metrics": {
+    "occupancy_pct": 9.0,
+    "registers_per_lane": 60
+  },
+  "roofline": {
+    "bound_us": 10.0,
+    "measured_us": 90.0,
+    "attained_pct": 11.1
+  },
+  "primary_bottleneck": "low-occupancy"
+}

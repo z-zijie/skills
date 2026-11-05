@@ -1,0 +1,90 @@
+{
+  "name": "dead-end-after-two-refutations",
+  "note": "one transformation refuted twice is a dead end and leaves the priority order",
+  "script": "scripts/cluster.py",
+  "input": {
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "prediction_error": 0.09,
+        "hypothesis": {
+          "transformation": "fewer_registers",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.01,
+        "prediction_error": 0.11,
+        "hypothesis": {
+          "transformation": "fewer_registers",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        }
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.21,
+        "prediction_error": 0.06,
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "clusters": [
+      {
+        "count": 2,
+        "experiments": [
+          "exp-0001",
+          "exp-0002"
+        ],
+        "kind": "dead_end",
+        "share": 0.6667,
+        "summary": "2 refutation(s) of exhausted transformations: fewer_registers",
+        "tags": [
+          "mem_saturated"
+        ],
+        "transformations": [
+          "fewer_registers"
+        ]
+      }
+    ],
+    "entries_seen": 3,
+    "notes": [
+      "fewer_registers is refuted 2 times: retire it from the priority order"
+    ],
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "rates": {
+      "confirmation_rate": 0.3333,
+      "dead_end_transformations": [
+        "fewer_registers"
+      ],
+      "mean_prediction_error": 0.0867,
+      "not_implemented_rate": 0.0
+    },
+    "rounds_seen": 3,
+    "top_cluster": "dead_end",
+    "unattributed": []
+  }
+}

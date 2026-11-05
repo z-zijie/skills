@@ -1,0 +1,74 @@
+{
+  "name": "campaign-when-no-microbench-isolates-it",
+  "note": "a conjecture about an interaction with no isolating microbenchmark is planned as one campaign experiment",
+  "script": "scripts/register.py",
+  "input": {
+    "conjecture_id": "C-005",
+    "today": "2026-11-05",
+    "op": "layernorm_fwd",
+    "hw_id": "accel-a",
+    "conjecture": "Fusing the mean and variance passes into one traversal helps this operator even though each pass alone is already coalesced.",
+    "metric": "occupancy_pct",
+    "signature_tags": [
+      "mem_saturated",
+      "occupancy_low"
+    ],
+    "expected_observation": "attainment rises by at least the noise floor in one experiment",
+    "budget_experiments": 3
+  },
+  "expected": {
+    "conjecture": {
+      "created": "2026-11-05",
+      "expected_observation": "attainment rises by at least the noise floor in one experiment",
+      "id": "C-005",
+      "metric": "occupancy_pct",
+      "scope": {
+        "hw": [
+          "accel-a"
+        ],
+        "tags_all": [
+          "mem_saturated",
+          "occupancy_low"
+        ]
+      },
+      "source": "human",
+      "statement": "Fusing the mean and variance passes into one traversal helps this operator even though each pass alone is already coalesced.",
+      "status": "conjecture"
+    },
+    "notes": [
+      "an unverified conjecture may inspire hypotheses and cannot be grounds for verification",
+      "keep it in kb/conjectures/ until the plan has run; promotion is a replay-gated move"
+    ],
+    "plan": {
+      "conjecture_id": "C-005",
+      "experiments": [
+        {
+          "budget_experiments": 3,
+          "cases": [
+            "the narrowest shape range the conjecture claims"
+          ],
+          "count": 1,
+          "kind": "campaign",
+          "repeats": 3,
+          "why_minimal": "one campaign experiment on the cheapest dev operator is enough to falsify it"
+        }
+      ],
+      "limits": {
+        "counts_as_evidence": false,
+        "may_be_used_for_verification": false,
+        "may_inspire_hypotheses": true
+      },
+      "max_experiments": 3,
+      "op": "layernorm_fwd",
+      "outcome_table": {
+        "open": "the experiment could not be made valid: not_implemented, correctness failed, or the counters were absent",
+        "promoted": "the observation appears and the metric moves as predicted: attainment rises by at least the noise floor in one experiment",
+        "refuted": "the experiment is valid and the observation does not appear"
+      },
+      "primary_kind": "campaign",
+      "promotion_path": "promotion makes it a candidate rule with this experiment as its single confirmation; it still cannot be used as evidence to verify anything until a second operator confirms it"
+    },
+    "problems": [],
+    "ready": true
+  }
+}

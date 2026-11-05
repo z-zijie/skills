@@ -1,0 +1,109 @@
+{
+  "name": "single-confirmation-stays-candidate",
+  "note": "one confirmation cannot establish a rule, and the card is still proposed as a thin candidate",
+  "script": "scripts/distill.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_rule_id": 12,
+    "entries": [
+      {
+        "exp_id": "exp-0301",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.1,
+        "prediction_error": 0.05,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "mem_saturated"
+          ],
+          "mechanism": "wide_loads changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "candidate": 1,
+      "established": 0,
+      "proposed": 1,
+      "under_review": 0
+    },
+    "lifecycle_thresholds": {
+      "deprecated_below": 0.4,
+      "min_confirm_rate": 0.7,
+      "min_confirmations": 3,
+      "min_operators": 2,
+      "prediction_error_hole": 0.2
+    },
+    "proposals": [
+      {
+        "action": "create",
+        "evidence": [
+          "exp-0301"
+        ],
+        "kind": "rule",
+        "lifecycle_reason": "1 confirmation(s) across 1 operator(s): needs 3 across 2",
+        "operators": [
+          "vec_add"
+        ],
+        "rule": {
+          "confirm_rate": 1.0,
+          "effect": {
+            "direction": "down",
+            "metric": "sectors_per_request",
+            "range": [
+              1.1,
+              1.1
+            ],
+            "speedup_median": 1.1
+          },
+          "evidence": {
+            "confirmed": [
+              "exp-0301"
+            ],
+            "refuted": []
+          },
+          "expected_counters": [
+            "sectors_per_request"
+          ],
+          "id": "R-012",
+          "last_verified": "2026-11-05",
+          "mean_prediction_error": 0.05,
+          "mechanism": "wide_loads changes the access pattern so the limiter moves",
+          "scope": {
+            "classes": [
+              "memory_bound"
+            ],
+            "hw": [
+              "accel-a"
+            ],
+            "tags_all": [
+              "mem_saturated"
+            ],
+            "tags_any": []
+          },
+          "statement": "When the signature is mem_saturated on accel-a, wide_loads moves sectors_per_request and gives about 1.10x.",
+          "status": "candidate"
+        },
+        "title": "wide_loads under mem_saturated on accel-a"
+      }
+    ],
+    "skipped": []
+  }
+}

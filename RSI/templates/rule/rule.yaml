@@ -1,0 +1,31 @@
+# Rule card template. A rule is a scoped, evidenced claim — not an instruction.
+#
+# Write it as: under condition C, transformation T changes metric M by delta.
+# Never write: always do T.
+#
+# Positive and negative cases live together, because a confirmation rate computed from
+# confirmations alone is not a rate, it is an advertisement.
+id: R-<number>
+statement: >
+  When <condition, in canonical metrics and tags>, <transformation> changes <canonical metric>
+  and the kernel's time by <delta>.
+scope:
+  hw: [<hardware id>]
+  tags_all: [<tag>, <tag>]
+  classes: [<memory_bound|compute_bound|latency_bound|mixed>]
+  elem_bytes: "<constraint, or omit>"
+effect:
+  metric: <canonical metric the transformation moves>
+  direction: <up|down>
+  speedup_median: <x>
+  range: [<low>, <high>]
+evidence:
+  confirmed: [<exp ids>]
+  refuted: [<exp ids>]
+confirm_rate: <0.0-1.0>
+mean_prediction_error: <|log(measured/predicted)|, or omit until there is data>
+status: <conjecture|candidate|established|under_review|deprecated>
+last_verified: <YYYY-MM-DD>
+counter_example_note: >
+  The case that did not fit, and why. This is the most valuable field on the card: it is what
+  stops the rule from being widened to cover everything.

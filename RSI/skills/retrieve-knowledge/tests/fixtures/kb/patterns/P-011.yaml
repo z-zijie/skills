@@ -1,0 +1,9 @@
+id: P-011
+statement: A tiled traversal that reuses an on-chip tile reduces repeated device-memory reads.
+scope:
+  hw: [accel-a]
+  tags_all: [memory_stall_high]
+mechanism: >
+  Loading a tile once into scratchpad turns repeated reads of the same element into one read plus
+  scratchpad hits.
+expected_counters: [device_mem_bytes, stall_memory, scratchpad_bytes_per_workgroup]

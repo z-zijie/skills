@@ -1,0 +1,21 @@
+{
+  "name": "a change landing in the evaluator is a scope violation, not an implementation",
+  "input": {
+    "frozen_subdir": "evaluator/cli.py",
+    "edits": [
+      {
+        "old": "x",
+        "new": "y"
+      }
+    ]
+  },
+  "expected": {
+    "status": "scope_violation",
+    "files_changed": [],
+    "problem_kinds": [
+      "scope_violation"
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a card whose edit resolved into a frozen area: the write never happens"
+}

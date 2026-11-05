@@ -1,0 +1,20 @@
+{
+  "name": "a card with no checkable implementation evidence fails the hypothesis contract",
+  "input": {
+    "cards_file": "skills/propose-hypothesis/tests/fixtures/cards_no_evidence.json",
+    "noise_threshold": 1.03
+  },
+  "expected": {
+    "status": "no_card",
+    "card_count": 0,
+    "rejected_count": 1,
+    "rejections": [
+      {
+        "transformation": "half_precision",
+        "kind": "contract"
+      }
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a card whose evidence list was empty: the verifier would have nothing to check, so the card cannot be an experiment"
+}

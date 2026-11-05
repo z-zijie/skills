@@ -1,0 +1,17 @@
+{
+  "name": "unreported counter: this device cannot measure it, so the verdict is unknown, never confirmed",
+  "input": {
+    "card": {
+      "id": "H-0003",
+      "predictions": {
+        "counters": [{"metric": "scratchpad_conflict_ratio", "direction": "down"}],
+        "speedup": {"expect": 1.15, "low": 1.05, "high": 1.3}
+      }
+    },
+    "before": {},
+    "after": {},
+    "measured": {}
+  },
+  "script": "scripts/compare_counters_case.py",
+  "expected": {"C": "unknown"}
+}

@@ -1,0 +1,16 @@
+{
+  "name": "a dry run validates the entry and appends nothing",
+  "input": {
+    "result_file": "skills/record-experiment/tests/fixtures/result_signed.json",
+    "dry_run": true
+  },
+  "expected": {
+    "status": "dry_run",
+    "ledger_lines": 0,
+    "archived_count": 0,
+    "entry_speedup": 1.25,
+    "dry_run_notes": ["validated; nothing appended"]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from the pre-flight path the orchestrator uses before unsealing timing"
+}

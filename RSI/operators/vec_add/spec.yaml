@@ -1,0 +1,52 @@
+# Operator spec: element-wise vector addition.
+#
+# This is the shipped example operator. It exists so the framework is exercisable end to end
+# on any machine, including one with no accelerator: the reference backend runs it, the
+# calibration suite measures whatever is underneath, and the whole loop closes.
+#
+# Read-only to every agent. Tolerances and shapes live here, and so do the byte and flop
+# formulas the roofline consumes.
+op: vec_add
+description: >
+  out[i] = a[i] + b[i] over a contiguous float32 buffer. The simplest memory-bound operator:
+  it moves two reads and one write per element and performs one add, so the roofline bound is
+  set by the bandwidth term on every device.
+
+dtype: [fp32]
+
+tolerance:
+  kind: relative_absolute
+  rtol: 1.0e-5
+  atol: 1.0e-6
+
+shapes:
+  typical:
+    - n: 65536
+    - n: 1048576
+  edge:
+    - n: 1
+    - n: 7
+    - n: 65537
+  random:
+    count: 2
+    max_dim: 200000
+
+cost_model:
+  # Three buffers of four bytes per element: two in, one out.
+  bytes_expr: "3 * numel * size_of('fp32')"
+  # One addition per element.
+  flops_expr: "numel"
+  notes: >
+    Assumes the kernel is called once per element and that inputs are already resident. A
+    candidate that moves the data to the device inside the timed region would be caught by
+    the setup cap rather than credited as fast.
+
+entry:
+  module: kernel
+  function: vec_add
+  reference: reference/kernel
+  baseline: baseline/kernel
+  inputs: 2
+
+setup_cap_us: 200000.0
+speedup_review_cap: 2.0

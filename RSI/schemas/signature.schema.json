@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/signature.schema.json",
+  "title": "Bottleneck signature",
+  "description": "Diagnoser output and the primary key for knowledge retrieval. All metric names are canonical (docs/vocabulary.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "hw_id", "class", "tags", "metrics", "roofline"],
+  "properties": {
+    "op": {"type": "string", "minLength": 1},
+    "hw_id": {"type": "string", "minLength": 1},
+    "env_fingerprint": {"type": "string"},
+    "class": {
+      "type": "string",
+      "enum": ["memory_bound", "compute_bound", "latency_bound", "mixed"]
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Threshold decisions over canonical metrics, see docs/vocabulary.md section 3."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Canonical metric name to value. Absent or null means the device or profiler does not expose it.",
+      "additionalProperties": {"type": ["number", "null"]},
+      "properties": {
+        "device_mem_throughput_pct": {"type": ["number", "null"]},
+        "device_mem_bytes": {"type": ["number", "null"]},
+        "cache_hit_pct": {"type": ["number", "null"]},
+        "cache_throughput_pct": {"type": ["number", "null"]},
+        "compute_throughput_pct": {"type": ["number", "null"]},
+        "occupancy_pct": {"type": ["number", "null"]},
+        "sectors_per_request": {"type": ["number", "null"], "minimum": 0},
+        "stall_memory": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "stall_barrier": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "scratchpad_throughput_pct": {"type": ["number", "null"]},
+        "scratchpad_conflict_ratio": {"type": ["number", "null"], "minimum": 0},
+        "scratchpad_bytes_per_workgroup": {"type": ["number", "null"], "minimum": 0},
+        "registers_per_lane": {"type": ["number", "null"], "minimum": 0},
+        "spill_bytes": {"type": ["number", "null"], "minimum": 0},
+        "branch_divergence_pct": {"type": ["number", "null"]},
+        "launch_overhead_us": {"type": ["number", "null"], "minimum": 0},
+        "instruction_count": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "roofline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bound_us", "measured_us", "attained_pct"],
+      "properties": {
+        "bound_us": {"type": "number", "exclusiveMinimum": 0},
+        "measured_us": {"type": "number", "exclusiveMinimum": 0},
+        "attained_pct": {"type": "number", "minimum": 0},
+        "limiting_term": {"type": "string", "enum": ["device_mem", "compute", "launch"]},
+        "assumptions": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "primary_bottleneck": {"type": "string"},
+    "notes": {"type": "string"}
+  }
+}

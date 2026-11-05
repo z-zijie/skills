@@ -1,0 +1,12 @@
+{
+  "name": "a result whose timing was edited after signing is refused",
+  "input": {"result_file": "skills/record-experiment/tests/fixtures/result_tampered.json"},
+  "expected": {
+    "status": "refused_unsigned",
+    "problem_kinds": ["signature"],
+    "ledger_lines": 0,
+    "archived_count": 0
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a result signed by a different key after its timing was changed"
+}

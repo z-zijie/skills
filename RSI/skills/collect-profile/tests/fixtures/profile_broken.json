@@ -1,0 +1,14 @@
+{
+  "op": "vec_add",
+  "candidate": "operators/vec_add/best/kernel.py",
+  "hw_id": "accel-a",
+  "env_fingerprint": "hw=accel-a|device=generic|runtime=ref|driver=none|compiler=cc|flags=default|os=Linux-x86_64",
+  "created": "2026-01-01T00:00:00Z",
+  "adapter": "device-adapter",
+  "adapter_version": "2.1",
+  "transaction_granularity_bytes": 32,
+  "metrics": "not-an-object",
+  "unavailable": [],
+  "raw_report": "ledger/artifacts/raw/profile-0001.txt",
+  "notes": ""
+}

@@ -1,0 +1,92 @@
+# Device adapter: generic text disassembly.
+#
+# This file is the adapter point. A skill never knows which toolchain produced a dump; it reads
+# whatever grammar the adapter in front of it declares. Ship this generic set, then let a device
+# replace it with its own file — same keys, different patterns — and no skill changes.
+#
+# The grammar it assumes is deliberately plain and widely writable by a toolchain wrapper:
+#
+#   <metadata line>  A leading keyword, then a number. Declares a scalar the dump knows directly.
+#   <instruction>    An optional address, a mnemonic in capitals, operands, an optional comment.
+#
+# Instruction classes name a *role in the machine* (load_wide, store, barrier), never a vendor
+# mnemonic. Classes are tried in order and the first match wins; `fallback_class` takes the rest.
+#
+# Vendor mapping note (the only place a vendor name belongs): a toolchain wrapper for a specific
+# accelerator writes these same keys and puts that vendor's own mnemonics in the patterns below.
+# Nothing else in this skill mentions a vendor.
+
+name: generic-text
+version: "1"
+description: >
+  A device-neutral reader for a plain textual disassembly: metadata lines declare registers,
+  scratchpad bytes and spills; instruction lines carry a mnemonic with a width suffix.
+
+line:
+  instruction: '^\s*(?:0x[0-9a-fA-F]+:)?\s*(?P<mnemonic>[A-Z][A-Z0-9_.]*)\s+(?P<operands>.*?)(?:\s*;\s*(?P<comment>.*))?$'
+  skip_prefixes: [";", "#", "//", "/", ".", "%"]
+  skip_mnemonics: ["FN", "LAUNCH", "REG", "SCRATCH", "SPILL", "SECTION"]
+
+disassembly:
+  # argv template; {artifact} is substituted. Empty means the caller must supply a dump.
+  command: []
+  note: >
+    A device adapter fills this with its own disassembler invocation. Left empty here so the
+    skill cannot pretend a toolchain exists on a machine that has none.
+
+symbols:
+  registers_per_lane:
+    pattern: '^REG\.LANE\s+(\d+)'
+    unit: register
+  scratchpad_bytes_per_workgroup:
+    pattern: '^SCRATCH\.BYTES\s+(\d+)'
+    unit: byte
+  spill_bytes:
+    pattern: '^SPILL\.BYTES\s+(\d+)'
+    unit: byte
+  barrier_count:
+    pattern: '\bBARRIER\b'
+    count: true
+  work_group:
+    pattern: '^LAUNCH\.WORKGROUP\s+(\d+)'
+    unit: work_lane
+  work_groups:
+    pattern: '^LAUNCH\.GROUPS\s+(\d+)'
+    unit: work_group
+  lane_count:
+    pattern: '^LAUNCH\.LANES\s+(\d+)'
+    unit: work_lane
+
+instruction_classes:
+  - name: load_wide
+    pattern: '\bLD\.(?:WIDE|VEC|B64|B128|X2|X4)\b'
+    role: device_mem_read
+  - name: load_narrow
+    pattern: '\bLD\.(?:B8|B16|B32)\b'
+    role: device_mem_read
+  - name: store
+    pattern: '\bST\.(?:B8|B16|B32|B64|B128)\b'
+    role: device_mem_write
+  - name: scratchpad_load
+    pattern: '\b(?:LDS|LD\.SCRATCH)\b'
+    role: scratchpad_read
+  - name: scratchpad_store
+    pattern: '\b(?:STS|ST\.SCRATCH)\b'
+    role: scratchpad_write
+  - name: barrier
+    pattern: '\bBARRIER\b'
+    role: work_group_sync
+  - name: branch
+    pattern: '^\s*(?:0x[0-9a-fA-F]+:)?\s*(?:BR|JMP|JUMP|BRA)'
+    role: control_flow
+  - name: fma
+    pattern: '\b(?:FMA|MAD|FMA\.F32|FMA\.F16)\b'
+    role: compute
+  - name: compute
+    pattern: '\b(?:ADD|SUB|MUL|DIV|MAX|MIN|RSQRT|SQRT|EXP|SHL|SHR|AND|OR|XOR|MOV|SEL|CMP)\.'
+    role: compute
+  - name: branchless_select
+    pattern: '\b(?:SEL|PRED|SETP)\b'
+    role: control_flow
+
+fallback_class: other

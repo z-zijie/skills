@@ -1,0 +1,11 @@
+--- a/kernel.py
++++ b/kernel.py
+@@ -1,6 +1,7 @@
+ def vec_add(inputs, out, case, dtype):
+     a, b = inputs
+-    for i in range(len(out)):
+-        out[i] = a[i] + b[i]
++    step = 4
++    for i in range(0, len(out) - step + 1, step):
++        out[i] = a[i] + b[i]
++        out[i + 1] = a[i + 1] + b[i + 1]

@@ -1,0 +1,14 @@
+{
+  "name": "legacy metric spellings are rewritten and the registry is partitioned",
+  "input": {"profile_file": "skills/collect-profile/tests/fixtures/profile_legacy_names.json"},
+  "expected": {
+    "status": "ok",
+    "problems": [],
+    "legacy_rewrites": 4,
+    "metric_count": 7,
+    "declared": true,
+    "unavailable_unknown": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a profile whose adapter still emits vendor-flavoured names: all four rewrite, none leak through"
+}

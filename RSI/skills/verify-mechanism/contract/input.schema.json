@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/verify-mechanism/input.schema.json",
+  "title": "verify-mechanism input",
+  "description": "Everything the verifier is allowed to see. Deliberately absent: the timing result, the implementer's notes, and any summary of either. The other objects are described by the shared schemas: hypothesis.schema.json for the card, profile.schema.json for the profiles, binary.schema.json for the disassembly summaries.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hypothesis", "change_diff", "binary_before", "binary_after", "profile_before", "profile_after", "measured"],
+  "properties": {
+    "hypothesis": {
+      "type": "object",
+      "description": "The hypothesis card; see schemas/hypothesis.schema.json. Predictions and implementation evidence are mandatory.",
+      "required": ["id", "op", "predictions", "evidence_of_implementation", "scope_of_change"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^H-[0-9]+$"},
+        "op": {"type": "string"},
+        "predictions": {"type": "object"},
+        "evidence_of_implementation": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "scope_of_change": {"type": "string"}
+      }
+    },
+    "change_diff": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unified diff of the candidate against its parent. Non-empty is A1's first condition."
+    },
+    "binary_before": {
+      "type": "object",
+      "description": "Disassembly summary of the parent; see schemas/binary.schema.json.",
+      "required": ["instructions", "registers_per_lane", "scratchpad_bytes_per_workgroup", "launch"],
+      "properties": {
+        "instructions": {"type": "array", "items": {"type": "string"}},
+        "registers_per_lane": {"type": ["number", "null"]},
+        "scratchpad_bytes_per_workgroup": {"type": ["number", "null"]},
+        "spill_bytes": {"type": ["number", "null"]},
+        "launch": {"type": "object"}
+      }
+    },
+    "binary_after": {
+      "type": "object",
+      "description": "Disassembly summary of the candidate; same shape as binary_before.",
+      "required": ["instructions", "registers_per_lane", "scratchpad_bytes_per_workgroup", "launch"],
+      "properties": {
+        "instructions": {"type": "array", "items": {"type": "string"}},
+        "registers_per_lane": {"type": ["number", "null"]},
+        "scratchpad_bytes_per_workgroup": {"type": ["number", "null"]},
+        "spill_bytes": {"type": ["number", "null"]},
+        "launch": {"type": "object"}
+      }
+    },
+    "profile_before": {
+      "type": "object",
+      "description": "Canonical counters of the parent; see schemas/profile.schema.json.",
+      "required": ["metrics", "unavailable"],
+      "properties": {
+        "metrics": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "unavailable": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "profile_after": {
+      "type": "object",
+      "description": "Canonical counters of the candidate; same shape as profile_before.",
+      "required": ["metrics", "unavailable"],
+      "properties": {
+        "metrics": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "unavailable": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "measured": {
+      "type": "object",
+      "description": "The device's measured parameters, so a counter move can be compared with its own run-to-run variation.",
+      "properties": {
+        "counter_variation": {"type": "object", "additionalProperties": {}},
+        "env_fingerprint": {"type": "string"}
+      }
+    }
+  }
+}

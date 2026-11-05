@@ -1,0 +1,70 @@
+{
+  "name": "missing-observation-is-refused",
+  "note": "a conjecture with no observable consequence cannot be refuted, so it is refused rather than registered",
+  "script": "scripts/register.py",
+  "input": {
+    "conjecture_id": "C-006",
+    "conjecture": "The device memory burst is wide enough that a two-element-unrolled contiguous read should not beat a single narrow read on this operator.",
+    "signature_tags": [
+      "mem_saturated"
+    ],
+    "expected_observation": "   "
+  },
+  "expected": {
+    "conjecture": {
+      "created": "",
+      "expected_observation": "",
+      "id": "C-006",
+      "metric": null,
+      "scope": {
+        "hw": [
+          "unknown"
+        ],
+        "tags_all": [
+          "mem_saturated"
+        ]
+      },
+      "source": "human",
+      "statement": "The device memory burst is wide enough that a two-element-unrolled contiguous read should not beat a single narrow read on this operator.",
+      "status": "conjecture"
+    },
+    "notes": [
+      "an unverified conjecture may inspire hypotheses and cannot be grounds for verification",
+      "keep it in kb/conjectures/ until the plan has run; promotion is a replay-gated move",
+      "no microbenchmark named: the orchestrator will ask design-microbench for one"
+    ],
+    "plan": {
+      "conjecture_id": "C-006",
+      "experiments": [
+        {
+          "budget_experiments": 1,
+          "cases": [
+            "the narrowest shape range the conjecture claims"
+          ],
+          "count": 1,
+          "kind": "microbench",
+          "repeats": 3,
+          "why_minimal": "one microbenchmark isolates the mechanism without a campaign"
+        }
+      ],
+      "limits": {
+        "counts_as_evidence": false,
+        "may_be_used_for_verification": false,
+        "may_inspire_hypotheses": true
+      },
+      "max_experiments": 3,
+      "op": "",
+      "outcome_table": {
+        "open": "the experiment could not be made valid: not_implemented, correctness failed, or the counters were absent",
+        "promoted": "the observation appears and the metric moves as predicted: ",
+        "refuted": "the experiment is valid and the observation does not appear"
+      },
+      "primary_kind": "microbench",
+      "promotion_path": "promotion makes it a candidate rule with this experiment as its single confirmation; it still cannot be used as evidence to verify anything until a second operator confirms it"
+    },
+    "problems": [
+      "state what would be observed if the conjecture were true"
+    ],
+    "ready": false
+  }
+}

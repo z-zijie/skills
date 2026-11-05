@@ -1,0 +1,14 @@
+{
+  "name": "an adapter that declares no line grammar is rejected before it can mislead",
+  "input": {
+    "disassembly_file": "skills/inspect-binary/tests/fixtures/wide.dump.txt",
+    "adapter_file": "skills/inspect-binary/tests/fixtures/adapter_broken.yaml"
+  },
+  "expected": {
+    "status": "adapter_invalid",
+    "problem_kinds": ["adapter"],
+    "instruction_total": null
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a half-written device adapter: a missing grammar is an adapter fault, not an empty kernel"
+}

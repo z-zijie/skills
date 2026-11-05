@@ -1,0 +1,66 @@
+{
+  "name": "new-item-refused-when-suite-already-observes",
+  "note": "a second item observing a metric the suite already covers is refused in favour of extending it",
+  "script": "scripts/design.py",
+  "input": {
+    "proposal_id": "P-43",
+    "mechanism": "scratchpad bank conflicts follow the stride modulo the bank count",
+    "metric": "scratchpad_conflict_ratio",
+    "parameter": "conflict ratio versus stride",
+    "new_item": true,
+    "prediction_errors": [
+      {
+        "exp_id": "exp-0201",
+        "prediction_error": 0.44
+      }
+    ]
+  },
+  "expected": {
+    "design": {
+      "counters_observed": [
+        "scratchpad_conflict_ratio"
+      ],
+      "environment_fingerprint_required": true,
+      "expiry": "re-measure after a driver, runtime or compiler change; results carry a date",
+      "extends_suite_item": "bank_conflicts",
+      "fallback_if_rejected": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "is_new_item": false,
+      "isolates": "one mechanism at a time",
+      "mechanism": "scratchpad bank conflicts follow the stride modulo the bank count",
+      "produces": {
+        "parameter": "conflict ratio versus stride",
+        "unit": "",
+        "used_by": "the roofline term and the prediction range"
+      },
+      "repeats": 3,
+      "sweep": {
+        "values": [],
+        "variable": "the one dimension the mechanism depends on"
+      },
+      "would_settle": "whether the mechanism's effect is as large as the model assumes"
+    },
+    "human_decision": {
+      "on_approval": "the code lands through the evaluator's owner, then calibrate-hardware runs it",
+      "on_rejection": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "question": "Add this microbenchmark to the frozen evaluator suite?",
+      "why_human": "microbenchmark code is Layer 0: agents read its results and never edit it"
+    },
+    "problems": [
+      "the existing suite item bank_conflicts already answers scratchpad_conflict_ratio: extend it rather than adding a second item that measures the same thing"
+    ],
+    "proposal": {
+      "author": "design-microbench",
+      "evidence": [
+        "exp-0201"
+      ],
+      "gate": "human_only",
+      "id": "P-43",
+      "kind": "microbench",
+      "rationale": "1 experiment(s) missed their predicted speedup by more than 0.2: exp-0201. The hardware model has a hole around scratchpad bank conflicts follow the stride modulo the bank count.",
+      "status": "needs_human",
+      "target": "evaluator/microbench/suite.py",
+      "title": "Microbenchmark: scratchpad bank conflicts follow the stride modulo the bank "
+    },
+    "ready_for_human": false
+  }
+}

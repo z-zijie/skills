@@ -1,0 +1,17 @@
+{
+  "name": "a passing screen on the cheap dev subset asks for the full replay",
+  "input": {
+    "fixture": "skills/replay-benchmark/tests/fixtures/replay_screen.json",
+    "stage": "two_stage_screen"
+  },
+  "expected": {
+    "status": "ok",
+    "decision": "needs_more_repeats",
+    "screening_stage": "two_stage_screen",
+    "excludes_zero": true,
+    "dev_configs": 2,
+    "holdout_configs": null
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from the first screening stage: two cheap operators clear the bar and no holdout was read"
+}

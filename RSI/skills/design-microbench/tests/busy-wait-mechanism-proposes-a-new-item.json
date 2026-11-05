@@ -1,0 +1,91 @@
+{
+  "name": "busy-wait-mechanism-proposes-a-new-item",
+  "note": "a mechanism no existing item varies can justify a new suite item, still at the human gate",
+  "script": "scripts/design.py",
+  "input": {
+    "proposal_id": "P-44",
+    "mechanism": "sustained device-memory traffic stalls once a second stream is issued from the same work-group, an interaction no single-stream item measures",
+    "metric": "stall_memory",
+    "parameter": "throughput versus concurrent stream count",
+    "unit": "% of peak",
+    "new_item": true,
+    "extend_suite_item": "atomics",
+    "prediction_errors": [
+      {
+        "exp_id": "exp-0310",
+        "prediction_error": 0.52
+      },
+      {
+        "exp_id": "exp-0311",
+        "prediction_error": 0.47
+      },
+      {
+        "exp_id": "exp-0312",
+        "prediction_error": 0.61
+      }
+    ],
+    "sweep": {
+      "variable": "concurrent streams per work-group",
+      "values": [
+        "1",
+        "2",
+        "4",
+        "8"
+      ]
+    },
+    "would_settle": "whether a second stream halves effective bandwidth above a threshold"
+  },
+  "expected": {
+    "design": {
+      "counters_observed": [
+        "stall_memory"
+      ],
+      "environment_fingerprint_required": true,
+      "expiry": "re-measure after a driver, runtime or compiler change; results carry a date",
+      "extends_suite_item": "atomics",
+      "fallback_if_rejected": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "is_new_item": false,
+      "isolates": "one mechanism at a time",
+      "mechanism": "sustained device-memory traffic stalls once a second stream is issued from the same work-group, an interaction no single-stream item measures",
+      "produces": {
+        "parameter": "throughput versus concurrent stream count",
+        "unit": "% of peak",
+        "used_by": "the roofline term and the prediction range"
+      },
+      "repeats": 3,
+      "sweep": {
+        "values": [
+          "1",
+          "2",
+          "4",
+          "8"
+        ],
+        "variable": "concurrent streams per work-group"
+      },
+      "would_settle": "whether a second stream halves effective bandwidth above a threshold"
+    },
+    "human_decision": {
+      "on_approval": "the code lands through the evaluator's owner, then calibrate-hardware runs it",
+      "on_rejection": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "question": "Add this microbenchmark to the frozen evaluator suite?",
+      "why_human": "microbenchmark code is Layer 0: agents read its results and never edit it"
+    },
+    "problems": [],
+    "proposal": {
+      "author": "design-microbench",
+      "evidence": [
+        "exp-0310",
+        "exp-0311",
+        "exp-0312"
+      ],
+      "gate": "human_only",
+      "id": "P-44",
+      "kind": "microbench",
+      "rationale": "3 experiment(s) missed their predicted speedup by more than 0.2: exp-0310, exp-0311, exp-0312. The hardware model has a hole around sustained device-memory traffic stalls once a second stream is issued from the same work-group, an interaction no single-stream item measures.",
+      "status": "needs_human",
+      "target": "evaluator/microbench/suite.py",
+      "title": "Microbenchmark: sustained device-memory traffic stalls once a second stream "
+    },
+    "ready_for_human": true
+  }
+}

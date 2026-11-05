@@ -1,0 +1,41 @@
+# Rule card — life cycle state: established.
+# EXAMPLE DATA. The experiment ids below are illustrative and do not exist in
+# ledger/experiments.jsonl. Replace this card with one distilled by distill-rules
+# over real ledger entries before relying on it. The evidence ids are shaped like real
+# ones on purpose so the retrieval and life-cycle code paths are exercised unchanged.
+id: R-001
+statement: >
+  Under a memory-bound signature with sectors_per_request above the uncoalesced threshold,
+  splitting an interleaved field layout into one contiguous array per field lowers
+  sectors_per_request and raises device_mem_throughput_pct for the same useful bytes, with a
+  speedup that grows with the measured coalescing penalty at that stride.
+mechanism: >
+  Interleaved fields put consecutive lanes one structure-width apart, so each memory
+  transaction carries one useful field and discards the rest of its payload. One array per
+  field makes consecutive lanes touch consecutive addresses, so one transaction serves the
+  whole group and the transaction count per useful byte falls toward 1.0.
+expected_counters: [sectors_per_request, device_mem_throughput_pct, device_mem_bytes]
+implementation_traps:
+  - Splitting the container while the traversal still steps by the old structure stride.
+  - Splitting only the hottest field, leaving the second-most-read field interleaved.
+  - Paying for the layout conversion inside the timed region.
+scope:
+  hw: [accel-a]
+  tags_all: [uncoalesced]
+  classes: [memory_bound]
+  elem_bytes: "<= 16"
+effect:
+  metric: sectors_per_request
+  direction: down
+  speedup_median: 1.22
+  range: [1.08, 1.41]
+evidence:
+  confirmed: [exp-0001, exp-0002, exp-0003, exp-0004]
+  refuted: [exp-0005]
+confirm_rate: 0.80
+mean_prediction_error: 0.09
+status: established
+last_verified: 2026-10-28
+counter_example_note: >
+  exp-0005 used 32-byte elements: after the split each element straddled a transaction boundary,
+  so sectors_per_request fell but device_mem_bytes rose and the kernel did not speed up.

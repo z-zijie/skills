@@ -1,0 +1,20 @@
+{
+  "name": "no card means no implementation, said plainly",
+  "input": {
+    "card_file": "skills/implement-change/tests/fixtures/card_empty.json",
+    "edits": [
+      {
+        "old": "x",
+        "new": "y"
+      }
+    ]
+  },
+  "expected": {
+    "status": "cannot_implement",
+    "problem_kinds": [
+      "cannot_implement"
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a missing card: the gate refuses before touching the workspace"
+}

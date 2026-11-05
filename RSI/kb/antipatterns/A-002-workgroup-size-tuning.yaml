@@ -1,0 +1,38 @@
+# Anti-pattern A-002 — tuning work-group size to fix a saturated memory path.
+# EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger. This is the
+# anti-pattern counterpart of the deprecated rule R-004.
+id: A-002
+statement: >
+  Changing the work_group size to raise occupancy_pct does not speed up a kernel whose
+  device_mem_throughput_pct is already above the saturation threshold; the extra resident groups
+  queue on a saturated path and the change is neutral or negative.
+mechanism: >
+  Residency only buys time when the machine has an idle resource for the additional work to use.
+  At the bandwidth ceiling the memory path is the constraint, so more concurrent requests wait
+  longer rather than overlapping more; meanwhile a smaller or differently shaped group can lose
+  the coalescing that the previous shape had. The measured symptom is occupancy_pct moving and
+  device_mem_throughput_pct and attained_pct not moving.
+expected_counters: [occupancy_pct, device_mem_throughput_pct, stall_memory]
+implementation_traps:
+  - Changing the group size without recomputing the grid extent, so coverage silently changes.
+  - Reporting the occupancy rise as the win, with no attainment movement behind it.
+scope:
+  hw: [accel-a]
+  tags_all: [mem_saturated]
+  classes: [memory_bound]
+effect:
+  metric: occupancy_pct
+  direction: up
+  speedup_median: 0.97
+  range: [0.88, 1.02]
+evidence:
+  confirmed: []
+  refuted: [exp-0032, exp-0033, exp-0034, exp-0035]
+confirm_rate: 0.0
+mean_prediction_error: 0.16
+status: deprecated
+last_verified: 2026-10-24
+counter_example_note: >
+  The one experiment that did improve (exp-0031) had a working set that fit on chip, which is a
+  latency-bound signature, not the saturated one this entry scopes. Read this as "not on a
+  saturated path", not "never".

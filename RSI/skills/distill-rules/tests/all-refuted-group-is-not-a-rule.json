@@ -1,0 +1,95 @@
+{
+  "name": "all-refuted-group-is-not-a-rule",
+  "note": "an all-refuted group becomes an anti-pattern, so it is skipped rather than proposed as a rule",
+  "script": "scripts/distill.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_rule_id": 7,
+    "entries": [
+      {
+        "exp_id": "exp-0201",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "refuted",
+        "speedup": 1.0,
+        "prediction_error": 0.15,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "fewer_registers",
+          "signature_tags": [
+            "mem_saturated"
+          ],
+          "mechanism": "fewer_registers changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0202",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "refuted",
+        "speedup": 1.01,
+        "prediction_error": 0.18,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "fewer_registers",
+          "signature_tags": [
+            "mem_saturated"
+          ],
+          "mechanism": "fewer_registers changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "candidate": 0,
+      "established": 0,
+      "proposed": 0,
+      "under_review": 0
+    },
+    "lifecycle_thresholds": {
+      "deprecated_below": 0.4,
+      "min_confirm_rate": 0.7,
+      "min_confirmations": 3,
+      "min_operators": 2,
+      "prediction_error_hole": 0.2
+    },
+    "proposals": [],
+    "skipped": [
+      {
+        "experiments": [
+          "exp-0201",
+          "exp-0202"
+        ],
+        "reason": "no confirmation: an all-refuted group becomes an anti-pattern, not a rule",
+        "transformation": "fewer_registers"
+      }
+    ]
+  }
+}

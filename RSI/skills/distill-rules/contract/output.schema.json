@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/distill-rules/output.schema.json",
+  "title": "distill-rules output",
+  "description": "Rule-card proposals plus the groups it refused to turn into rules. Each proposal carries the rule card of schemas/rule.schema.json (shape inlined, since contracts may not reference another file) and the life cycle's reason for its status.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["proposals", "skipped", "counts", "lifecycle_thresholds"],
+  "properties": {
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "action", "rule", "lifecycle_reason", "operators", "evidence", "title"],
+        "properties": {
+          "kind": {"type": "string", "const": "rule"},
+          "action": {"type": "string", "enum": ["create", "update"]},
+          "lifecycle_reason": {"type": "string", "minLength": 10, "description": "Why the life cycle chose this status; quote it, do not re-derive it."},
+          "operators": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"}},
+          "title": {"type": "string", "minLength": 10},
+          "rule": {
+            "type": "object",
+            "description": "A rule card as defined by schemas/rule.schema.json.",
+            "additionalProperties": false,
+            "required": ["id", "statement", "scope", "effect", "evidence", "status"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^R-[0-9]+$"},
+              "statement": {"type": "string", "minLength": 20},
+              "scope": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["hw"],
+                "properties": {
+                  "hw": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                  "tags_all": {"type": "array", "items": {"type": "string"}},
+                  "tags_any": {"type": "array", "items": {"type": "string"}},
+                  "classes": {"type": "array", "items": {"type": "string", "enum": ["memory_bound", "compute_bound", "latency_bound", "mixed"]}},
+                  "elem_bytes": {"type": "string"},
+                  "op_traits": {"type": "array", "items": {"type": "string"}}
+                }
+              },
+              "effect": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "metric": {"type": "string"},
+                  "direction": {"type": "string", "enum": ["up", "down"]},
+                  "speedup_median": {"type": "number", "exclusiveMinimum": 0},
+                  "range": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "exclusiveMinimum": 0}}
+                }
+              },
+              "evidence": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["confirmed", "refuted"],
+                "properties": {
+                  "confirmed": {"type": "array", "items": {"type": "string"}},
+                  "refuted": {"type": "array", "items": {"type": "string"}}
+                }
+              },
+              "confirm_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+              "mean_prediction_error": {"type": ["number", "null"], "minimum": 0},
+              "status": {"type": "string", "enum": ["conjecture", "candidate", "established", "under_review", "deprecated"]},
+              "last_verified": {"type": "string"},
+              "counter_example_note": {"type": "string"},
+              "mechanism": {"type": "string"},
+              "expected_counters": {"type": "array", "items": {"type": "string"}},
+              "implementation_traps": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "description": "Groups with no usable evidence. Reporting them is what stops the same group being re-proposed every run.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "experiments"],
+        "properties": {
+          "reason": {"type": "string", "minLength": 10},
+          "experiments": {"type": "array", "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"}},
+          "transformation": {"type": "string"}
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proposed"],
+      "properties": {
+        "proposed": {"type": "integer", "minimum": 0},
+        "established": {"type": "integer", "minimum": 0},
+        "candidate": {"type": "integer", "minimum": 0},
+        "under_review": {"type": "integer", "minimum": 0}
+      }
+    },
+    "lifecycle_thresholds": {
+      "type": "object",
+      "description": "The thresholds the life cycle applied, copied from tooling/rsi/knowledge.py so the proposal is auditable without reading the code.",
+      "additionalProperties": false,
+      "properties": {
+        "min_confirmations": {"type": "integer", "minimum": 1},
+        "min_operators": {"type": "integer", "minimum": 1},
+        "min_confirm_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "deprecated_below": {"type": "number", "minimum": 0, "maximum": 1},
+        "prediction_error_hole": {"type": "number", "minimum": 0}
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/replay-report.schema.json",
+  "title": "Replay report",
+  "description": "Old and new scaffold on the same operators with the same fixed budget. The primary metric is average gain in attainment per experiment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "proposal_id", "change_summary", "configs", "decision"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^RP-[0-9]+$"},
+    "proposal_id": {"type": "string"},
+    "change_summary": {"type": "string"},
+    "created": {"type": "string"},
+    "base_commit": {"type": "string"},
+    "candidate_commit": {"type": "string"},
+    "budget": {"type": "object", "additionalProperties": false, "properties": {
+      "experiments_per_operator": {"type": "integer", "minimum": 1},
+      "repeats": {"type": "integer", "minimum": 1},
+      "device_seconds_cap": {"type": "number", "minimum": 0}
+    }},
+    "configs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operator", "split", "old", "new"],
+        "properties": {
+          "operator": {"type": "string"},
+          "split": {"type": "string", "enum": ["dev", "holdout"]},
+          "old": {"type": "object", "additionalProperties": false, "properties": {
+            "attainment_gain": {"type": "number"},
+            "not_implemented_rate": {"type": "number"},
+            "prediction_error": {"type": "number"},
+            "cost": {"type": "number"}
+          }},
+          "new": {"type": "object", "additionalProperties": false, "properties": {
+            "attainment_gain": {"type": "number"},
+            "not_implemented_rate": {"type": "number"},
+            "prediction_error": {"type": "number"},
+            "cost": {"type": "number"}
+          }}
+        }
+      }
+    },
+    "primary_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "delta": {"type": "number"},
+        "ci_low": {"type": "number"},
+        "ci_high": {"type": "number"},
+        "excludes_zero": {"type": "boolean"}
+      }
+    },
+    "holdout_regressed": {"type": "boolean"},
+    "secondary_regressed": {"type": "boolean"},
+    "screening_stage": {"type": "string", "enum": ["two_stage_screen", "offline_ledger", "full"]},
+    "decision": {"type": "string", "enum": ["merge", "rollback", "needs_more_repeats", "human_only"]},
+    "rationale": {"type": "string"}
+  }
+}

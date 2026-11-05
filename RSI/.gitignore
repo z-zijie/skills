@@ -1,0 +1,13 @@
+# The evaluator's signing key. Created once by the evaluator's user with mode 0600; never
+# committed, because a key in the repository signs nothing.
+.rsi/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local measurement output and campaign state
+ledger/artifacts/**
+!ledger/artifacts/.gitkeep
+orchestrator/state/*.json

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/run-evaluator/input.schema.json",
+  "title": "run-evaluator input",
+  "description": "One measurement request. The candidate is measured as it stands; this skill edits nothing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "candidate"],
+  "properties": {
+    "op": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Operator id whose operators/<op>/spec.yaml supplies shapes and tolerances."
+    },
+    "candidate": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kernel module to measure: absolute, or relative to the RSI root or the operator directory."
+    },
+    "exp_kind": {
+      "type": "string",
+      "enum": ["evaluate", "operator_baseline"],
+      "description": "evaluate (default) measures a candidate; operator_baseline records experiment zero for the operator."
+    },
+    "samples": {"type": "integer", "minimum": 1},
+    "warmup": {"type": "integer", "minimum": 0},
+    "seed": {"type": "integer", "minimum": 0},
+    "backend": {"type": "string", "minLength": 1},
+    "out": {"type": "string", "minLength": 1, "description": "Where the signed result is written."},
+    "timeout_s": {"type": "integer", "minimum": 1, "description": "Wall-clock cap for one evaluator run."}
+  }
+}

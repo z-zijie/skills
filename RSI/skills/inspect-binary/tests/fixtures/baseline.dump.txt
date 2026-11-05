@@ -1,0 +1,17 @@
+; generic textual disassembly, neutral grammar
+REG.LANE 32
+SCRATCH.BYTES 0
+SPILL.BYTES 0
+LAUNCH.WORKGROUP 64
+LAUNCH.LANES 1048576
+FN vec_add
+  0x00: LD.B32 R1, [P0+0]        ; element i
+  0x04: LD.B32 R2, [P1+0]
+  0x08: ADD.F32 R3, R1, R2
+  0x0c: ST.B32 [P2+0], R3
+  0x10: BR COND, 0x00
+  0x14: BARRIER
+  0x18: LD.B32 R4, [P0+4]
+  0x1c: LD.B32 R5, [P1+4]
+  0x20: ADD.F32 R6, R4, R5
+  0x24: ST.B32 [P2+4], R6

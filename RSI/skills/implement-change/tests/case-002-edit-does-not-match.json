@@ -1,0 +1,18 @@
+{
+  "name": "an edit whose source text is absent is refused before anything is written",
+  "input": {
+    "edits_file": "skills/implement-change/tests/fixtures/edits_nomatch.json"
+  },
+  "expected": {
+    "status": "build_failed",
+    "files_changed": [],
+    "build_ok": false,
+    "diff_lines_added": 0,
+    "diff_lines_removed": 0,
+    "problem_kinds": [
+      "build_failed"
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a card written against a different kernel version: the edit cannot be located, so no partial change is applied"
+}

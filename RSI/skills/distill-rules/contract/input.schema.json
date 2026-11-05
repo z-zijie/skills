@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/distill-rules/input.schema.json",
+  "title": "distill-rules input",
+  "description": "A ledger window to distil, the id to start numbering proposals from, and whether the bound hardware changed. Entries are the subset of schemas/ledger-entry.schema.json that distillation reads; the shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "description": "Ledger entries, oldest first. Only confirmed and refuted entries with a named transformation become evidence.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exp_id", "op", "verdict"],
+        "properties": {
+          "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "op": {"type": "string", "minLength": 1},
+          "hw_id": {"type": "string", "minLength": 1},
+          "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+          "speedup": {"type": ["number", "null"]},
+          "prediction_error": {"type": ["number", "null"], "minimum": 0},
+          "implausible": {"type": "boolean"},
+          "signature": {
+            "type": "object",
+            "properties": {
+              "class": {"type": "string", "enum": ["memory_bound", "compute_bound", "latency_bound", "mixed"]},
+              "tags": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "hypothesis": {
+            "type": "object",
+            "properties": {
+              "transformation": {"type": "string", "minLength": 1},
+              "signature_tags": {"type": "array", "items": {"type": "string"}},
+              "mechanism": {"type": "string", "minLength": 20},
+              "predictions": {
+                "type": "object",
+                "properties": {
+                  "counters": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["metric", "direction"],
+                      "properties": {
+                        "metric": {"type": "string"},
+                        "direction": {"type": "string", "enum": ["up", "down"]}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "today": {"type": "string", "description": "ISO date recorded as last_verified on every card this run proposes."},
+    "next_rule_id": {"type": "integer", "minimum": 1, "description": "First id to try; ids never get reused, so read the highest existing id and add one."},
+    "hardware_changed": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when calibration moved a parameter this window's evidence depends on. The life cycle then puts every affected rule under review."
+    },
+    "existing_rules": {
+      "type": "array",
+      "description": "Rule cards already in the store, so the run can propose updates rather than duplicates.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^(R|A)-[0-9]+$"},
+          "statement": {"type": "string"},
+          "scope": {"type": "object"},
+          "status": {"type": "string", "enum": ["conjecture", "candidate", "established", "under_review", "deprecated"]}
+        }
+      }
+    }
+  }
+}

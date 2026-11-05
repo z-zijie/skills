@@ -1,0 +1,60 @@
+{
+  "name": "implausible-result-is-held-for-review",
+  "note": "a speedup above the review cap is excluded from evidence until a human reviews it",
+  "script": "scripts/cluster.py",
+  "input": {
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 3.1,
+        "prediction_error": 0.02,
+        "hypothesis": {
+          "transformation": "skip_half_output",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        },
+        "implausible": true
+      }
+    ]
+  },
+  "expected": {
+    "clusters": [
+      {
+        "count": 1,
+        "experiments": [
+          "exp-0001"
+        ],
+        "kind": "implausible",
+        "share": 1.0,
+        "summary": "1 implausible result(s): skip_half_output",
+        "tags": [
+          "mem_saturated"
+        ],
+        "transformations": [
+          "skip_half_output"
+        ]
+      }
+    ],
+    "entries_seen": 1,
+    "notes": [
+      "implausible results are excluded from evidence until a human reviews them"
+    ],
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "rates": {
+      "confirmation_rate": 1.0,
+      "dead_end_transformations": [],
+      "mean_prediction_error": 0.02,
+      "not_implemented_rate": 0.0
+    },
+    "rounds_seen": 1,
+    "top_cluster": "implausible",
+    "unattributed": []
+  }
+}

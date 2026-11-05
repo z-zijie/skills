@@ -1,0 +1,110 @@
+{
+  "name": "hardware-change-demotes-to-under-review",
+  "note": "a boundary hardware change puts every affected rule under review instead of established",
+  "script": "scripts/distill.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_rule_id": 20,
+    "hardware_changed": true,
+    "entries": [
+      {
+        "exp_id": "exp-0401",
+        "op": "vec_add",
+        "hw_id": "accel-b",
+        "verdict": "confirmed",
+        "speedup": 1.2,
+        "prediction_error": 0.05,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "mem_saturated"
+          ],
+          "mechanism": "wide_loads changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "candidate": 0,
+      "established": 0,
+      "proposed": 1,
+      "under_review": 1
+    },
+    "lifecycle_thresholds": {
+      "deprecated_below": 0.4,
+      "min_confirm_rate": 0.7,
+      "min_confirmations": 3,
+      "min_operators": 2,
+      "prediction_error_hole": 0.2
+    },
+    "proposals": [
+      {
+        "action": "create",
+        "evidence": [
+          "exp-0401"
+        ],
+        "kind": "rule",
+        "lifecycle_reason": "bound hardware changed: demoted to candidate and re-verified",
+        "operators": [
+          "vec_add"
+        ],
+        "rule": {
+          "confirm_rate": 1.0,
+          "effect": {
+            "direction": "down",
+            "metric": "sectors_per_request",
+            "range": [
+              1.2,
+              1.2
+            ],
+            "speedup_median": 1.2
+          },
+          "evidence": {
+            "confirmed": [
+              "exp-0401"
+            ],
+            "refuted": []
+          },
+          "expected_counters": [
+            "sectors_per_request"
+          ],
+          "id": "R-020",
+          "last_verified": "2026-11-05",
+          "mean_prediction_error": 0.05,
+          "mechanism": "wide_loads changes the access pattern so the limiter moves",
+          "scope": {
+            "classes": [
+              "memory_bound"
+            ],
+            "hw": [
+              "accel-b"
+            ],
+            "tags_all": [
+              "mem_saturated"
+            ],
+            "tags_any": []
+          },
+          "statement": "When the signature is mem_saturated on accel-b, wide_loads moves sectors_per_request and gives about 1.20x.",
+          "status": "under_review"
+        },
+        "title": "wide_loads under mem_saturated on accel-b"
+      }
+    ],
+    "skipped": []
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "op": "vec_add",
+  "candidate": "operators/vec_add/best/kernel.py",
+  "hw_id": "accel-a",
+  "env_fingerprint": "hw=accel-a|device=accel-a-1|runtime=rt-1.0|driver=d-1.0|compiler=c-1.0|flags=default|os=Linux-x86_64",
+  "adapter": "device-adapter",
+  "metrics": {
+    "device_mem_throughput_pct": 22.0,
+    "compute_throughput_pct": 91.0,
+    "occupancy_pct": 78.0,
+    "sectors_per_request": 1.0,
+    "stall_memory": 0.05,
+    "cache_hit_pct": 88.0
+  },
+  "unavailable": [],
+  "raw_report": "ledger/artifacts/raw/p2.txt"
+}

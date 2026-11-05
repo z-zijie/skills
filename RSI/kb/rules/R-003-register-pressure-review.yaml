@@ -1,0 +1,41 @@
+# Rule card — life cycle state: under_review.
+# EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger. The card is kept
+# in the store on purpose: an entry that goes under review stays retrievable with a warning,
+# and demoing that state is the point of this file.
+id: R-003
+statement: >
+  Under a latency-bound signature with occupancy_low and register_pressure, shortening live
+  ranges so registers_per_lane falls below the pressure threshold raises occupancy_pct and
+  lowers stall_memory, provided neither utilisation counter is at its device ceiling.
+mechanism: >
+  Residency is capped by the register file, so a lane holding many live values reduces how many
+  lanes can be resident, and fewer resident lanes means less work available to cover a memory
+  stall. Shortening live ranges lets the allocator reuse registers without adding work, which
+  raises residency and gives the scheduler something to issue during a stall.
+expected_counters: [registers_per_lane, occupancy_pct, stall_memory]
+implementation_traps:
+  - Recomputing an expensive value to save a register, trading a stall for a larger compute cost.
+  - Declaring fewer variables while the allocator's assignment is unchanged.
+  - Relieving pressure by forcing spills, which raises spill_bytes instead.
+scope:
+  hw: [accel-a]
+  tags_all: [occupancy_low, register_pressure]
+  classes: [latency_bound]
+effect:
+  metric: occupancy_pct
+  direction: up
+  speedup_median: 1.05
+  range: [0.94, 1.16]
+evidence:
+  confirmed: [exp-0021, exp-0022]
+  refuted: [exp-0023, exp-0024]
+confirm_rate: 0.50
+mean_prediction_error: 0.27
+status: under_review
+last_verified: 2026-10-31
+counter_example_note: >
+  exp-0023 and exp-0024 raised occupancy_pct as predicted and were slower: the machine was
+  already at a utilisation ceiling, so the added residency had nothing to hide and the
+  recomputation cost dominated. The prediction error of 0.27 is above the 0.2 hole threshold,
+  which is the mechanical reason this card is under review rather than established; the scope is
+  probably too wide and should be narrowed to the case where both utilisation counters are low.

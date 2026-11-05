@@ -1,0 +1,11 @@
+{
+  "name": "a profile whose metrics block is not a mapping is schema_invalid",
+  "input": {"profile_file": "skills/collect-profile/tests/fixtures/profile_broken.json"},
+  "expected": {
+    "status": "schema_invalid",
+    "metric_count": 0,
+    "unavailable_count": 0
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a truncated adapter output: blocked before anything downstream reads it"
+}

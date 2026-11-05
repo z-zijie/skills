@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/optimize-operator/output.schema.json",
+  "title": "optimize-operator output",
+  "description": "A campaign handle: whether it may run, where it stands, the stage sequence the orchestrator drives, and the gates and write boundaries that apply to it. This skill never names the next skill to call itself; it emits stages and the orchestrator sequences them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["campaign_id", "mode", "op", "preflight", "state", "stage_plan", "round_steps", "stop_conditions", "gates", "ready", "next", "refusals"],
+  "properties": {
+    "campaign_id": {"type": "string", "minLength": 1},
+    "mode": {"type": "string", "enum": ["start", "resume", "status"]},
+    "op": {"type": "string"},
+    "preflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checks", "passed", "failed"],
+      "properties": {
+        "op": {"type": "string"},
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["check", "ok", "detail"],
+            "properties": {
+              "check": {"type": "string"},
+              "ok": {"type": "boolean"},
+              "detail": {"type": "string", "minLength": 5}
+            }
+          }
+        },
+        "passed": {"type": "boolean"},
+        "failed": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "stop_condition", "progress", "budget"],
+      "properties": {
+        "op": {"type": "string"},
+        "state": {"type": "string", "enum": ["ready_to_start", "started", "stopped"]},
+        "stop_condition": {
+          "type": ["string", "null"],
+          "enum": [null, "target_attainment_reached", "five_rounds_without_significant_gain", "budget_exhausted", "no_hypothesis_above_noise"]
+        },
+        "progress": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "experiments": {"type": "integer", "minimum": 0},
+            "rounds": {"type": "integer", "minimum": 0},
+            "confirmed": {"type": "integer", "minimum": 0},
+            "refuted": {"type": "integer", "minimum": 0},
+            "not_implemented": {"type": "integer", "minimum": 0},
+            "implausible": {"type": "integer", "minimum": 0}
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "experiments": {"type": "integer", "minimum": 0},
+            "spent_experiments": {"type": "integer", "minimum": 0},
+            "remaining": {"type": "integer", "minimum": 0},
+            "device_seconds": {"type": ["number", "null"]}
+          }
+        },
+        "attainment_pct": {"type": ["number", "null"]},
+        "target_attainment_pct": {"type": "number", "minimum": 0}
+      }
+    },
+    "stage_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stage", "skill", "done_when"],
+        "properties": {
+          "stage": {"type": "string"},
+          "skill": {"type": "string", "description": "The skill the orchestrator should run for this stage. Naming it here is a plan, not a call."},
+          "done_when": {"type": "string", "minLength": 5}
+        }
+      }
+    },
+    "round_steps": {"type": "array", "items": {"type": "string"}},
+    "stop_conditions": {"type": "array", "items": {"type": "string"}},
+    "gates": {"type": "object", "additionalProperties": {"type": "string"}},
+    "write_boundary": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "budget_guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stops_on": {"type": "string"},
+        "counts": {"type": "array", "items": {"type": "string"}},
+        "replay_is_outside_the_campaign_budget": {"type": "boolean"}
+      }
+    },
+    "ready": {"type": "boolean"},
+    "next": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "skill", "instruction"],
+      "properties": {
+        "stage": {"type": "string"},
+        "skill": {"type": "string"},
+        "instruction": {"type": "string", "minLength": 10}
+      }
+    },
+    "refusals": {"type": "array", "items": {"type": "string"}}
+  }
+}

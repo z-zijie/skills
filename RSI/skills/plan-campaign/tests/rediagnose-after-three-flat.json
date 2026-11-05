@@ -1,0 +1,107 @@
+{
+  "name": "rediagnose-after-three-flat",
+  "note": "three rounds without a gain: the bottleneck may have moved, so re-profile before deciding",
+  "script": "scripts/decide.py",
+  "input": {
+    "op": "vec_add",
+    "noise_threshold": 0.04,
+    "target_attainment_pct": 85,
+    "attainment_pct": 62.0,
+    "budget": {
+      "experiments": 12,
+      "spent_experiments": 5
+    },
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.3,
+        "prediction_error": 0.06,
+        "parent": "baseline",
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "scope_of_change": "load width only"
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "prediction_error": 0.19,
+        "parent": "best@exp-0001",
+        "hypothesis": {
+          "transformation": "pad_scratchpad",
+          "scope_of_change": "scratchpad padding only"
+        }
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "vec_add",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 0.99,
+        "prediction_error": 0.22,
+        "parent": "best@exp-0001",
+        "hypothesis": {
+          "transformation": "fewer_registers",
+          "scope_of_change": "register budget only"
+        }
+      },
+      {
+        "exp_id": "exp-0004",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": false,
+        "speedup": 1.02,
+        "prediction_error": 0.24,
+        "parent": "best@exp-0001",
+        "hypothesis": {
+          "transformation": "unroll_loop",
+          "scope_of_change": "loop body only"
+        }
+      }
+    ],
+    "open_routes": [
+      {
+        "transformation": "aos_to_soa",
+        "predicted_speedup": 1.08
+      }
+    ]
+  },
+  "expected": {
+    "action": "change_direction",
+    "attainment_pct": 62.0,
+    "budget": {
+      "experiments": 12,
+      "remaining": 7,
+      "spent_experiments": 5
+    },
+    "evidence": [
+      "exp-0002",
+      "exp-0003",
+      "exp-0004"
+    ],
+    "needs_algorithm_rewrite": false,
+    "next": {
+      "combine": [],
+      "parent": "best",
+      "predicted_speedup": 1.08,
+      "rediagnose_first": true,
+      "transformation": "aos_to_soa"
+    },
+    "op": "vec_add",
+    "prediction_error_watch": [
+      "exp-0003",
+      "exp-0004"
+    ],
+    "reason": "3 rounds without a significant gain: re-profile and re-diagnose before choosing another route",
+    "routes_above_noise": 1,
+    "stop_reason": null,
+    "streak_without_gain": 3,
+    "target_attainment_pct": 85.0
+  }
+}

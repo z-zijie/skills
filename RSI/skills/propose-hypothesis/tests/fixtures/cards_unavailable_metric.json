@@ -1,0 +1,37 @@
+{
+  "cards": [
+    {
+      "id": "H-0009",
+      "op": "vec_add",
+      "parent": "best@exp-0003",
+      "signature_tags": [
+        "mem_saturated",
+        "uncoalesced"
+      ],
+      "transformation": "increase_occupancy",
+      "mechanism": "Cutting live registers raises occupancy, which hides device-memory latency on a stalled kernel.",
+      "predictions": {
+        "counters": [
+          {
+            "metric": "occupancy_pct",
+            "direction": "up"
+          }
+        ],
+        "speedup": {
+          "expect": 1.15,
+          "low": 1.05,
+          "high": 1.3
+        }
+      },
+      "evidence_of_implementation": [
+        "in the diff, the hot loop issues one wide load per lane instead of one narrow load per element",
+        "in the disassembly, the overweighted wide-load class rises while the narrow-load class falls"
+      ],
+      "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+      "based_on": [
+        "R-044"
+      ],
+      "created": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

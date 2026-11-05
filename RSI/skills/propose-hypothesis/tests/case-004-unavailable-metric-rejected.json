@@ -1,0 +1,23 @@
+{
+  "name": "a card naming a counter this device cannot produce is rejected with the metric named",
+  "input": {
+    "cards_file": "skills/propose-hypothesis/tests/fixtures/cards_unavailable_metric.json",
+    "unavailable_metrics": [
+      "occupancy_pct"
+    ],
+    "noise_threshold": 1.03
+  },
+  "expected": {
+    "status": "no_card",
+    "card_count": 0,
+    "rejected_count": 1,
+    "rejections": [
+      {
+        "transformation": "increase_occupancy",
+        "kind": "unavailable_metric"
+      }
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a device whose profiler cannot report occupancy: the card is plausible and unverifiable, so it never reaches the implementer"
+}

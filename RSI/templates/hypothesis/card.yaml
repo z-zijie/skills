@@ -1,0 +1,29 @@
+# Hypothesis card template. One card is one experiment.
+#
+# Two blocks are mandatory, because they are what the verifier works from and a card without
+# them cannot be checked against anything:
+#   predictions                - which canonical counters should move, in which direction
+#   evidence_of_implementation - what the diff and the disassembly must show if it really landed
+#
+# Every metric name is canonical (docs/vocabulary.md). A metric this device cannot produce is
+# rejected by propose-hypothesis, because a prediction nobody can check is not a prediction.
+id: H-<number>
+op: <operator-name>
+parent: best@exp-<number>
+signature_tags: [<tag from the bottleneck signature>]
+transformation: <the named tactic from a pattern or a playbook>
+mechanism: >
+  Why this should work, in terms of the machine. Name the resource that is currently saturated
+  or idle and the traffic or instruction count the change removes. A mechanism that only says
+  "this is faster" is not a mechanism.
+predictions:
+  counters:
+    - {metric: <canonical_metric>, direction: down, expect: "<= <value>"}
+    - {metric: <canonical_metric>, direction: up}
+  speedup: {expect: <x>, low: <x>, high: <x>}
+evidence_of_implementation:
+  - in the diff, <the code-level change that must be visible>
+  - in the disassembly, <the machine-code change that must be visible>
+scope_of_change: <what may change; everything else must stay identical>
+based_on: [<rule id>, <exp id>]
+risk: <what could get worse, and which counter would show it>

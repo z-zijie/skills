@@ -1,0 +1,19 @@
+id: R-063
+statement: >
+  A synthetic rule scoped to the same signature, present so that the retrieval cap has more matching
+  entries than it is allowed to return.
+scope:
+  hw: [accel-a]
+  tags_all: [memory_stall_high]
+effect:
+  metric: device_mem_throughput_pct
+  direction: down
+  speedup_median: 1.05
+  range: [1.01, 1.10]
+evidence:
+  confirmed: [exp-0463]
+  refuted: []
+confirm_rate: 1.0
+mean_prediction_error: 0.05
+status: candidate
+mechanism: A synthetic mechanism used only to exercise the retrieval cap.

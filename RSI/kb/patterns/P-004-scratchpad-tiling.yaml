@@ -1,0 +1,27 @@
+# Pattern: stage a reused tile in software-managed on-chip storage.
+id: P-004
+name: scratchpad-tiling
+statement: >
+  When one work_group consumes each element of a tile more than once, staging the tile in
+  scratchpad lowers device_mem_bytes at the cost of scratchpad_bytes_per_workgroup and the
+  barrier that makes the staged data visible.
+mechanism: >
+  Scratchpad is addressed directly and has no tag check, so a hit costs a fraction of a trip to
+  device_mem. Reuse inside a work_group turns one device_mem fetch into many on-chip reads. The
+  transformation is only worth its price when the reuse count is high enough that the saved
+  device_mem bytes outweigh the extra on-chip traffic and the barrier that separates the fill
+  phase from the compute phase.
+expected_counters: [device_mem_bytes, scratchpad_throughput_pct, stall_barrier]
+implementation_traps:
+  - Staging data that is read exactly once, which converts a direct access into two accesses and
+    a barrier.
+  - A tile whose footprint exceeds the scratchpad budget, so the allocation spills to local
+    memory and the traffic goes up instead of down.
+  - Filling the tile but reading it before the barrier, which is a race that passes on small
+    shapes and fails on large ones.
+  - Staging only the operands of the inner loop while the outer loop still re-reads the same
+    region from device_mem.
+scope_tags: [mem_saturated, cache_hit_low, memory_stall_high]
+scope:
+  tags_any: [mem_saturated, cache_hit_low]
+  classes: [memory_bound, mixed]

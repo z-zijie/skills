@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/collect-profile/input.schema.json",
+  "title": "collect-profile input",
+  "description": "One profiler collection request. The profiler adapter is chosen by name or by the device description.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "candidate"],
+  "properties": {
+    "op": {"type": "string", "minLength": 1},
+    "candidate": {"type": "string", "minLength": 1},
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string"},
+      "description": "argv the profiler wraps. It must run the kernel, not the correctness suite."
+    },
+    "adapter": {"type": "string", "minLength": 1, "description": "Profiler adapter name; unset means the device description decides."},
+    "out_dir": {"type": "string", "minLength": 1, "description": "Where the raw report is archived."},
+    "out": {"type": "string", "minLength": 1, "description": "Where profile.json is written."},
+    "timeout_s": {"type": "integer", "minimum": 1},
+    "profile_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Replay an already collected profile instead of running the profiler; used by the regression cases."
+    }
+  }
+}

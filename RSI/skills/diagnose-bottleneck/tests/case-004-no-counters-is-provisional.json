@@ -1,0 +1,14 @@
+{
+  "name": "a device with no counters yields a provisional signature that says what it rests on",
+  "input": {"profile_file": "skills/diagnose-bottleneck/tests/fixtures/profile_no_counters.json", "measured_us": 16.0},
+  "expected": {
+    "status": "provisional",
+    "class": "mixed",
+    "tags": [],
+    "metrics_used": [],
+    "note_count": 2,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from the null adapter: the class falls back to attainment, and both notes say the attribution is a class default rather than a measurement"
+}

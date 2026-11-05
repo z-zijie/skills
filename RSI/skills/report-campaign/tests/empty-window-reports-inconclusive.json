@@ -1,0 +1,48 @@
+{
+  "name": "empty-window-reports-inconclusive",
+  "note": "a campaign with no recorded attainment says so rather than inventing a figure",
+  "script": "scripts/report.py",
+  "input": {
+    "report_id": "REPORT-vec_add-0",
+    "today": "2026-11-05",
+    "report_kind": "campaign",
+    "op": "vec_add",
+    "target_attainment_pct": 85,
+    "entries": []
+  },
+  "expected": {
+    "created": "2026-11-05",
+    "generated_from": {
+      "ledger_entries": 0,
+      "source": "ledger/experiments.jsonl"
+    },
+    "id": "REPORT-vec_add-0",
+    "kind": "campaign",
+    "report": {
+      "confirmed_changes": [],
+      "efficiency": {
+        "experiments_to_target": null,
+        "log_speedup_per_experiment": null,
+        "mean_prediction_error": null
+      },
+      "headline": {
+        "attainment_pct": null,
+        "baseline_attainment_pct": null,
+        "experiments": 0,
+        "gain_points": null,
+        "gap_points": null,
+        "rounds": 0,
+        "stop_reason": null,
+        "target_attainment_pct": 85.0,
+        "total_speedup": 1.0
+      },
+      "kind": "campaign",
+      "needs_algorithm_rewrite": false,
+      "op": "vec_add",
+      "remaining_opportunities": [],
+      "unexplained_observations": [],
+      "verdict": "inconclusive: no attainment was recorded for this campaign",
+      "wrong_diagnoses": []
+    }
+  }
+}

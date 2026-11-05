@@ -1,0 +1,17 @@
+{
+  "name": "signed result with a significant win is accepted as ok",
+  "input": {
+    "result_file": "skills/run-evaluator/tests/fixtures/result_ok.json",
+    "signing_key": "regression-key-not-a-secret"
+  },
+  "expected": {
+    "status": "ok",
+    "failed_checks": [],
+    "blocking_schema_errors": 0,
+    "correctness_passed": true,
+    "significant": true,
+    "implausible": false
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a signed evaluator result: correctness passed, speedup 1.17 with the lower bound above the measured noise floor"
+}

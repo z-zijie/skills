@@ -1,0 +1,11 @@
+{
+  "name": "without a dump and without a device disassembly command nothing is invented",
+  "input": {"disassembly_file": ""},
+  "expected": {
+    "status": "unavailable",
+    "problem_kinds": ["unavailable"],
+    "instruction_total": null
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a machine with no toolchain: the default adapter declares no command on purpose"
+}

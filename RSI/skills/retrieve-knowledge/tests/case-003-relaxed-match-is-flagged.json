@@ -1,0 +1,44 @@
+{
+  "name": "a match that had to drop the hardware constraint says so in the file",
+  "input": {
+    "signature": {
+      "op": "vec_add",
+      "hw_id": "accel-z",
+      "class": "latency_bound",
+      "tags": [
+        "occupancy_low"
+      ],
+      "metrics": {
+        "occupancy_pct": 9.0,
+        "registers_per_lane": 60
+      },
+      "roofline": {
+        "bound_us": 10.0,
+        "measured_us": 90.0,
+        "attained_pct": 11.1
+      },
+      "primary_bottleneck": "low-occupancy"
+    },
+    "kb_root": "skills/retrieve-knowledge/tests/fixtures",
+    "include_hardware": false
+  },
+  "expected": {
+    "status": "ok",
+    "counts": {
+      "rules": 1,
+      "patterns": 0,
+      "antipatterns": 0,
+      "experiments": 0
+    },
+    "match_level": {
+      "rules": "hw_relaxed",
+      "patterns": "none",
+      "antipatterns": "none"
+    },
+    "relaxed_warning": true,
+    "carries_status": true,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a device with nothing scoped to it: the one rule that matched is from another hardware id, and the context says the match was relaxed"
+}

@@ -1,0 +1,40 @@
+# Anti-pattern A-004 — merging launches at shapes where the launch cost was never material.
+# EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger.
+id: A-004
+statement: >
+  Merging several launches into one lowers launch overhead only when launch_overhead_us is a
+  material fraction of measured time at the shapes the campaign scores; at large shapes the
+  merged kernel carries a bigger scratchpad and register footprint and is neutral or slower.
+mechanism: >
+  The fixed launch charge is amortised over the kernel's duration, so its share of measured time
+  falls as the shape grows. Merging pays that charge once but also fuses two working sets into
+  one kernel, which raises scratchpad_bytes_per_workgroup and registers_per_lane and can lower
+  residency. At small shapes the saving dominates; at large shapes the residency loss does.
+  The measured symptom is launch_overhead_us unchanged (it is a device constant, not a per-run
+  measurement) while attained_pct falls at the large shapes.
+expected_counters: [launch_overhead_us, scratchpad_bytes_per_workgroup, occupancy_pct]
+implementation_traps:
+  - Merging at every shape because the small shapes improved, while the score is dominated by
+    the large ones.
+  - A merged kernel whose group count must cover the largest shape, leaving the device idle for
+    the small ones.
+  - Merging without checking the intermediate really stayed off device_mem.
+scope:
+  hw: [accel-a]
+  tags_all: [launch_dominated]
+  classes: [latency_bound]
+effect:
+  metric: launch_overhead_us
+  direction: down
+  speedup_median: 1.01
+  range: [0.92, 1.24]
+evidence:
+  confirmed: [exp-0061]
+  refuted: [exp-0062, exp-0063]
+confirm_rate: 0.33
+mean_prediction_error: 0.19
+status: deprecated
+last_verified: 2026-10-27
+counter_example_note: >
+  The wide range is the point: at the smallest shape in the distribution the merge gave the
+  largest gain, and at the largest shape it lost time. Scope this by shape, not by operator.

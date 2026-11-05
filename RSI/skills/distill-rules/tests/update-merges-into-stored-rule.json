@@ -1,0 +1,205 @@
+{
+  "name": "update-merges-into-stored-rule",
+  "note": "a group that matches a stored card updates it and unions the evidence instead of forking a duplicate",
+  "script": "scripts/distill.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_rule_id": 31,
+    "existing_rules": [
+      {
+        "id": "R-031",
+        "statement": "When device memory is saturated, AoS to SoA lowers sectors per request.",
+        "scope": {
+          "hw": [
+            "accel-a"
+          ],
+          "tags_all": [
+            "mem_saturated"
+          ],
+          "classes": [
+            "memory_bound"
+          ]
+        },
+        "transformation": "aos_to_soa",
+        "evidence": {
+          "confirmed": [
+            "exp-0098"
+          ],
+          "refuted": []
+        },
+        "status": "candidate"
+      }
+    ],
+    "entries": [
+      {
+        "exp_id": "exp-0098",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.22,
+        "prediction_error": 0.05,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ],
+          "mechanism": "struct-of-arrays removes strided access",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0121",
+        "op": "layernorm_fwd",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.18,
+        "prediction_error": 0.09,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ],
+          "mechanism": "struct-of-arrays removes strided access",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0142",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.31,
+        "prediction_error": 0.11,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ],
+          "mechanism": "struct-of-arrays removes strided access",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "candidate": 0,
+      "established": 1,
+      "proposed": 1,
+      "under_review": 0
+    },
+    "lifecycle_thresholds": {
+      "deprecated_below": 0.4,
+      "min_confirm_rate": 0.7,
+      "min_confirmations": 3,
+      "min_operators": 2,
+      "prediction_error_hole": 0.2
+    },
+    "proposals": [
+      {
+        "action": "update",
+        "evidence": [
+          "exp-0098",
+          "exp-0121",
+          "exp-0142"
+        ],
+        "kind": "rule",
+        "lifecycle_reason": "3 confirmations across 2 operators, rate 1.00",
+        "operators": [
+          "layernorm_fwd",
+          "vec_add"
+        ],
+        "rule": {
+          "confirm_rate": 1.0,
+          "effect": {
+            "direction": "down",
+            "metric": "sectors_per_request",
+            "range": [
+              1.18,
+              1.31
+            ],
+            "speedup_median": 1.22
+          },
+          "evidence": {
+            "confirmed": [
+              "exp-0098",
+              "exp-0121",
+              "exp-0142"
+            ],
+            "refuted": []
+          },
+          "expected_counters": [
+            "sectors_per_request"
+          ],
+          "id": "R-031",
+          "last_verified": "2026-11-05",
+          "mean_prediction_error": 0.0833,
+          "mechanism": "struct-of-arrays removes strided access",
+          "scope": {
+            "classes": [
+              "memory_bound"
+            ],
+            "hw": [
+              "accel-a"
+            ],
+            "tags_all": [
+              "mem_saturated"
+            ],
+            "tags_any": [
+              "uncoalesced"
+            ]
+          },
+          "statement": "When the signature is mem_saturated, uncoalesced on accel-a, aos_to_soa moves sectors_per_request and gives about 1.22x.",
+          "status": "established"
+        },
+        "title": "aos_to_soa under mem_saturated, uncoalesced on accel-a"
+      }
+    ],
+    "skipped": []
+  }
+}

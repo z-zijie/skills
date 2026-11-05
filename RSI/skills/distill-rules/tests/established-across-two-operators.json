@@ -1,0 +1,214 @@
+{
+  "name": "established-across-two-operators",
+  "note": "three confirmations across two operators and a rate above 0.7 make the rule established in one run",
+  "script": "scripts/distill.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_rule_id": 31,
+    "entries": [
+      {
+        "exp_id": "exp-0098",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.22,
+        "prediction_error": 0.05,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ],
+          "mechanism": "aos_to_soa changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0121",
+        "op": "layernorm_fwd",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.18,
+        "prediction_error": 0.09,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ],
+          "mechanism": "aos_to_soa changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0142",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.31,
+        "prediction_error": 0.11,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ],
+          "mechanism": "aos_to_soa changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0133",
+        "op": "layernorm_fwd",
+        "hw_id": "accel-a",
+        "verdict": "refuted",
+        "speedup": 1.0,
+        "prediction_error": 0.2,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "mem_saturated",
+            "uncoalesced"
+          ],
+          "mechanism": "aos_to_soa changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "candidate": 0,
+      "established": 1,
+      "proposed": 1,
+      "under_review": 0
+    },
+    "lifecycle_thresholds": {
+      "deprecated_below": 0.4,
+      "min_confirm_rate": 0.7,
+      "min_confirmations": 3,
+      "min_operators": 2,
+      "prediction_error_hole": 0.2
+    },
+    "proposals": [
+      {
+        "action": "create",
+        "evidence": [
+          "exp-0098",
+          "exp-0121",
+          "exp-0142",
+          "exp-0133"
+        ],
+        "kind": "rule",
+        "lifecycle_reason": "3 confirmations across 2 operators, rate 0.75",
+        "operators": [
+          "layernorm_fwd",
+          "vec_add"
+        ],
+        "rule": {
+          "confirm_rate": 0.75,
+          "effect": {
+            "direction": "down",
+            "metric": "sectors_per_request",
+            "range": [
+              1.18,
+              1.31
+            ],
+            "speedup_median": 1.22
+          },
+          "evidence": {
+            "confirmed": [
+              "exp-0098",
+              "exp-0121",
+              "exp-0142"
+            ],
+            "refuted": [
+              "exp-0133"
+            ]
+          },
+          "expected_counters": [
+            "sectors_per_request"
+          ],
+          "id": "R-031",
+          "last_verified": "2026-11-05",
+          "mean_prediction_error": 0.1125,
+          "mechanism": "aos_to_soa changes the access pattern so the limiter moves",
+          "scope": {
+            "classes": [
+              "memory_bound"
+            ],
+            "hw": [
+              "accel-a"
+            ],
+            "tags_all": [
+              "mem_saturated"
+            ],
+            "tags_any": [
+              "uncoalesced"
+            ]
+          },
+          "statement": "When the signature is mem_saturated, uncoalesced on accel-a, aos_to_soa moves sectors_per_request and gives about 1.22x.",
+          "status": "established"
+        },
+        "title": "aos_to_soa under mem_saturated, uncoalesced on accel-a"
+      }
+    ],
+    "skipped": []
+  }
+}

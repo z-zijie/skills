@@ -1,0 +1,21 @@
+{
+  "name": "a runtime upgrade that moves bandwidth and launch cost flags the device for review",
+  "input": {
+    "measured_file": "skills/calibrate-hardware/tests/fixtures/measured_after_upgrade.json",
+    "previous_file": "skills/calibrate-hardware/tests/fixtures/measured_first_run.json",
+    "dry_run": true
+  },
+  "expected": {
+    "status": "dry_run",
+    "hw_id": "accel-a",
+    "moved": ["peak_bandwidth_gbps", "launch"],
+    "moved_count": 2,
+    "under_review": true,
+    "min_reportable_speedup": 1.06,
+    "skipped_count": 1,
+    "all_skipped_have_reason": true,
+    "problem_kinds": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a re-measure after a runtime upgrade: bandwidth fell 18% and launch overhead doubled, so the rules that depend on them go under review rather than being silently re-tuned"
+}

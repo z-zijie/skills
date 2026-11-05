@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/inspect-binary/output.schema.json",
+  "title": "inspect-binary output",
+  "description": "A machine-level summary in canonical terms. Field names for register and scratchpad use match the canonical metrics, so a static summary and a measured profile can be compared directly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "problems",
+    "notes"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "unavailable",
+        "schema_invalid",
+        "adapter_invalid"
+      ]
+    },
+    "summary": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "artifact",
+        "adapter",
+        "adapter_version",
+        "instruction_total",
+        "instruction_mix"
+      ],
+      "properties": {
+        "artifact": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "adapter_version": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "instruction_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "instruction_mix": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Instruction class to count. Classes come from the adapter, so they name a role (load, wide_load, barrier) and not a mnemonic."
+        },
+        "instruction_bytes_total": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "registers_per_lane": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "scratchpad_bytes_per_workgroup": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "spill_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "barrier_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "launch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "work_group"
+          ],
+          "properties": {
+            "work_group": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "work_groups": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "lane_count": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "derived",
+                "dump",
+                "derived_and_dump"
+              ]
+            }
+          }
+        },
+        "scratchpad_capacity_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "scratchpad_fraction": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Symbols the adapter declared but the dump did not yield. Unknown, never zero."
+        }
+      }
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dump_ref": {
+      "type": "string",
+      "description": "Where the text dump was archived, when it was produced from the artefact."
+    }
+  }
+}

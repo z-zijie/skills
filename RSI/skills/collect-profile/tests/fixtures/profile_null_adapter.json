@@ -1,0 +1,13 @@
+{
+  "op": "vec_add",
+  "candidate": "operators/vec_add/baseline/kernel.py",
+  "hw_id": "accel-default",
+  "env_fingerprint": "hw=accel-default|device=generic-cpu-reference|runtime=reference|driver=none|compiler=none|flags=default|os=Darwin-arm64",
+  "created": "2026-01-01T00:00:00Z",
+  "adapter": "null",
+  "adapter_version": null,
+  "metrics": {},
+  "unavailable": [],
+  "raw_report": "ledger/artifacts/raw/profile-0002.txt",
+  "notes": "no profiler"
+}

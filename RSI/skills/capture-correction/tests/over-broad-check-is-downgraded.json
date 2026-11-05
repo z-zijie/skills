@@ -1,0 +1,184 @@
+{
+  "name": "over-broad-check-is-downgraded",
+  "note": "a band wide enough to flag a rightly-confirmed win fails replay and becomes an anti-pattern",
+  "script": "scripts/capture.py",
+  "input": {
+    "proposal_id": "P-32",
+    "experiment_id": "exp-0142",
+    "correction_note": "The verifier confirmed this as a wide-load win, but the diff only added a variable; sectors per request never moved. This was a superficial implementation.",
+    "classification": "verifier_check",
+    "check": {
+      "id": "CHK-012",
+      "predicate": "metric_unmoved",
+      "checks_metric": "sectors_per_request",
+      "band": 2.0,
+      "statement": "A claimed coalescing change must move sectors per request.",
+      "from_experiment": "exp-0142",
+      "must_catch": [
+        "exp-0142",
+        "exp-0133"
+      ],
+      "must_not_flag": [
+        "exp-0098",
+        "exp-0121"
+      ]
+    },
+    "ledger": [
+      {
+        "exp_id": "exp-0098",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.22,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.8
+        },
+        "counters_after": {
+          "sectors_per_request": 1.1
+        }
+      },
+      {
+        "exp_id": "exp-0121",
+        "op": "layernorm_fwd",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.2
+        },
+        "counters_after": {
+          "sectors_per_request": 1.2
+        }
+      },
+      {
+        "exp_id": "exp-0133",
+        "op": "layernorm_fwd",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 1.2
+        },
+        "counters_after": {
+          "sectors_per_request": 1.19
+        }
+      },
+      {
+        "exp_id": "exp-0142",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.31,
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "loads are wider in the disassembly"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.8
+        },
+        "counters_after": {
+          "sectors_per_request": 3.79
+        }
+      }
+    ]
+  },
+  "expected": {
+    "check": null,
+    "classification": "antipattern",
+    "goal": "each kind of human correction is needed only once",
+    "problems": [
+      "replay failed: a new check must catch the past cases of the same kind and must not flag experiments that were rightly confirmed"
+    ],
+    "proposal": {
+      "author": "capture-correction",
+      "evidence": [
+        "exp-0133",
+        "exp-0142"
+      ],
+      "gate": "mechanical",
+      "id": "P-32",
+      "kind": "antipattern",
+      "rationale": "Human correction on exp-0142: The verifier confirmed this as a wide-load win, but the diff only added a variable; sectors per request never moved. This was a superficial implementation.",
+      "status": "rejected",
+      "target": "kb/antipatterns/",
+      "title": "Correction from exp-0142"
+    },
+    "ready": false,
+    "replay": {
+      "caught": [
+        "exp-0133",
+        "exp-0142"
+      ],
+      "could_not_evaluate": [],
+      "flagged_rightly_confirmed": [
+        "exp-0121"
+      ],
+      "missed_expected": [],
+      "passes": false
+    }
+  }
+}

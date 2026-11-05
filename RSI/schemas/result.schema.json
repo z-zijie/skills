@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/result.schema.json",
+  "title": "Evaluator result",
+  "description": "Signed by the evaluator. The ledger accepts only results whose signature verifies. Timing lives here and is sealed from the verifier until the verdict exists.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "exp_kind",
+    "op",
+    "candidate",
+    "hw_id",
+    "env_fingerprint",
+    "evaluator_version",
+    "evaluator_hash",
+    "created",
+    "correctness",
+    "timing",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "exp_kind": {
+      "type": "string",
+      "enum": [
+        "evaluate",
+        "aa_test",
+        "redteam",
+        "operator_baseline"
+      ]
+    },
+    "op": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hw_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "env_fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evaluator_version": {
+      "type": "string"
+    },
+    "evaluator_hash": {
+      "type": "string",
+      "description": "Hash of the evaluator source tree. Recompute at startup; a mismatch invalidates past results."
+    },
+    "created": {
+      "type": "string"
+    },
+    "correctness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "cases_run",
+        "cases_failed"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "cases_run": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cases_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "shape": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "dtype": {
+                "type": "string"
+              },
+              "seed": {
+                "type": "integer"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "max_abs_err": {
+                "type": "number"
+              },
+              "max_rel_err": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "canary_tripped": {
+          "type": "boolean"
+        },
+        "sentinel_untouched": {
+          "type": "boolean"
+        }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_us",
+        "baseline_us",
+        "samples",
+        "setup_us"
+      ],
+      "properties": {
+        "candidate_us": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "baseline_us": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "speedup": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "speedup_ci_low": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "speedup_ci_high": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noise_threshold": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "significant": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "setup_us": {
+          "type": "number",
+          "minimum": 0
+        },
+        "setup_cap_us": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "interleaved": {
+          "type": "boolean"
+        },
+        "candidate_summary": {
+          "type": "object",
+          "description": "Median, interval, trimmed mean and range for the candidate arm: the evidence behind candidate_us.",
+          "additionalProperties": true
+        },
+        "baseline_summary": {
+          "type": "object",
+          "description": "Median, interval, trimmed mean and range for the baseline arm.",
+          "additionalProperties": true
+        },
+        "samples_candidate": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "samples_baseline": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "guards": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "implausible_speedup": {
+          "type": "boolean",
+          "description": "A single step at or above the operator spec's speedup_review_cap pauses the experiment for human review. It is recorded, not discarded: the evidence is that a human looked."
+        },
+        "files_modified": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tolerances_unchanged": {
+          "type": "boolean"
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algo",
+        "value"
+      ],
+      "properties": {
+        "algo": {
+          "type": "string",
+          "enum": [
+            "hmac-sha256"
+          ]
+        },
+        "key_id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

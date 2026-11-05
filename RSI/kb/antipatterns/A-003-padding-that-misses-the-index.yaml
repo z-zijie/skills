@@ -1,0 +1,39 @@
+# Anti-pattern A-003 — a scratchpad pad that changes the allocation but not the addresses.
+# EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger.
+id: A-003
+statement: >
+  Padding a scratchpad row length by a value that shares a factor with the bank count, or
+  declaring a padded extent and still indexing with the unpadded stride, leaves the access
+  pattern unchanged and lowers no conflict counter.
+mechanism: >
+  Bank selection is a function of the address actually accessed, so a pad only helps if the
+  index arithmetic uses it and if the resulting stride is coprime with the bank count. A pad that
+  is a multiple of the bank count maps every row to the same bank sequence as before, and a pad
+  that is never applied to the index changes no address at all. The measured symptom is
+  scratchpad_conflict_ratio unchanged and scratchpad_bytes_per_workgroup up, which is a pure loss
+  of capacity.
+expected_counters: [scratchpad_conflict_ratio, scratchpad_bytes_per_workgroup, stall_barrier]
+implementation_traps:
+  - A pad of one bank on a bank count that divides the stride, so the collision pattern recurs.
+  - Padding declared in the allocation and forgotten in the index expression.
+  - Trusting the conflict counter alone, although the documented layer marks it unreliable.
+scope:
+  hw: [accel-a]
+  tags_all: [scratchpad_conflict]
+  classes: [memory_bound, latency_bound, mixed]
+effect:
+  metric: scratchpad_conflict_ratio
+  direction: down
+  speedup_median: 0.99
+  range: [0.95, 1.03]
+evidence:
+  confirmed: []
+  refuted: [exp-0051, exp-0052]
+confirm_rate: 0.0
+mean_prediction_error: 0.05
+status: deprecated
+last_verified: 2026-10-29
+counter_example_note: >
+  Both refutations moved scratchpad_conflict_ratio by less than its run-to-run variation while
+  scratchpad_bytes_per_workgroup rose, which is the signature of a pad that never reached the
+  address computation.

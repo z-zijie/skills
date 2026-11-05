@@ -1,0 +1,14 @@
+{
+  "_comment": "What a step reports back to the state machine. Use only the keys the step actually produced; advance() ignores the rest.",
+  "signature": {"tags": ["mem_saturated"], "roofline": {"attained_pct": 42.0}},
+  "cards": [{"id": "H-0001"}],
+  "diff": "<unified diff, or a path to it>",
+  "correctness": {"passed": true},
+  "verdict": "confirmed",
+  "speedup": 1.18,
+  "significant": true,
+  "qualifies": true,
+  "prediction_error": 0.08,
+  "attained_pct": 55.0,
+  "decision": "continue"
+}

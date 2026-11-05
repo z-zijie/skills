@@ -1,0 +1,8 @@
+id: A-005
+statement: Lowering precision quietly to pass the timing run is caught by the tolerance check.
+scope:
+  hw: [accel-b]
+  tags_all: [compute_saturated]
+effect:
+  metric: compute_throughput_pct
+  direction: down

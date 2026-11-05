@@ -1,0 +1,27 @@
+# Pattern: make every lane in a group follow the same path.
+id: P-012
+name: remove-branch-divergence
+statement: >
+  When lanes within one scheduling group take different sides of a data-dependent branch, and
+  the measured divergence curve for this device says the penalty is material, restructuring so
+  the condition becomes per-group rather than per-lane, or is replaced by a select, lowers
+  branch_divergence_pct and raises compute_throughput_pct.
+mechanism: >
+  A group issues one instruction for all its lanes at once. When the lanes disagree on the
+  branch, both sides execute with part of the group masked off, so the group pays the cost of
+  both paths and the useful work per issued instruction falls. Making the condition uniform
+  across the group, or expressing both sides as a branch-free select, restores full-width
+  execution. Where the condition is genuinely data-dependent and the two sides cost very
+  different amounts, sorting so that similar elements land in the same group is the alternative.
+expected_counters: [branch_divergence_pct, compute_throughput_pct, instruction_count]
+implementation_traps:
+  - Replacing the branch with a select that computes both sides, which removes the divergence
+    counter movement but executes the expensive side for every lane.
+  - Hoisting the condition out of the loop when it varies per element, which changes results.
+  - A predicated short body, where the divergence counter stays low because both sides are cheap
+    and there was never a gain to collect.
+  - Sorting the input so groups are uniform but paying for the sort inside the timed region.
+scope_tags: [divergence_high]
+scope:
+  tags_any: [divergence_high]
+  classes: [compute_bound, latency_bound, mixed]

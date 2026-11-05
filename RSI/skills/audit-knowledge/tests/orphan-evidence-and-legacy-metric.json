@@ -1,0 +1,164 @@
+{
+  "name": "orphan-evidence-and-legacy-metric",
+  "note": "an evidence id outside the ledger and a legacy metric spelling are both mechanical findings",
+  "script": "scripts/audit.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_proposal_id": 7,
+    "ledger_exp_ids": [
+      "exp-0098",
+      "exp-0121",
+      "exp-0142",
+      "exp-0133",
+      "exp-0201"
+    ],
+    "rules": [
+      {
+        "id": "R-034",
+        "statement": "Under a saturated device-memory signature, reordering traversal improves locality.",
+        "scope": {
+          "hw": [
+            "accel-a"
+          ],
+          "tags_all": [
+            "mem_saturated"
+          ],
+          "classes": [
+            "memory_bound"
+          ]
+        },
+        "effect": {
+          "metric": "dram_throughput_pct",
+          "direction": "down",
+          "speedup_median": 1.2,
+          "range": [
+            1.05,
+            1.4
+          ]
+        },
+        "evidence": {
+          "confirmed": [
+            "exp-9001"
+          ],
+          "refuted": []
+        },
+        "status": "candidate",
+        "mean_prediction_error": 0.08,
+        "last_verified": "2026-10-01",
+        "mechanism": "the access pattern changes so the limiter moves"
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "by_kind": {
+        "conflict": 0,
+        "legacy_metric": 1,
+        "missed_counterexample": 0,
+        "no_mechanism": 0,
+        "orphan_evidence": 1,
+        "stale": 0,
+        "thin_evidence": 0,
+        "unbound_metric": 0
+      },
+      "by_severity": {
+        "high": 0,
+        "low": 1,
+        "medium": 1
+      },
+      "findings": 2,
+      "mechanical": 2,
+      "needs_replay": 0,
+      "proposals": 2
+    },
+    "findings": [
+      {
+        "detail": "uses legacy spellings ['dram_throughput_pct'] rather than the canonical names",
+        "entry": "R-034",
+        "kind": "legacy_metric",
+        "proposal": {
+          "action": "fix_metric",
+          "gate": "mechanical",
+          "kind": "rule",
+          "reason": "a rule must be readable after a device change",
+          "target": "kb/rules/",
+          "to_status": "candidate"
+        },
+        "severity": "low"
+      },
+      {
+        "detail": "cites ['exp-9001'], which are not in the ledger window supplied",
+        "entry": "R-034",
+        "kind": "orphan_evidence",
+        "proposal": {
+          "action": "demote",
+          "gate": "mechanical",
+          "kind": "rule",
+          "reason": "evidence ids could not be located",
+          "target": "kb/rules/",
+          "to_status": "candidate"
+        },
+        "severity": "medium"
+      }
+    ],
+    "health": {
+      "deprecated_share": 0.0,
+      "established_rules": 0,
+      "mean_evidence_per_rule": 1.0,
+      "rules_with_evidence_in_window": 0
+    },
+    "notes": [
+      "evidence ids missing from the ledger window mean the rule cannot be re-derived, so demote before trusting it",
+      "no established rules yet: retrieval will return thin evidence, which is honest but slow, so prefer narrowing scopes to promoting cards"
+    ],
+    "proposals": [
+      {
+        "action": "demote",
+        "entries": [
+          "R-034"
+        ],
+        "evidence": [
+          "exp-9001"
+        ],
+        "gate": "mechanical",
+        "group": null,
+        "id": "P-7",
+        "kind": "rule",
+        "rationale": "cites ['exp-9001'], which are not in the ledger window supplied",
+        "reasons": [
+          "cites ['exp-9001'], which are not in the ledger window supplied"
+        ],
+        "status": "draft",
+        "target": "kb/rules/",
+        "to_status": "candidate"
+      },
+      {
+        "action": "fix_metric",
+        "entries": [
+          "R-034"
+        ],
+        "evidence": [
+          "exp-9001"
+        ],
+        "gate": "mechanical",
+        "group": null,
+        "id": "P-8",
+        "kind": "rule",
+        "rationale": "uses legacy spellings ['dram_throughput_pct'] rather than the canonical names",
+        "reasons": [
+          "uses legacy spellings ['dram_throughput_pct'] rather than the canonical names"
+        ],
+        "status": "draft",
+        "target": "kb/rules/",
+        "to_status": "candidate"
+      }
+    ],
+    "stores_audited": {
+      "antipatterns": 0,
+      "conjectures": 0,
+      "patterns": 0,
+      "rules": 1
+    },
+    "today": "2026-11-05"
+  }
+}

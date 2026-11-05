@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/record-experiment/input.schema.json",
+  "title": "record-experiment input",
+  "description": "One finished experiment. Everything here is a reference to a file on disk or a measured value; nothing is a model's recollection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "parent", "result_file", "verdict"],
+  "properties": {
+    "op": {"type": "string", "minLength": 1},
+    "parent": {"type": "string", "minLength": 1, "description": "Kernel version the experiment started from, e.g. best@exp-0137."},
+    "result_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Signed evaluator result. Its signature is verified before anything is appended."
+    },
+    "hypothesis": {"type": "object", "description": "Full card; schemas/hypothesis.schema.json."},
+    "hypothesis_file": {"type": "string", "minLength": 1, "description": "Alternative to an inline card."},
+    "signature": {"type": "object", "description": "Bottleneck signature before the experiment; schemas/signature.schema.json."},
+    "signature_file": {"type": "string", "minLength": 1},
+    "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+    "verifier_notes": {"type": ["string", "object"]},
+    "diff_file": {"type": "string", "minLength": 1},
+    "profile_file": {"type": "string", "minLength": 1},
+    "binary_file": {"type": "string", "minLength": 1},
+    "timing_before": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "median_us": {"type": ["number", "null"]},
+        "ci_low_us": {"type": ["number", "null"]},
+        "ci_high_us": {"type": ["number", "null"]},
+        "samples": {"type": "integer", "minimum": 0}
+      }
+    },
+    "counters_before": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "counters_after": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tokens": {"type": "integer", "minimum": 0},
+        "device_seconds": {"type": "number", "minimum": 0},
+        "implementation_retries": {"type": "integer", "minimum": 0}
+      }
+    },
+    "hw_id": {"type": "string", "minLength": 1},
+    "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$", "description": "Only for replaying a stored experiment; normally allocated from the ledger."},
+    "root": {"type": "string", "minLength": 1, "description": "Alternative repository root; the regression cases use a scratch copy."},
+    "dry_run": {"type": "boolean", "description": "Build and validate the entry and archive nothing."}
+  }
+}

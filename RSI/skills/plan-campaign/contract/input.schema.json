@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/plan-campaign/input.schema.json",
+  "title": "plan-campaign input",
+  "description": "One operator's campaign state: its ledger entries, the measured noise threshold, the target attainment and the routes the playbooks still hold open. `entries` items are the subset of schemas/ledger-entry.schema.json this decision consumes; the shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "entries"],
+  "properties": {
+    "op": {"type": "string", "minLength": 1},
+    "entries": {
+      "type": "array",
+      "description": "This operator's ledger entries, oldest first. Read them from ledger/experiments.jsonl; never edit them.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exp_id", "verdict"],
+        "properties": {
+          "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "op": {"type": "string", "minLength": 1},
+          "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+          "significant": {"type": ["boolean", "null"]},
+          "speedup": {"type": ["number", "null"]},
+          "prediction_error": {"type": ["number", "null"], "minimum": 0},
+          "parent": {"type": "string", "minLength": 1},
+          "promoted": {"type": "boolean"},
+          "hypothesis": {
+            "type": "object",
+            "properties": {
+              "transformation": {"type": "string", "minLength": 1},
+              "scope_of_change": {"type": "string", "minLength": 1},
+              "signature_tags": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "noise_threshold": {"type": "number", "minimum": 0, "description": "Measured A/A noise floor for this operator; a gain inside it is not a gain."},
+    "target_attainment_pct": {"type": "number", "minimum": 0, "maximum": 100},
+    "prediction_error_hole": {"type": "number", "minimum": 0, "description": "|log measured/predicted| above which the hardware model has a hole."},
+    "attainment_pct": {"type": ["number", "null"], "minimum": 0, "description": "Roofline attainment of the current best version."},
+    "start_from": {"type": "string", "description": "Kernel version the next round starts from, e.g. best@exp-0137."},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "experiments": {"type": "integer", "minimum": 0},
+        "spent_experiments": {"type": "integer", "minimum": 0},
+        "device_seconds": {"type": "number", "minimum": 0}
+      }
+    },
+    "open_routes": {
+      "type": "array",
+      "description": "Playbook items not yet tried for the current signature, with the speedup the hardware model predicts for each.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["transformation"],
+        "properties": {
+          "transformation": {"type": "string", "minLength": 1},
+          "predicted_speedup": {"type": ["number", "null"]},
+          "rule_id": {"type": "string"},
+          "playbook": {"type": "string"}
+        }
+      }
+    }
+  }
+}

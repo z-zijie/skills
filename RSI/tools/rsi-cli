@@ -1,0 +1,479 @@
+#!/usr/bin/env python3
+"""One command for everything in the framework.
+
+``rsi-cli`` is a convenience wrapper, not a second interface: every subcommand either calls a
+skill's ``scripts/`` entry point or the evaluator's own CLI. If a subcommand is missing here,
+the script it wraps is still the real interface.
+
+    rsi-cli doctor                       check this machine's setup
+    rsi-cli evaluate --op X --candidate P    Layer 0: signed result
+    rsi-cli profile --op X                   Layer 0: canonical metrics
+    rsi-cli calibrate [--suite core]         Layer 0: microbenchmarks
+    rsi-cli redteam --op X                   Layer 0: must catch every cheat
+    rsi-cli analyse --op X                   signature from the latest profile
+    rsi-cli retrieve --op X                  knowledge matching a signature
+    rsi-cli record --op X --result R.json    append one experiment
+    rsi-cli campaign --op X [--budget N]     drive the campaign state machine
+    rsi-cli report --op X                    campaign report
+    rsi-cli replay --proposal P.yaml         replay judge on a scaffold change
+    rsi-cli kb-audit                         knowledge-base health
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tooling"))
+sys.path.insert(0, str(ROOT))
+
+from rsi import hardware, knowledge, ledger, metrics, paths, signature as signature_mod, spec as spec_mod, yamlite  # noqa: E402
+
+
+def _fail(message: str) -> int:
+    print(message, file=sys.stderr)
+    return 1
+
+
+def cmd_keygen(args: argparse.Namespace) -> int:
+    """Create the evaluator's signing key, once, as the evaluator's user.
+
+    The key is what makes a forged result detectable: the ledger accepts nothing else, and the
+    signature covers the whole body of a result. It is created with mode 0600 and never
+    committed, because a key in the repository signs nothing.
+    """
+    path = ledger.key_path()
+    if path.is_file() and not args.force:
+        return _fail(
+            f"a signing key already exists at {path}. Replacing it invalidates every result "
+            "already signed; pass --force only if that is what you intend"
+        )
+    key = ledger.load_key(create=True)
+    print(json.dumps({
+        "key": paths.rel(path),
+        "bytes": len(key),
+        "mode": oct(path.stat().st_mode & 0o777),
+        "owner_advice": "this file belongs to the evaluator's user; run keygen as that user",
+    }, indent=2))
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Report whether this machine is set up, and what is missing."""
+    report = hardware.environment_summary()
+    device = report.get("device") or {}
+    measured = None
+    try:
+        measured = hardware.load_measured(str(device.get("hw_id", "")))
+    except hardware.HardwareError as error:
+        measured = {"error": str(error)}
+    key = None
+    try:
+        key = ledger.load_key()
+        key = "present"
+    except ledger.SignatureError as error:
+        key = f"missing: {error}"
+    from evaluator import backends
+
+    backend_notes = []
+    for name in backends.names():
+        backend = backends.create(name)
+        ok, reason = backend.available()
+        backend_notes.append({"backend": name, "available": ok, "reason": reason})
+    payload = {
+        "device": device,
+        "fingerprint": report.get("fingerprint"),
+        "measured": "present" if isinstance(measured, dict) and "error" not in measured else measured,
+        "signing_key": key,
+        "holdout_operators": _count((paths.repo_root() / "benchmark" / "holdout.txt")),
+        "dev_operators": _count((paths.repo_root() / "benchmark" / "dev.txt")),
+        "ledger_entries": len(ledger.read_entries()),
+        "knowledge": {store: len(knowledge.load_store(store)) for store in
+                      ("rules", "patterns", "antipatterns", "conjectures")},
+        "backends": backend_notes,
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _count(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    return len([line for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.strip().startswith("#")])
+
+
+def _bridge() -> None:
+    """Make the evaluator and orchestrator importable for the commands that drive them."""
+    if str(ROOT / "evaluator") not in sys.path:
+        sys.path.insert(0, str(ROOT / "evaluator"))
+
+
+def cmd_campaign(args: argparse.Namespace) -> int:
+    from orchestrator import sm
+
+    state_path = paths.state_dir() / f"{args.op}.json"
+    if state_path.is_file() and not args.restart:
+        campaign = sm.Campaign.load(state_path)
+    else:
+        campaign = sm.new_campaign(args.op, budget=args.budget, target_attainment_pct=args.target)
+    if args.step:
+        step = sm.next_step(campaign)
+        campaign.save(state_path)
+        print(json.dumps({"next": step, "campaign": campaign.to_dict()}, indent=2, ensure_ascii=False))
+        return 0
+    if args.outcome:
+        outcome = json.loads(Path(args.outcome).read_text(encoding="utf-8"))
+        step = sm.advance(campaign, outcome)
+    else:
+        step = sm.next_step(campaign)
+    campaign.save(state_path)
+    print(json.dumps({"next": step, "campaign": campaign.to_dict()}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_analyse(args: argparse.Namespace) -> int:
+    """Build a signature from a profile and a measured time."""
+    profile_path = Path(args.profile)
+    if not profile_path.is_file():
+        return _fail(f"no profile at {profile_path}; run `rsi-cli profile --op {args.op}` first")
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    device = hardware.discover_device()
+    hw_id = str(device.get("hw_id", ""))
+    measured = hardware.load_measured(hw_id)
+    roofline = hardware.Roofline.from_measured(measured)
+    op_spec = spec_mod.Spec.load(args.op)
+    case = dict(op_spec.shapes["typical"][0])
+    cost = op_spec.model(case)
+    measured_us = float(args.measured_us)
+    bound = roofline.attainment(cost["bytes"], cost["flops"], measured_us, op_spec.dtypes[0])
+    thresholds = signature_mod.threshold_table(measured)
+    sig = signature_mod.build(args.op, hw_id, profile.get("metrics", {}), bound, thresholds,
+                              env_fingerprint=profile.get("env_fingerprint", ""))
+    if args.out:
+        Path(args.out).write_text(json.dumps(sig, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(sig, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_retrieve(args: argparse.Namespace) -> int:
+    sig = json.loads(Path(args.signature).read_text(encoding="utf-8"))
+    selected = knowledge.retrieve(sig)
+    selected["measured"] = knowledge.measured_parameters(sig)
+    print(json.dumps(selected, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    entries = ledger.entries_for_op(args.op)
+    if not entries:
+        return _fail(f"no ledger entries for {args.op}")
+    counts = ledger.evidence_counts(entries)
+    confirmed = [entry for entry in entries if entry.get("verdict") == "confirmed"]
+    speedups = [float(entry["speedup"]) for entry in confirmed if entry.get("speedup")]
+    payload = {
+        "op": args.op,
+        "experiments": len(entries),
+        "evidence": counts,
+        "best_speedup": max(speedups) if speedups else None,
+        "total_speedup": _product(speedups) if speedups else None,
+        "confirmed_changes": [entry.get("hypothesis", {}).get("transformation") for entry in confirmed],
+        "unexplained": [entry.get("exp_id") for entry in entries
+                        if entry.get("verdict") == "refuted" and entry.get("significant")],
+        "mean_prediction_error": _mean([entry.get("prediction_error") for entry in entries
+                                        if entry.get("prediction_error") is not None]),
+    }
+    if args.out:
+        Path(args.out).write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _product(values):
+    result = 1.0
+    for value in values:
+        result *= value
+    return result
+
+
+def _mean(values):
+    return (sum(values) / len(values)) if values else None
+
+
+def cmd_kb_audit(args: argparse.Namespace) -> int:
+    """Knowledge-base health: what is invalid, unevidenced, stale or overstated.
+
+    The audit exists because a knowledge base fails by accumulating, not by being empty. Every
+    check here is one way an entry can stop being true without anyone noticing.
+    """
+    audit = {
+        "counts": {store: len(knowledge.load_store(store)) for store in
+                   ("rules", "patterns", "antipatterns", "conjectures")},
+        "invalid": [],
+        "no_evidence": [],
+        "under_review": [],
+        "deprecated": [],
+        "unverified_but_cited": [],
+        "status_disagrees_with_evidence": [],
+        "health": {},
+    }
+    # The life-cycle comparison needs to know which operator each cited experiment ran on. Without
+    # a ledger there is nothing to compare against, so the check reports "not evaluable" rather
+    # than calling every seeded rule stale: an audit that fires on missing data teaches people to
+    # ignore it.
+    operator_of_exp = {entry.get("exp_id"): entry.get("op") for entry in ledger.read_entries()}
+    evaluable = bool(operator_of_exp)
+    for store in ("rules", "antipatterns"):
+        for rule in knowledge.load_store(store):
+            errors = knowledge.validate_rule(rule)
+            if errors:
+                audit["invalid"].append({"id": rule.get("id"), "errors": errors})
+                continue
+            evidence = rule.get("evidence") or {}
+            confirmed = list(evidence.get("confirmed") or [])
+            refuted = list(evidence.get("refuted") or [])
+            if not (confirmed or refuted):
+                audit["no_evidence"].append(rule.get("id"))
+            status = rule.get("status")
+            if status == "under_review":
+                audit["under_review"].append(rule.get("id"))
+            if status == "deprecated":
+                audit["deprecated"].append(rule.get("id"))
+
+            # The life cycle is mechanical: an entry whose recorded status disagrees with what
+            # its own evidence implies is a stale status, and a stale status is how a rule
+            # quietly keeps its authority after the evidence has gone.
+            if store == "antipatterns" or not evaluable:
+                continue
+            cited = set(confirmed) | set(refuted)
+            if not cited <= set(operator_of_exp):
+                continue
+            verdict = knowledge.lifecycle(rule, operator_of_exp)
+            if verdict["status"] != status:
+                audit["status_disagrees_with_evidence"].append({
+                    "id": rule.get("id"), "recorded": status,
+                    "evidence_says": verdict["status"], "reason": verdict["reason"],
+                })
+
+    # A conjecture cited as if it were evidence is the failure mode the store separation exists
+    # to prevent, so it is checked rather than trusted.
+    conjectures = {entry.get("id") for entry in knowledge.load_store("conjectures")}
+    for store in ("rules", "antipatterns"):
+        for rule in knowledge.load_store(store):
+            cited = set(rule.get("based_on") or [])
+            overlap = cited & conjectures
+            if overlap:
+                audit["unverified_but_cited"].append({"id": rule.get("id"), "conjectures": sorted(overlap)})
+
+    rules = knowledge.load_store("rules")
+    established = [rule for rule in rules if rule.get("status") == "established"]
+    audit["health"] = {
+        "rules": len(rules),
+        "established": len(established),
+        "mean_evidence_per_rule": round(
+            sum(len((rule.get("evidence") or {}).get("confirmed") or [])
+                + len((rule.get("evidence") or {}).get("refuted") or [])
+                for rule in rules) / len(rules), 2) if rules else 0.0,
+        "deprecated_share": round(len([rule for rule in rules if rule.get("status") == "deprecated"])
+                                  / max(1, len(rules)), 3),
+        "status_check": "evaluated against the ledger" if evaluable else
+                        "not evaluable: the ledger has no experiments yet",
+    }
+    print(json.dumps(audit, indent=2, ensure_ascii=False))
+    problems = (audit["invalid"] or audit["no_evidence"] or audit["unverified_but_cited"]
+                or audit["status_disagrees_with_evidence"])
+    return 0 if not problems else 1
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    from orchestrator import replay
+
+    payload = json.loads(Path(args.proposal).read_text(encoding="utf-8"))
+    report = replay.evaluate_change(payload.get("configs", []),
+                                    payload.get("budget", {}),
+                                    repeats=int(payload.get("repeats", replay.MIN_REPEATS)))
+    report["screening_stage"] = "full"
+    report["change_summary"] = payload.get("change_summary", "")
+    log = paths.repo_root() / "CHANGELOG-scaffold.md"
+    application = replay.apply_decision(report, payload, log)
+    print(json.dumps({"report": report, "applied": application}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_record(args: argparse.Namespace) -> int:
+    """Append one experiment, refusing anything the evaluator did not sign."""
+    from evaluator import cli as evaluator_cli
+
+    result = json.loads(Path(args.result).read_text(encoding="utf-8"))
+    ledger.validate_result(result)
+    if args.dry_run:
+        print(json.dumps({"validated": True, "result": result}, indent=2, ensure_ascii=False))
+        return 0
+    entries = ledger.read_entries()
+    exp_id = args.exp_id or ledger.next_exp_id(entries)
+    entry = {
+        "exp_id": exp_id,
+        "op": result["op"],
+        "hw_id": result["hw_id"],
+        "env_fingerprint": result["env_fingerprint"],
+        "scaffold_commit": ledger.scaffold_commit(),
+        "parent": args.parent,
+        "hypothesis": json.loads(Path(args.hypothesis).read_text(encoding="utf-8")) if args.hypothesis else {},
+        "signature": {},
+        "correctness": {
+            "passed": bool(result["correctness"]["passed"]),
+            "failing_cases": [f"{failure.get('shape')}: {failure.get('reason')}"
+                              for failure in result["correctness"].get("failures", [])],
+        },
+        "timing_before": {"median_us": result["timing"].get("baseline_us"), "samples": result["timing"].get("samples", 0)},
+        "timing_after": {"median_us": result["timing"].get("candidate_us"), "samples": result["timing"].get("samples", 0)},
+        "counters_before": {},
+        "counters_after": {},
+        "verdict": args.verdict,
+        "verifier_notes": "",
+        "speedup": result["timing"].get("speedup"),
+        "significant": result["timing"].get("significant"),
+        "implausible": bool(result["guards"].get("implausible_speedup")),
+        "promoted": False,
+        "prediction_error": None,
+        "cost": {"tokens": 0, "device_seconds": 0.0, "implementation_retries": 0},
+        "evaluator_signature": json.dumps(result["signature"]),
+        "result_ref": paths.rel(Path(args.result)),
+    }
+    ledger.append(entry)
+    print(json.dumps(entry, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    _bridge()
+    from evaluator import cli
+
+    return cli.main(["evaluate", "--op", args.op, "--candidate", args.candidate]
+                    + (["--out", args.out] if args.out else [])
+                    + (["--samples", str(args.samples)] if args.samples else []))
+
+
+def cmd_profile(args: argparse.Namespace) -> int:
+    _bridge()
+    from evaluator import cli
+
+    return cli.main(["profile", "--op", args.op]
+                    + (["--out", args.out] if args.out else [])
+                    + (["--out-dir", args.out_dir] if args.out_dir else []))
+
+
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    _bridge()
+    from evaluator import cli
+
+    return cli.main(["calibrate", "--suite", args.suite, "--samples", str(args.samples)]
+                    + (["--out", args.out] if args.out else []))
+
+
+def cmd_redteam(args: argparse.Namespace) -> int:
+    _bridge()
+    from evaluator import cli
+
+    return cli.main(["redteam", "--op", args.op] + (["--out", args.out] if args.out else []))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="rsi-cli", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    doctor = sub.add_parser("doctor", help="check this machine's setup")
+    doctor.set_defaults(func=cmd_doctor)
+
+    keygen = sub.add_parser("keygen", help="create the evaluator's signing key (once)")
+    keygen.add_argument("--force", action="store_true",
+                        help="replace an existing key, invalidating every result already signed")
+    keygen.set_defaults(func=cmd_keygen)
+
+    evaluate = sub.add_parser("evaluate", help="Layer 0: correctness plus timing")
+    evaluate.add_argument("--op", required=True)
+    evaluate.add_argument("--candidate", required=True)
+    evaluate.add_argument("--out")
+    evaluate.add_argument("--samples", type=int, default=30)
+    evaluate.set_defaults(func=cmd_evaluate)
+
+    profile = sub.add_parser("profile", help="Layer 0: canonical metrics")
+    profile.add_argument("--op", required=True)
+    profile.add_argument("--out")
+    profile.add_argument("--out-dir")
+    profile.set_defaults(func=cmd_profile)
+
+    calibrate = sub.add_parser("calibrate", help="Layer 0: microbenchmark suite")
+    calibrate.add_argument("--suite", default="core")
+    calibrate.add_argument("--samples", type=int, default=15)
+    calibrate.add_argument("--out")
+    calibrate.set_defaults(func=cmd_calibrate)
+
+    redteam = sub.add_parser("redteam", help="Layer 0: the evaluator must catch every cheat")
+    redteam.add_argument("--op", required=True)
+    redteam.add_argument("--out")
+    redteam.set_defaults(func=cmd_redteam)
+
+    analyse = sub.add_parser("analyse", help="signature plus roofline attainment")
+    analyse.add_argument("--op", required=True)
+    analyse.add_argument("--profile", required=True)
+    analyse.add_argument("--measured-us", type=float, required=True)
+    analyse.add_argument("--out")
+    analyse.set_defaults(func=cmd_analyse)
+
+    retrieve = sub.add_parser("retrieve", help="knowledge matching a signature")
+    retrieve.add_argument("--signature", required=True)
+    retrieve.set_defaults(func=cmd_retrieve)
+
+    record = sub.add_parser("record", help="append one signed experiment")
+    record.add_argument("--result", required=True)
+    record.add_argument("--parent", default="best")
+    record.add_argument("--hypothesis")
+    record.add_argument("--verdict", default="confirmed",
+                        choices=["confirmed", "refuted", "not_implemented"])
+    record.add_argument("--exp-id")
+    record.add_argument("--dry-run", action="store_true")
+    record.set_defaults(func=cmd_record)
+
+    campaign = sub.add_parser("campaign", help="drive the campaign state machine")
+    campaign.add_argument("--op", required=True)
+    campaign.add_argument("--budget", type=int, default=20)
+    campaign.add_argument("--target", type=float, default=85.0)
+    campaign.add_argument("--step", action="store_true", help="report the next step only")
+    campaign.add_argument("--outcome", help="JSON file with the last step's outcome")
+    campaign.add_argument("--restart", action="store_true")
+    campaign.set_defaults(func=cmd_campaign)
+
+    report = sub.add_parser("report", help="campaign report")
+    report.add_argument("--op", required=True)
+    report.add_argument("--out")
+    report.set_defaults(func=cmd_report)
+
+    replay_cmd = sub.add_parser("replay", help="replay judge for a scaffold change")
+    replay_cmd.add_argument("--proposal", required=True)
+    replay_cmd.set_defaults(func=cmd_replay)
+
+    kb_audit = sub.add_parser("kb-audit", help="knowledge-base health")
+    kb_audit.set_defaults(func=cmd_kb_audit)
+
+    return parser
+
+
+def main(argv=None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return int(args.func(args) or 0)
+    except Exception as error:
+        # A refused result is a normal outcome of this tool, and saying so beats a traceback:
+        # the caller needs to know whether to retry the step or stop.
+        print(f"{type(error).__name__}: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

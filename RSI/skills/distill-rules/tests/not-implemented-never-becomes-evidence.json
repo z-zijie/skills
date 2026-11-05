@@ -1,0 +1,95 @@
+{
+  "name": "not-implemented-never-becomes-evidence",
+  "note": "attempts that never reached the machine code are not evidence, so they cannot create a rule",
+  "script": "scripts/distill.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_rule_id": 51,
+    "entries": [
+      {
+        "exp_id": "exp-0601",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "not_implemented",
+        "speedup": null,
+        "prediction_error": null,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "scratchpad_conflict"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "pad_scratchpad",
+          "signature_tags": [
+            "scratchpad_conflict"
+          ],
+          "mechanism": "pad_scratchpad changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0602",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "not_implemented",
+        "speedup": null,
+        "prediction_error": null,
+        "signature": {
+          "class": "memory_bound",
+          "tags": [
+            "scratchpad_conflict"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "pad_scratchpad",
+          "signature_tags": [
+            "scratchpad_conflict"
+          ],
+          "mechanism": "pad_scratchpad changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "candidate": 0,
+      "established": 0,
+      "proposed": 0,
+      "under_review": 0
+    },
+    "lifecycle_thresholds": {
+      "deprecated_below": 0.4,
+      "min_confirm_rate": 0.7,
+      "min_confirmations": 3,
+      "min_operators": 2,
+      "prediction_error_hole": 0.2
+    },
+    "proposals": [],
+    "skipped": [
+      {
+        "experiments": [
+          "exp-0601",
+          "exp-0602"
+        ],
+        "reason": "not implemented: these attempts never reached the machine code, so they carry no evidence either way",
+        "transformation": ""
+      }
+    ]
+  }
+}

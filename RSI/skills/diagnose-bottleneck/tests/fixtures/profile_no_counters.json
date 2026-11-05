@@ -1,0 +1,13 @@
+{
+  "op": "vec_add",
+  "candidate": "operators/vec_add/baseline/kernel.py",
+  "hw_id": "accel-a",
+  "env_fingerprint": "hw=accel-a|device=accel-a-1|runtime=rt-1.0|driver=d-1.0|compiler=c-1.0|flags=default|os=Linux-x86_64",
+  "adapter": "null",
+  "metrics": {},
+  "unavailable": [
+    "device_mem_throughput_pct",
+    "compute_throughput_pct"
+  ],
+  "raw_report": ""
+}

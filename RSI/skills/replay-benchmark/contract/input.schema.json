@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/replay-benchmark/input.schema.json",
+  "title": "replay-benchmark input",
+  "description": "One scaffold change and the measurements that compared it with the current scaffold. The held-out split is read by this skill only; its operator names are supplied here by the orchestrator, never returned.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["proposal", "configs"],
+  "properties": {
+    "proposal": {
+      "type": "object",
+      "description": "schemas/proposal.schema.json.",
+      "required": ["id", "kind", "title", "status"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^P-[0-9]+$"},
+        "kind": {
+          "type": "string",
+          "enum": ["rule", "pattern", "antipattern", "playbook", "skill_strategy", "threshold",
+                   "verifier_check", "microbench", "model_routing", "contract"]
+        },
+        "title": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string"},
+        "target": {"type": "string"},
+        "status": {"type": "string"},
+        "evidence": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "change_summary": {"type": "string", "description": "What the branch changes, in one sentence."},
+    "configs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operator", "split", "old", "new"],
+        "properties": {
+          "operator": {"type": "string", "minLength": 1},
+          "split": {"type": "string", "enum": ["dev", "holdout"]},
+          "old": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "attainment_gain": {"type": "number"},
+              "not_implemented_rate": {"type": "number", "minimum": 0, "maximum": 1},
+              "prediction_error": {"type": "number", "minimum": 0},
+              "cost": {"type": "number", "minimum": 0}
+            }
+          },
+          "new": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "attainment_gain": {"type": "number"},
+              "not_implemented_rate": {"type": "number", "minimum": 0, "maximum": 1},
+              "prediction_error": {"type": "number", "minimum": 0},
+              "cost": {"type": "number", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "experiments_per_operator": {"type": "integer", "minimum": 1},
+        "repeats": {"type": "integer", "minimum": 1},
+        "device_seconds_cap": {"type": "number", "minimum": 0}
+      }
+    },
+    "repeats": {"type": "integer", "minimum": 1, "description": "How many times each configuration ran. The protocol minimum is enforced, not assumed."},
+    "stage": {
+      "type": "string",
+      "enum": ["two_stage_screen", "offline_ledger", "full"],
+      "description": "Which screening stage this replay is. The full set is only run when the cheap screen passes."
+    },
+    "base_commit": {"type": "string"},
+    "candidate_commit": {"type": "string"},
+    "id": {"type": "string", "pattern": "^RP-[0-9]+$", "description": "Report id; allocated from existing reports when absent."},
+    "seed": {"type": "integer", "minimum": 0},
+    "changelog": {"type": "string", "minLength": 1, "description": "Where to append the decision; defaults to orchestrator/state/CHANGELOG-scaffold.md."},
+    "dry_run": {"type": "boolean", "description": "Decide and report without writing the changelog."}
+  }
+}

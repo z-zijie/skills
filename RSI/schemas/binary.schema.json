@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/binary.schema.json",
+  "title": "Binary summary",
+  "description": "What inspect-binary extracts from a build artefact: enough for the verifier to check that a claimed change reached machine code, and nothing that depends on one toolchain's output format.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "candidate", "hw_id", "instructions", "registers_per_lane", "scratchpad_bytes_per_workgroup", "launch"],
+  "properties": {
+    "op": {"type": "string"},
+    "candidate": {"type": "string"},
+    "hw_id": {"type": "string"},
+    "created": {"type": "string"},
+    "toolchain": {"type": "string", "description": "Which disassembler or dump produced this, e.g. 'objdump', 'a vendor ISA dump'."},
+    "instructions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Instruction mnemonic summary, most frequent first: the vocabulary a check cites."
+    },
+    "instruction_count": {"type": "integer", "minimum": 0},
+    "load_widths": {
+      "type": "array",
+      "items": {"type": "integer"},
+      "description": "Widths in bytes of the loads seen, so a claimed wide load is checkable."
+    },
+    "registers_per_lane": {"type": ["number", "null"]},
+    "scratchpad_bytes_per_workgroup": {"type": ["number", "null"]},
+    "spill_bytes": {"type": ["number", "null"]},
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "work_group_size": {"type": ["integer", "null"]},
+        "grid_size": {"type": ["integer", "null"]},
+        "elements_per_lane": {"type": ["number", "null"]}
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}

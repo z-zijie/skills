@@ -1,0 +1,5 @@
+{
+  "registers_per_lane": 32,
+  "scratchpad_bytes_per_workgroup": 0,
+  "spill_bytes": 0
+}

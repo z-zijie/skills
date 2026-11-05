@@ -1,0 +1,76 @@
+{
+  "name": "continue-after-gain",
+  "note": "the last round cleared the noise floor, so keep the direction and take the best open route",
+  "script": "scripts/decide.py",
+  "input": {
+    "op": "vec_add",
+    "noise_threshold": 0.04,
+    "target_attainment_pct": 85,
+    "attainment_pct": 71.5,
+    "budget": {
+      "experiments": 10,
+      "spent_experiments": 2
+    },
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": null,
+        "speedup": 1.18,
+        "prediction_error": 0.05,
+        "parent": "baseline",
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "scope_of_change": "load width only"
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.09,
+        "prediction_error": 0.08,
+        "parent": "best@exp-0001",
+        "hypothesis": {
+          "transformation": "tile_scratchpad",
+          "scope_of_change": "tiling and scratchpad reuse"
+        }
+      }
+    ],
+    "open_routes": [
+      {
+        "transformation": "aos_to_soa",
+        "predicted_speedup": 1.12
+      }
+    ]
+  },
+  "expected": {
+    "action": "continue",
+    "attainment_pct": 71.5,
+    "budget": {
+      "experiments": 10,
+      "remaining": 8,
+      "spent_experiments": 2
+    },
+    "evidence": [
+      "exp-0002"
+    ],
+    "needs_algorithm_rewrite": false,
+    "next": {
+      "combine": [],
+      "parent": "best",
+      "predicted_speedup": 1.12,
+      "rediagnose_first": false,
+      "transformation": "aos_to_soa"
+    },
+    "op": "vec_add",
+    "prediction_error_watch": [],
+    "reason": "the last round improved attainment and a credible route remains open",
+    "routes_above_noise": 1,
+    "stop_reason": null,
+    "streak_without_gain": 0,
+    "target_attainment_pct": 85.0
+  }
+}

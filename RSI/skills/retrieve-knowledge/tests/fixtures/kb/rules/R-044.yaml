@@ -1,0 +1,21 @@
+id: R-044
+statement: >
+  When occupancy is low and register pressure is near the device maximum, reducing live registers
+  raises occupancy and improves time on a latency-bound kernel.
+scope:
+  hw: [accel-a]
+  tags_all: [occupancy_low]
+effect:
+  metric: occupancy_pct
+  direction: up
+  speedup_median: 1.11
+  range: [1.02, 1.20]
+evidence:
+  confirmed: [exp-0201]
+  refuted: []
+confirm_rate: 1.0
+mean_prediction_error: 0.04
+status: candidate
+last_verified: 2026-10-20
+mechanism: >
+  Fewer live registers per work-lane let more work-groups stay resident, which hides memory latency.

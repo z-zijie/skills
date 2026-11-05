@@ -1,0 +1,15 @@
+{
+  "name": "the next id is one above the highest present, not the count of entries",
+  "input": {
+    "result_file": "skills/record-experiment/tests/fixtures/result_signed.json",
+    "seed_ledger": ["exp-0001", "exp-0002"]
+  },
+  "expected": {
+    "status": "ok",
+    "exp_id": "exp-0003",
+    "ledger_lines": 3,
+    "archived_count": 4
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a two-entry ledger"
+}

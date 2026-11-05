@@ -1,0 +1,15 @@
+{
+  "name": "a suite where three microbenchmarks could not run keeps their parameters absent and says why",
+  "input": {"measured_file": "skills/calibrate-hardware/tests/fixtures/measured_sparse.json", "dry_run": true},
+  "expected": {
+    "status": "dry_run",
+    "hw_id": "accel-b",
+    "skipped_count": 3,
+    "skipped_names": ["memory_bandwidth", "peak_compute", "bank_conflicts"],
+    "all_skipped_have_reason": true,
+    "moved_count": 0,
+    "problem_kinds": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a backend with no scratchpad model and no fp16 kernel: three parameters stay absent instead of becoming zero, and each skip carries its reason"
+}

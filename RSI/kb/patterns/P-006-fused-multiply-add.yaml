@@ -1,0 +1,26 @@
+# Pattern: let the multiply and the add retire as one operation.
+id: P-006
+name: fused-multiply-add
+statement: >
+  When the hot loop evaluates a multiply followed by an add on the same accumulator, expressing
+  it so the compiler can emit a single fused operation lowers instruction_count and raises
+  compute_throughput_pct for the same arithmetic result.
+mechanism: >
+  A separate multiply and add occupy two issue slots and two passes through the pipe, while a
+  fused operation occupies one slot and one rounding step. At the compute ceiling the bound is
+  set by how many such operations the pipe retires per cycle, so halving the instruction count
+  for the dominant operation raises the ceiling the kernel can reach rather than merely making
+  the code shorter.
+expected_counters: [instruction_count, compute_throughput_pct]
+implementation_traps:
+  - Rewriting the expression while compiler settings still forbid contraction, so the
+    disassembly shows the unfused pair and nothing changes.
+  - Fusing only the epilogue while the inner accumulation still runs as separate operations.
+  - Assuming the compiler had not already fused it, and finding the disassembly identical before
+    and after.
+  - Changing the rounding behaviour in a way the operator's tolerance does not allow, which is a
+    correctness change rather than an optimization.
+scope_tags: [compute_saturated]
+scope:
+  tags_any: [compute_saturated]
+  classes: [compute_bound, mixed]

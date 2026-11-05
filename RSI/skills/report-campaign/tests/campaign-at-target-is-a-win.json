@@ -1,0 +1,108 @@
+{
+  "name": "campaign-at-target-is-a-win",
+  "note": "attainment at the target is reported as reached, with no rewrite recommendation",
+  "script": "scripts/report.py",
+  "input": {
+    "report_id": "REPORT-vec_add-2",
+    "today": "2026-11-05",
+    "report_kind": "campaign",
+    "op": "vec_add",
+    "attainment_pct": 87.0,
+    "baseline_attainment_pct": 61.0,
+    "target_attainment_pct": 85,
+    "stop_reason": "target_reached",
+    "open_routes": [],
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "prediction_error": 0.05,
+        "hypothesis": {
+          "transformation": "wide_loads"
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.09,
+        "prediction_error": 0.08,
+        "hypothesis": {
+          "transformation": "tile_scratchpad"
+        }
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "confirmed",
+        "significant": false,
+        "speedup": 1.01,
+        "prediction_error": 0.12,
+        "hypothesis": {
+          "transformation": "unroll_loop"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "created": "2026-11-05",
+    "generated_from": {
+      "ledger_entries": 3,
+      "source": "ledger/experiments.jsonl"
+    },
+    "id": "REPORT-vec_add-2",
+    "kind": "campaign",
+    "report": {
+      "confirmed_changes": [
+        {
+          "exp_id": "exp-0001",
+          "prediction_error": 0.05,
+          "speedup": 1.18,
+          "transformation": "wide_loads"
+        },
+        {
+          "exp_id": "exp-0002",
+          "prediction_error": 0.08,
+          "speedup": 1.09,
+          "transformation": "tile_scratchpad"
+        }
+      ],
+      "efficiency": {
+        "experiments_to_target": 0,
+        "log_speedup_per_experiment": 0.0839,
+        "mean_prediction_error": 0.0833
+      },
+      "headline": {
+        "attainment_pct": 87.0,
+        "baseline_attainment_pct": 61.0,
+        "experiments": 3,
+        "gain_points": 26.0,
+        "gap_points": 0.0,
+        "rounds": 3,
+        "stop_reason": "target_reached",
+        "target_attainment_pct": 85.0,
+        "total_speedup": 1.2862
+      },
+      "kind": "campaign",
+      "needs_algorithm_rewrite": false,
+      "op": "vec_add",
+      "remaining_opportunities": [],
+      "unexplained_observations": [],
+      "verdict": "reached the target with 2 confirmed change(s)",
+      "wrong_diagnoses": [
+        {
+          "exp_id": "exp-0003",
+          "note": "mechanism confirmed, no gain: the signature pointed at the wrong limiter",
+          "transformation": "unroll_loop"
+        }
+      ]
+    }
+  }
+}

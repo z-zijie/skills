@@ -1,0 +1,41 @@
+{
+  "op": "vec_add",
+  "description": "element-wise add",
+  "dtype": [
+    "fp32"
+  ],
+  "tolerance": {
+    "kind": "relative_absolute",
+    "rtol": 1e-05,
+    "atol": 1e-06
+  },
+  "shapes": {
+    "typical": [
+      {
+        "n": 1048576
+      }
+    ],
+    "edge": [
+      {
+        "n": 1
+      }
+    ],
+    "random": {
+      "count": 0,
+      "max_dim": 100
+    }
+  },
+  "cost_model": {
+    "bytes_expr": "3 * numel * size_of('fp32')",
+    "flops_expr": "numel"
+  },
+  "entry": {
+    "module": "kernel",
+    "function": "vec_add",
+    "reference": "reference/kernel",
+    "baseline": "baseline/kernel",
+    "inputs": 2
+  },
+  "setup_cap_us": 200000.0,
+  "speedup_review_cap": 2.0
+}

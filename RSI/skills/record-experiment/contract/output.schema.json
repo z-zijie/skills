@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/record-experiment/output.schema.json",
+  "title": "record-experiment output",
+  "description": "The outcome of one append. `entry` is the object schemas/ledger-entry.schema.json defines; its shape is inlined here because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "exp_id", "entry", "archived", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "dry_run", "refused_unsigned", "refused_duplicate", "refused_unregistered_metric", "schema_invalid", "unavailable"]
+    },
+    "exp_id": {"type": ["string", "null"]},
+    "entry": {
+      "type": ["object", "null"],
+      "required": [
+        "exp_id", "op", "hw_id", "env_fingerprint", "scaffold_commit", "parent",
+        "hypothesis", "correctness", "verdict"
+      ],
+      "properties": {
+        "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+        "op": {"type": "string", "minLength": 1},
+        "hw_id": {"type": "string", "minLength": 1},
+        "env_fingerprint": {"type": "string", "minLength": 1},
+        "scaffold_commit": {"type": "string", "minLength": 1},
+        "parent": {"type": "string", "minLength": 1},
+        "created": {"type": "string"},
+        "signature": {"type": "object"},
+        "hypothesis": {"type": "object"},
+        "diff_ref": {"type": "string"},
+        "binary_ref": {"type": "string"},
+        "profile_ref": {"type": "string"},
+        "result_ref": {"type": "string"},
+        "correctness": {
+          "type": "object",
+          "required": ["passed"],
+          "properties": {
+            "passed": {"type": "boolean"},
+            "failing_cases": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "timing_before": {"type": ["object", "null"]},
+        "timing_after": {"type": ["object", "null"]},
+        "counters_before": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "counters_after": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+        "verifier_notes": {"type": ["string", "object"]},
+        "speedup": {"type": ["number", "null"]},
+        "significant": {"type": ["boolean", "null"]},
+        "implausible": {"type": "boolean"},
+        "promoted": {"type": "boolean"},
+        "prediction_error": {"type": ["number", "null"]},
+        "cost": {"type": "object"},
+        "evaluator_signature": {"type": "string"}
+      }
+    },
+    "archived": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Archive paths written, relative to the repository root."
+    },
+    "missing_artifacts": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Artifacts the request named but the filesystem does not have; recorded, never invented."
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "a card naming a counter outside the canonical registry is rejected",
+  "input": {
+    "cards_file": "skills/propose-hypothesis/tests/fixtures/cards_unknown_metric.json",
+    "noise_threshold": 1.03
+  },
+  "expected": {
+    "status": "no_card",
+    "card_count": 0,
+    "rejected_count": 1,
+    "rejections": [
+      {
+        "transformation": "bank_padding",
+        "kind": "unregistered_metric"
+      }
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a card that cited a vendor counter name: it is not in docs/vocabulary.md, so no rule could ever be scoped to it"
+}

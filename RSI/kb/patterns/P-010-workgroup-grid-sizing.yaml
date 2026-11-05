@@ -1,0 +1,28 @@
+# Pattern: choose the group and grid shape from the machine, not from the shape alone.
+id: P-010
+name: workgroup-grid-sizing
+statement: >
+  When the launch geometry leaves the device partly idle or wastes a scheduling quantum, sizing
+  the work_group to a multiple of the scheduling quantum and covering the problem with enough
+  groups to fill the device raises occupancy_pct and lowers the part of the runtime that is tail
+  effect.
+mechanism: >
+  Work is scheduled in quanta, and a group whose size is not a multiple of the quantum leaves
+  part of every quantum unused. Independently, a grid whose group count is small relative to what
+  the device can hold concurrently leaves execution units with nothing to run, and a grid whose
+  count is not a multiple of the resident capacity ends with a partially filled final wave whose
+  duration is a full wave's work for a fraction of the output. Matching the geometry to the
+  quantum and to the resident capacity fixes both.
+expected_counters: [occupancy_pct, launch_overhead_us, instruction_count]
+implementation_traps:
+  - Changing the group size without recomputing the grid extent, so the covered element count
+    changes and the kernel is wrong or silently truncated.
+  - Sizing for maximum residency on a kernel that is already bandwidth- or compute-saturated,
+    which buys occupancy and no time.
+  - A grid so large that per-group setup dominates, which raises the fixed cost faster than it
+    lowers the tail.
+  - Tuning only the group size on a problem whose real limit is that one group does all the work.
+scope_tags: [occupancy_low, launch_dominated]
+scope:
+  tags_any: [occupancy_low, launch_dominated]
+  classes: [latency_bound, mixed]

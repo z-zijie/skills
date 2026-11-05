@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/retrieve-knowledge/input.schema.json",
+  "title": "retrieve-knowledge input",
+  "description": "The retrieval key: a bottleneck signature, plus optional store and cap overrides. The caps default to 5 rules, 3 anti-patterns, 3 patterns and 3 experiments.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["signature"],
+  "properties": {
+    "signature": {
+      "type": "object",
+      "description": "schemas/signature.schema.json.",
+      "required": ["op", "hw_id", "class", "tags", "metrics"],
+      "properties": {
+        "op": {"type": "string", "minLength": 1},
+        "hw_id": {"type": "string", "minLength": 1},
+        "class": {"type": "string", "enum": ["memory_bound", "compute_bound", "latency_bound", "mixed"]},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "metrics": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "roofline": {"type": "object"},
+        "primary_bottleneck": {"type": "string"},
+        "env_fingerprint": {"type": "string"},
+        "notes": {"type": "string"}
+      }
+    },
+    "op": {"type": "string", "minLength": 1, "description": "Operator for same-operator matching; defaults to the signature's op."},
+    "caps": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rules": {"type": "integer", "minimum": 0, "maximum": 5},
+        "antipatterns": {"type": "integer", "minimum": 0, "maximum": 3},
+        "patterns": {"type": "integer", "minimum": 0, "maximum": 3},
+        "experiments": {"type": "integer", "minimum": 0, "maximum": 3}
+      }
+    },
+    "kb_root": {"type": "string", "minLength": 1, "description": "Alternative knowledge-base root; the regression cases use a scratch copy."},
+    "ledger_file": {"type": "string", "minLength": 1},
+    "include_hardware": {"type": "boolean", "description": "Attach the measured hardware parameters; defaults to true."}
+  }
+}

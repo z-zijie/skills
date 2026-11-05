@@ -1,0 +1,6 @@
+# Held-out operators. Only the replay judge and a human read this file.
+#
+# Agents never see this list or its details and receive only "pass" or "fail". That barrier is
+# what stops a scaffold change from being tuned on the operators that decide whether it merges.
+#
+# Rotate: after every ten merges, move the oldest entries to dev.txt and add fresh operators.

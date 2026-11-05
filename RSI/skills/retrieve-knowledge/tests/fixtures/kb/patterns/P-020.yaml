@@ -1,0 +1,7 @@
+id: P-020
+statement: Splitting one work-group across fewer barriers reduces barrier stall at small shapes.
+scope:
+  hw: [accel-b]
+  tags_all: [launch_dominated]
+mechanism: A barrier costs a fixed amount, so fewer of them per tile reduce the idle issue slots.
+expected_counters: [stall_barrier]

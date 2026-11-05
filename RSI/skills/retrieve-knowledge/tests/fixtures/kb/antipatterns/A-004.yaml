@@ -1,0 +1,10 @@
+id: A-004
+statement: >
+  Adding a scratchpad buffer while still reading each element from device memory twice is slower,
+  because the allocation costs occupancy and buys nothing.
+scope:
+  hw: [accel-a]
+  tags_all: [memory_stall_high]
+effect:
+  metric: occupancy_pct
+  direction: down

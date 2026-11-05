@@ -1,0 +1,15 @@
+{
+  "name": "the same dev gain is rolled back because the held-out split regressed",
+  "input": {
+    "fixture": "skills/replay-benchmark/tests/fixtures/replay_holdout_regressed.json"
+  },
+  "expected": {
+    "status": "ok",
+    "decision": "rollback",
+    "excludes_zero": true,
+    "holdout_regressed": true,
+    "leaks_operator_names": false
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a change that looked good on dev and lost ground on holdout: the split did its job"
+}

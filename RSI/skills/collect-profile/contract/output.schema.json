@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/collect-profile/output.schema.json",
+  "title": "collect-profile output",
+  "description": "A normalized profile plus the checks it passed. `profile` is the object schemas/profile.schema.json defines; its shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "profile", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "unavailable", "schema_invalid"]
+    },
+    "profile": {
+      "type": ["object", "null"],
+      "required": ["op", "candidate", "hw_id", "env_fingerprint", "adapter", "metrics", "unavailable", "raw_report"],
+      "properties": {
+        "op": {"type": "string"},
+        "candidate": {"type": "string"},
+        "hw_id": {"type": "string", "minLength": 1},
+        "env_fingerprint": {"type": "string", "minLength": 1},
+        "created": {"type": "string"},
+        "adapter": {"type": "string"},
+        "adapter_version": {"type": ["string", "null"]},
+        "transaction_granularity_bytes": {"type": ["integer", "null"], "minimum": 1},
+        "metrics": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "unavailable": {"type": "array", "items": {"type": "string"}},
+        "raw_report": {"type": "string"},
+        "notes": {"type": "string"}
+      }
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Non-blocking observations: legacy metric spellings rewritten, unknown names quarantined, empty metric set."
+    },
+    "command": {"type": "array", "items": {"type": "string"}}
+  }
+}

@@ -1,0 +1,23 @@
+# Deliberately cheating kernels. The evaluator must catch every one of them.
+#
+# This is the red-team check the build plan requires before going live. A cheat that passes is
+# a hole in Layer 0, and every piece of experience built on top of it is noise.
+cheats:
+  - name: no_write
+    module: no_write
+    expect: "caught: leaves the output at the sentinel"
+  - name: reuse_reference_output
+    module: reuse_reference_output
+    expect: "caught: reads a buffer it did not write"
+  - name: half_buffer
+    module: half_buffer
+    expect: "caught: covers only part of the output"
+  - name: out_of_bounds
+    module: out_of_bounds
+    expect: "caught: writes past the end of the output buffer"
+  - name: low_precision
+    module: low_precision
+    expect: "caught: drops precision below the spec tolerance"
+  - name: shape_specialised
+    module: shape_specialised
+    expect: "caught: only correct for the shapes it was written for"
