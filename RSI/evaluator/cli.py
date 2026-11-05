@@ -135,7 +135,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
     if not correctness_report["passed"]:
         # A correctness failure stops here: a fast wrong kernel is not a candidate.
-        signed = ledger.sign(result)
+        signed = _sign(result, args.key_file)
         _write(args.out, signed)
         _emit(signed)
         return 0
@@ -193,7 +193,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         "files_modified": [],
         "tolerances_unchanged": True,
     }
-    signed = ledger.sign(result)
+    signed = _sign(result, args.key_file)
     _write(args.out, signed)
     _emit(signed)
     if result["guards"]["implausible_speedup"]:
@@ -348,6 +348,18 @@ def _emit(payload: Dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
+def _sign(result: Dict[str, Any], key_file: Optional[str] = None) -> Dict[str, Any]:
+    """Sign a result with the evaluator's key.
+
+    ``--key-file`` exists for one honest case: a test or a CI run that must exercise signing
+    without a deployed key. It is a path, not a value, so the key still never travels through an
+    argument or an environment variable, and the file is still the evaluator user's.
+    """
+    if not key_file:
+        return ledger.sign(result)
+    return ledger.sign(result, key=Path(key_file).read_bytes().strip())
+
+
 def _seed(requested: Optional[int]) -> int:
     """The run's seed: the caller's, or a fresh one.
 
@@ -380,6 +392,9 @@ def build_parser() -> argparse.ArgumentParser:
                           help="the kernel this experiment started from, usually best/. Defaults "
                                "to the spec baseline, which is the parent of the first experiment")
     evaluate.add_argument("--out", help="write the signed result here")
+    evaluate.add_argument("--key-file",
+                          help="sign with this key file instead of the deployed one; for a test "
+                               "or CI run that must exercise signing without a deployment step")
     evaluate.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
     evaluate.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
     evaluate.add_argument("--seed", type=int, default=None,

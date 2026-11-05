@@ -436,17 +436,21 @@ def _():
 
     with tempfile.TemporaryDirectory() as directory:
         out = Path(directory) / "result.json"
+        # A key of the test's own: the suite must not depend on the machine having run `keygen`.
+        key_file = Path(directory) / "evaluator.key"
+        key_file.write_bytes(TEST_KEY)
         completed = subprocess.run(
             [sys.executable, str(ROOT / "evaluator" / "cli.py"), "evaluate",
              "--op", "vec_add", "--candidate", "operators/vec_add/baseline/kernel.py",
-             "--samples", "5", "--warmup", "1", "--out", str(out)],
+             "--samples", "5", "--warmup", "1", "--out", str(out),
+             "--key-file", str(key_file)],
             capture_output=True, text=True, cwd=str(ROOT), timeout=1800, check=False)
         expect(completed.returncode == 0,
                f"evaluate failed: {completed.stderr[-600:]}")
         result = json.loads(out.read_text())
 
     # The shape and the signature.
-    ledger.validate_result(result, key=ledger.load_key())
+    ledger.validate_result(result, key=TEST_KEY)
     expect(result["correctness"]["passed"], "the baseline failed correctness")
     expect(result["timing"]["samples"] == 5, "the sample count is wrong")
 
@@ -468,11 +472,16 @@ def _():
 def _():
     import subprocess
 
-    completed = subprocess.run(
-        [sys.executable, str(ROOT / "evaluator" / "cli.py"), "evaluate",
-         "--op", "vec_add", "--candidate", "operators/vec_add/redteam/timing_only_gain.py",
-         "--samples", "5", "--warmup", "1"],
-        capture_output=True, text=True, cwd=str(ROOT), timeout=1800, check=False)
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as directory:
+        key_file = Path(directory) / "evaluator.key"
+        key_file.write_bytes(TEST_KEY)
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "evaluator" / "cli.py"), "evaluate",
+             "--op", "vec_add", "--candidate", "operators/vec_add/redteam/timing_only_gain.py",
+             "--samples", "5", "--warmup", "1", "--key-file", str(key_file)],
+            capture_output=True, text=True, cwd=str(ROOT), timeout=1800, check=False)
     expect(completed.returncode != 0,
            "a candidate that replays a cached answer was accepted for timing")
     expect("timing child failed" in completed.stderr or "cached" in completed.stderr,
