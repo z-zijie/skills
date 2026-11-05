@@ -46,6 +46,14 @@ scripts/measure.sh ./bench 5 10
 
 ## kernel-perf
 
+块级时间戳（每核起止、launch skew、tail）是本机唯一能看见"派发斜坡"的数据，但要拿对 metric 组合才出得来。`--with-timeline` 只加 `BasicInfo`，**不产出 `trace.json`**，报告第 7 节仍是 Unavailable。要块级数据必须显式请求 `PipeTimeline`：
+
+```shell
+--metrics=PipeUtilization,ResourceConflictRatio,PipeTimeline
+```
+
+拿到之后第 7 节才出现 skew / tail / 逐块区间（实测一次 56 block 的 kernel：12 个可见子核、skew 0.619 µs = 13.9%、tail 2.635 µs = 59.0%）。
+
 ```shell
 WARMUP=5 ITERS=10 FLUSH=1 /workspace/cannbench/bin/cnb-npu-lock \
   /workspace/cannbench/bin/cnb-env /workspace/cannbench/evalenv/bin/python \
@@ -67,6 +75,7 @@ WARMUP=5 ITERS=10 FLUSH=1 /workspace/cannbench/bin/cnb-npu-lock \
 | 合并中位数与单样本范围 | n=45 | 8.79 µs，min 7.15 / max 13.33 |
 | 逐进程中位数（同源代码另一版构建） | 5 进程 | 5.17 / 6.45 / 5.81 / 4.87 / 6.19 µs，极差 25.5% |
 | 首样本 vs 稳态（刷 L2，骨架默认 tiling） | 5 进程 × 10 次 | 首样本均值 12.94 µs，其余中位数 12.29 µs（+5.3%） |
+| **批间漂移（同一二进制，三批）** | 每批 5 进程 × 10 次 | **9.65 / 8.86 / 9.21 µs（差 8.9%）** |
 | 首样本 vs 稳态（刷 L2，另一版 tiling） | 50 样本 | 首样本均值 7.21 µs，其余中位数 6.37 µs（+13.4%） |
 | kernel-perf Duration | 5 次采集 | 7.65 / 7.65 / 7.73 / 7.73 / 7.80 µs，极差 2.0% |
 | kernel-perf scalar 占比 | 5 次采集 | 9.55–10.18%（±0.3 个点） |
@@ -75,7 +84,8 @@ WARMUP=5 ITERS=10 FLUSH=1 /workspace/cannbench/bin/cnb-npu-lock \
 
 读法：
 
-- **bench 的合并中位数**要跨过约 10% 才算效应；跨不过就是没有。
+- **批间漂移比批内噪声大**：同一二进制三批测出 9.65 / 8.86 / 9.21 µs，差 8.9%，而源码一个字节没改。跨批比较是在把改动和漂移加在一起，必须改成同批交替的配对比较。
+- **bench 的合并中位数**在同一批内要跨过约 10% 才算效应；跨不过就是没有。
 - **kernel-perf 的 Duration 与 pipe 占比**稳得多（2% / 1 个点），复核 Duration 时优先信它。
 - **逐核 spread** 在同一二进制上抖 5.6 个点，只能看趋势，不能当单轮判据。
 
@@ -89,6 +99,44 @@ WARMUP=5 ITERS=10 FLUSH=1 /workspace/cannbench/bin/cnb-npu-lock \
 | `FLUSH=0` | 5.80 µs | 5.19 | 7.63 | 45 |
 
 差 52%。被测 case 越小、数据段越整块装进 128 MiB L2，差距越大。上一个周期里"A/B 两次测出 20% 收益、其实只是换了探针"的物理来源就是这一条。
+
+## 批间漂移实测（为什么必须成对比较）
+
+同一二进制 `/tmp/v_default`（源码未改动），在两次「填充」之间测三批，填充用的是别的构建，模拟真实会话里跑过别的实验：
+
+| 批 | 逐进程中位数 | 合并中位数 |
+|---|---|---:|
+| 批 1 | 9.52 / 9.53 / 9.66 / 9.84 / 9.51 | **9.65 µs** |
+| （填充：另一构建，3 进程） | 13.61 / 14.16 / 14.09 | 13.99 µs |
+| 批 2 | 10.02 / 7.95 / 9.02 / 9.00 / 8.54 | **8.86 µs** |
+| （填充：另一构建，3 进程） | 8.66 / 8.62 / 8.50 | 8.48 µs |
+| 批 3 | 9.90 / 9.96 / 7.95 / 9.20 / 9.23 | **9.21 µs** |
+
+同一份代码，最大与最小相差 **8.9%**，比多数人要找的效应大。
+
+周边证据（来自上一个优化周期，独立观测到同类现象）：
+- 官方评分口径的跨 session 漂移在小 case 上达 **±0.16 µs**（3 µs 的 5%）。
+- 一个 4 case 子集上同一 kernel 跑三次得 0.6684 / 0.6663 / 0.6636，而同一会话里跨批从 0.6384 漂到 0.6765（**6%**）。
+
+三组的共同结论：**漂移是系统性的、随会话推进的，不是随机噪声，不会被多次平均消掉。** 只有同批交错能把两边共同的漂移减掉。
+
+## 地板实测
+
+`references/floor-probe.asc`，56 block，本机空载：
+
+| 口径 | `FLOOR_MODE=0`（立即 return） | `FLOOR_MODE=1`（Init + 一个 64 元素 tile） |
+|---|---:|---:|
+| kernel-perf Duration | 2.07–2.58 µs | 8.81 µs |
+| host-event（bench 骨架同款计时） | 4.08–4.14 µs | 8.81 µs |
+
+block 数斜率（kernel-perf 口径，`FLOOR_MODE=0`）：
+
+| blocks | Duration |
+|---:|---:|
+| 1 | 1.34 µs |
+| 56 | 2.07 µs |
+
+即约 **13 ns/block**，56 核的派发斜坡 ≈0.73 µs。两种口径都要记录：地板本身也带口径差（4.08 vs 2.07），拿一个去折算另一个会得到错的上界。
 
 ## 口径对照
 
