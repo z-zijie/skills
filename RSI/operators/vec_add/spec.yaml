@@ -48,5 +48,9 @@ entry:
   baseline: baseline/kernel
   inputs: 2
 
-setup_cap_us: 200000.0
+# Relative, because this operator's setup is building buffers in an interpreter: what matters is
+# whether setup hid the work, not how long Python took to start. A setup longer than ten times the
+# kernel's own time is doing something the timed region should have contained.
+setup_cap_mode: relative
+setup_cap_us: 2000000.0
 speedup_review_cap: 2.0

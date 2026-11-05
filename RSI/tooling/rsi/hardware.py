@@ -112,6 +112,9 @@ class Roofline:
     "are we at the limit yet", which is what the campaign stop conditions consume.
     """
 
+    #: No kernel can exceed the device's own measured peak. Above this the measurement is wrong.
+    ATTAINMENT_CEILING_PCT = 100.0
+
     def __init__(self, peak_bandwidth_gbps: float, peak_flops: Dict[str, float],
                  launch_overhead_us: float = 0.0) -> None:
         if peak_bandwidth_gbps <= 0:
@@ -161,10 +164,26 @@ class Roofline:
 
     def attainment(self, bytes_moved: float, flops: float, measured_us: float,
                    dtype: str = "fp32") -> Dict[str, Any]:
+        """The bound and how much of it the kernel reached.
+
+        An attainment above 100 % is not a very good kernel: it is a measurement that
+        contradicts the device's own calibrated peak. It is refused here rather than reported,
+        because a campaign reading "attained 340 %" will conclude it has arrived at the limit.
+        The usual causes are a wrong unit, a cost model that undercounts traffic, a peak measured
+        on the wrong device, or a timed region that excludes real work.
+        """
         bound = self.bound_us(bytes_moved, flops, dtype)
         if measured_us <= 0:
             raise ValueError("measured time must be positive")
         attained = 100.0 * bound["bound_us"] / measured_us
+        if attained > self.ATTAINMENT_CEILING_PCT:
+            raise HardwareError(
+                f"attainment {attained:.1f}% exceeds {self.ATTAINMENT_CEILING_PCT:.0f}%, which the "
+                f"device's own measured peaks say is impossible (bound {bound['bound_us']:.3f} us, "
+                f"measured {measured_us:.3f} us, limiting term {bound['limiting_term']}). "
+                "The measurement is wrong, not the kernel: check the peak units, the cost model's "
+                "byte and flop counts, and whether the timed region excludes real work"
+            )
         return {
             "bound_us": bound["bound_us"],
             "measured_us": measured_us,

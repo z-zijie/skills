@@ -1,6 +1,7 @@
 # Rule card — life cycle state: candidate (thin evidence).
 # EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger. Replace after
 # distill-rules has run over real evidence. One confirmation is not a rule; it is a lead.
+example: true  # seed card: shows the shape, carries no evidence
 id: R-002
 statement: >
   Under a memory-bound signature with mem_saturated and lanes issuing loads narrower than the
@@ -27,7 +28,7 @@ effect:
   speedup_median: 1.09
   range: [1.0, 1.18]
 evidence:
-  confirmed: [exp-0011]
+  confirmed: [example-exp-0011]
   refuted: []
 confirm_rate: 1.0
 mean_prediction_error: 0.14

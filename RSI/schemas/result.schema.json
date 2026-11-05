@@ -207,6 +207,27 @@
           "items": {
             "type": "number"
           }
+        },
+        "setup_cap_mode": {
+          "type": "string",
+          "enum": [
+            "absolute",
+            "relative"
+          ],
+          "description": "How the setup cap was enforced. 'relative' asks whether setup hid the work; 'absolute' compares against the spec's number."
+        },
+        "measured_in": {
+          "type": "string",
+          "description": "'separate-process' when timing ran in its own interpreter, away from the signing process."
+        },
+        "process_launch_us": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost of starting the timing interpreter, recorded separately so it is not charged against the candidate's setup cap."
+        },
+        "parent": {
+          "type": "string",
+          "description": "The kernel the candidate was measured against. A step's speedup is against its parent, not the campaign baseline."
         }
       }
     },
@@ -250,6 +271,18 @@
           "type": "string"
         }
       }
+    },
+    "candidate_hash": {
+      "type": "string",
+      "description": "SHA-256 of the candidate source this result measured. Pins the signature to the file it is evidence about, so a result cannot be shown beside code it never ran."
+    },
+    "tolerance_hash": {
+      "type": "string",
+      "description": "Hash of the operator's tolerance block. A result signed under one tolerance cannot be presented as one signed under a looser one."
+    },
+    "seed": {
+      "type": "integer",
+      "description": "The seed this run used. Omitted from the request means a fresh one, which is recorded here so the run can be reproduced exactly."
     }
   }
 }

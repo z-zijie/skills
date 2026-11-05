@@ -55,12 +55,20 @@ def seed_entry(exp_id: str) -> dict:
 def main() -> int:
     case = json.load(sys.stdin)
     scratch = make_scratch([seed_entry(exp_id) for exp_id in case.get("seed_ledger") or []])
-    os.environ["RSI_SIGNING_KEY"] = KEY.decode()
+    # The verdict arrives as a document, because the skill reads it from the verifier's output
+    # rather than from a flag. Writing it to the scratch root keeps the case honest: the value the
+    # entry records is the one the verifier produced, not the one the caller asked for.
+    verdict_path = scratch / "verdict.json"
+    verdict_path.write_text(json.dumps({
+        "hypothesis_id": "H-0007",
+        "op": "vec_add",
+        "verdict": case.get("verdict", "confirmed"),
+        "checks": [{"id": "A1", "group": "A", "conclusion": "pass", "evidence": "diff hunk 1"}],
+    }), encoding="utf-8")
     request = {
         "root": str(scratch),
-        "op": "vec_add",
         "parent": "best@exp-0003",
-        "verdict": case.get("verdict", "confirmed"),
+        "verdict_file": str(verdict_path),
         "result_file": case["result_file"],
         "hypothesis_file": "skills/record-experiment/tests/fixtures/hypothesis.json",
         "signature_file": "skills/record-experiment/tests/fixtures/signature.json",

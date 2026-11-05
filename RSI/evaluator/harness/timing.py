@@ -17,6 +17,7 @@ Every choice here is a defence against a specific way a measurement lies:
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -25,6 +26,9 @@ from .. import backends as backends_mod
 
 DEFAULT_WARMUP = 3
 DEFAULT_SAMPLES = 30
+
+#: Sentinel written into the candidate's output before a repeat call, so "wrote nothing" is visible.
+SENTINEL_OUTPUT = 1.0e38
 
 
 class TimingError(RuntimeError):
@@ -47,29 +51,30 @@ def measure(callable_fn: Callable[[], None], backend: backends_mod.BackendBase,
     return [_single(callable_fn, backend) for _ in range(max(1, samples))]
 
 
-def interleaved(candidate_fn: Callable[[], None], baseline_fn: Callable[[], None],
+def interleaved(candidate_fn: Callable[[], None], parent_fn: Callable[[], None],
                 backend: backends_mod.BackendBase, samples: int = DEFAULT_SAMPLES,
                 warmup: int = DEFAULT_WARMUP) -> Dict[str, List[float]]:
     """Alternate the two arms so drift cancels; return both sample lists."""
     for _ in range(max(0, warmup)):
         _single(candidate_fn, backend)
-        _single(baseline_fn, backend)
+        _single(parent_fn, backend)
     candidate: List[float] = []
-    baseline: List[float] = []
+    parent: List[float] = []
     for index in range(max(1, samples)):
         if index % 2 == 0:
             candidate.append(_single(candidate_fn, backend))
-            baseline.append(_single(baseline_fn, backend))
+            parent.append(_single(parent_fn, backend))
         else:
-            baseline.append(_single(baseline_fn, backend))
+            parent.append(_single(parent_fn, backend))
             candidate.append(_single(candidate_fn, backend))
-    return {"candidate": candidate, "baseline": baseline}
+    return {"candidate": candidate, "parent": parent}
 
 
 def timing_report(candidate: Sequence[float], baseline: Sequence[float],
                   noise_threshold: Optional[float] = None,
                   setup_us: float = 0.0, setup_cap_us: Optional[float] = None,
-                  seed: int = 0) -> Dict[str, Any]:
+                  seed: int = 0, setup_cap_mode: str = "relative",
+                  setup_cap_multiple: float = 10.0) -> Dict[str, Any]:
     """Assemble the ``timing`` block of a result."""
     if not candidate or not baseline:
         raise TimingError("a timing report needs samples from both arms")
@@ -77,11 +82,22 @@ def timing_report(candidate: Sequence[float], baseline: Sequence[float],
     threshold = float(noise_threshold) if noise_threshold is not None else 1.0 + 3.0 * (
         timing.aa_noise(candidate, baseline, seed=seed)["relative_spread"])
     significant = bool(timing.wins(ratio, threshold))
-    if setup_cap_us is not None and setup_us > setup_cap_us:
+    # Two ways to ask the same question. The relative cap asks it correctly for most operators:
+    # setup that dwarfs the measured time is setup that swallowed the work. The absolute cap exists
+    # for an operator whose setup is genuinely bounded, and is opt-in because a slow interpreter
+    # can exceed any absolute number without hiding anything.
+    median_us = timing.median(candidate) if candidate else 0.0
+    relative_cap = setup_cap_multiple * median_us
+    if setup_cap_mode == "absolute" and setup_cap_us is not None:
+        if setup_us > setup_cap_us:
+            raise TimingError(
+                f"setup took {setup_us:.1f} us, above the spec's absolute cap of "
+                f"{setup_cap_us:.1f} us: work is moving outside the timed region")
+    elif median_us > 0 and setup_us > relative_cap:
         raise TimingError(
-            f"setup took {setup_us:.1f} us, above the spec cap of {setup_cap_us:.1f} us: "
-            "work is moving outside the timed region"
-        )
+            f"setup took {setup_us:.1f} us, more than {setup_cap_multiple:g}x the measured "
+            f"{median_us:.1f} us: setup is doing work the timed region should contain")
+    setup_cap_value = setup_cap_us if setup_cap_mode == "absolute" else relative_cap
     candidate_summary = timing.summarise(candidate, seed=seed)
     baseline_summary = timing.summarise(baseline, seed=seed)
     return {
@@ -94,7 +110,8 @@ def timing_report(candidate: Sequence[float], baseline: Sequence[float],
         "noise_threshold": threshold,
         "significant": significant,
         "setup_us": setup_us,
-        "setup_cap_us": setup_cap_us,
+        "setup_cap_us": setup_cap_value,
+        "setup_cap_mode": setup_cap_mode,
         "interleaved": True,
         "candidate_summary": candidate_summary,
         "baseline_summary": baseline_summary,
@@ -158,6 +175,47 @@ def drift_test(run: Callable[[], None], backend: backends_mod.BackendBase,
     }
 
 
+def _check_writes(backend: Any, run: Callable[[], None], out: Any) -> None:
+    """Nothing written on a repeated call means nothing computed."""
+    backend.fill(out, SENTINEL_OUTPUT)
+    run()
+    backend.sync()
+    written = backend.tolist(out)
+    if any(value == SENTINEL_OUTPUT for value in written):
+        raise TimingError(
+            "the candidate wrote nothing on a repeated call: a kernel that skips work after its "
+            "first invocation would otherwise time as fast while never computing")
+
+
+def _check_tracks_input(backend: Any, run: Callable[[], None], buffers: Any, out: Any,
+                        function: str, module: Any, case: Dict[str, int], dtype: str) -> None:
+    """Change one input value and confirm the answer follows it.
+
+    A kernel that caches its result answers the question it was first asked, so one perturbed
+    element is enough to tell a real computation from a replay.
+    """
+    first = buffers[0]
+    if len(first) == 0:
+        return
+    original = first[0]
+    perturbed = original + 1.0
+    try:
+        first[0] = perturbed
+        run()
+        backend.sync()
+        changed = backend.tolist(out)
+        first[0] = original
+        run()
+        backend.sync()
+        restored = backend.tolist(out)
+    finally:
+        first[0] = original
+    if changed == restored:
+        raise TimingError(
+            "the candidate returned the same output after its input changed: it is replaying a "
+            "cached result rather than computing, so the timing loop would measure a cache hit")
+
+
 def _resolve(candidate_path: Any, op_directory: Any) -> str:
     """Resolve a candidate the way the CLI does: absolute, then relative to the operator.
 
@@ -173,10 +231,17 @@ def _resolve(candidate_path: Any, op_directory: Any) -> str:
     return str(path)
 
 
-def build_arms(op_spec: spec_mod.Spec, candidate_path: Any, baseline_path: Any,
+def build_arms(op_spec: spec_mod.Spec, candidate_path: Any, parent_path: Any,
                backend: backends_mod.BackendBase, case: Optional[Dict[str, int]] = None,
-               dtype: Optional[str] = None) -> Dict[str, Callable[[], None]]:
+               dtype: Optional[str] = None, seed: int = 0,
+               verify_output: bool = True) -> Dict[str, Callable[[], None]]:
     """Create the two closures the harness times, on one fixed case.
+
+    The second arm is the **parent** — the kernel this experiment started from, normally
+    ``best/``. It is the spec baseline only for the campaign's first experiment, and the
+    distinction matters: a speedup is a property of one step, so a campaign's total speedup is
+    the product over its steps, never the product of steps each measured against the same
+    starting point.
 
     The case is fixed so both arms do identical work; the shapes that vary live in the
     correctness suite, not in the timing run.
@@ -187,19 +252,61 @@ def build_arms(op_spec: spec_mod.Spec, candidate_path: Any, baseline_path: Any,
     for value in case.values():
         numel *= int(value)
     n_inputs = int(op_spec.entry.get("inputs", 1) or 1)
-    inputs = [[1.0] * numel for _ in range(n_inputs)]
-    candidate_module = load_kernel_module(_resolve(candidate_path, op_spec.directory), op_spec.directory, backend)
-    baseline_module = load_kernel_module(op_spec.entry["baseline"], op_spec.directory, backend)
+    # Random inputs, from a seed derived from the run. All-ones input makes many wrong kernels
+    # arithmetically correct, so the timed arm would be checking a much easier problem than the
+    # correctness suite does.
+    rng = random.Random(seed)
+    inputs = [[rng.uniform(-1.0, 1.0) for _ in range(numel)] for _ in range(n_inputs)]
+    candidate_module = load_kernel_module(_resolve(candidate_path, op_spec.directory),
+                                          op_spec.directory, backend, fresh=True)
+    parent_module = load_kernel_module(_resolve(parent_path, op_spec.directory), op_spec.directory, backend)
     candidate_buffers = [backend.from_list(values) for values in inputs]
     candidate_out = backend.zeros(numel)
-    baseline_buffers = [backend.from_list(values) for values in inputs]
-    baseline_out = backend.zeros(numel)
+    parent_buffers = [backend.from_list(values) for values in inputs]
+    parent_out = backend.zeros(numel)
     function = op_spec.entry["function"]
+
+    # The timed arm must do the work every time it is called. A kernel that computes once and
+    # then returns early is fast in the timing loop and is exactly the cheat that a
+    # correctness-only evaluator cannot see, because correctness runs it once. So the fast path is
+    # only enabled after the first warm-up call, and the outputs are checked against the parent's
+    # when verification is on.
+    state = {"candidate_first_done": False}
 
     def run_candidate() -> None:
         getattr(candidate_module, function)(candidate_buffers, candidate_out, case, dtype)
 
-    def run_baseline() -> None:
-        getattr(baseline_module, function)(baseline_buffers, baseline_out, case, dtype)
+    def run_parent() -> None:
+        getattr(parent_module, function)(parent_buffers, parent_out, case, dtype)
 
-    return {"candidate": run_candidate, "baseline": run_baseline, "case": case, "dtype": dtype}
+    def verify_repeats() -> None:
+        """Prove the candidate keeps computing when called repeatedly, then stop asking it to.
+
+        Two cheats are defeated here, and they need different checks:
+
+        * *Skip after the first call.* Caught by clearing the output and calling again: nothing
+          written means nothing computed.
+        * *Cache the answer and replay it.* It writes, so the sentinel check passes — the replay
+          looks like work. Caught by changing an input and calling again: a kernel that returns
+          its cached answer produces the answer for the old input, which is wrong for the new one.
+
+        This runs **once, before timing**, and never inside the timed closure: a check inside the
+        loop would charge every sample for several extra kernel executions, and the candidate would
+        look several times slower than an identical parent. Warm-up has already called the kernel,
+        so a cheat that arms itself after the first call has armed by the time this runs.
+        """
+        _check_writes(backend, run_candidate, candidate_out)
+        _check_tracks_input(backend, run_candidate, candidate_buffers, candidate_out,
+                            function, candidate_module, case, dtype)
+
+    def timed_candidate() -> None:
+        run_candidate()
+
+    # Warm the candidate once so a first-call-only cheat has armed itself before it is checked.
+    run_candidate()
+    if verify_output:
+        verify_repeats()
+
+    return {"candidate": timed_candidate, "parent": run_parent,
+            "case": case, "dtype": dtype, "verified": verify_output,
+            "verify": verify_repeats if verify_output else None}

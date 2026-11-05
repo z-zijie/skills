@@ -5,54 +5,177 @@
   "description": "A conditional, scoped claim with evidence counts. Written as 'under condition C, transformation T changes metric M by delta'. Never 'always do T'.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "statement", "scope", "effect", "evidence", "status"],
+  "required": [
+    "id",
+    "statement",
+    "scope",
+    "effect",
+    "evidence",
+    "status"
+  ],
   "properties": {
-    "id": {"type": "string", "pattern": "^(R|A)-[0-9]+$"},
-    "statement": {"type": "string", "minLength": 20},
+    "id": {
+      "type": "string",
+      "pattern": "^(R|A)-[0-9]+$"
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 20
+    },
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["hw"],
+      "required": [
+        "hw"
+      ],
       "properties": {
-        "hw": {"type": "array", "minItems": 1, "items": {"type": "string"}, "description": "Hardware ids this rule is bound to."},
-        "tags_all": {"type": "array", "items": {"type": "string"}},
-        "tags_any": {"type": "array", "items": {"type": "string"}},
-        "classes": {"type": "array", "items": {"type": "string", "enum": ["memory_bound", "compute_bound", "latency_bound", "mixed"]}},
-        "elem_bytes": {"type": "string", "description": "Shape or dtype constraint, e.g. '<= 32' or 'fp32'."},
-        "op_traits": {"type": "array", "items": {"type": "string"}}
+        "hw": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Hardware ids this rule is bound to."
+        },
+        "tags_all": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "memory_bound",
+              "compute_bound",
+              "latency_bound",
+              "mixed"
+            ]
+          }
+        },
+        "elem_bytes": {
+          "type": "string",
+          "description": "Shape or dtype constraint, e.g. '<= 32' or 'fp32'."
+        },
+        "op_traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "effect": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "metric": {"type": "string", "description": "Canonical metric the transformation moves."},
-        "direction": {"type": "string", "enum": ["up", "down"]},
-        "speedup_median": {"type": "number", "exclusiveMinimum": 0},
+        "metric": {
+          "type": "string",
+          "description": "Canonical metric the transformation moves."
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "up",
+            "down"
+          ]
+        },
+        "speedup_median": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "range": {
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
-          "items": {"type": "number", "exclusiveMinimum": 0}
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
         }
       }
     },
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["confirmed", "refuted"],
+      "required": [
+        "confirmed",
+        "refuted"
+      ],
       "properties": {
-        "confirmed": {"type": "array", "items": {"type": "string"}},
-        "refuted": {"type": "array", "items": {"type": "string"}}
+        "confirmed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "refuted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
-    "confirm_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-    "mean_prediction_error": {"type": ["number", "null"], "minimum": 0},
-    "status": {"type": "string", "enum": ["conjecture", "candidate", "established", "under_review", "deprecated"]},
-    "last_verified": {"type": "string"},
-    "counter_example_note": {"type": "string"},
-    "mechanism": {"type": "string", "description": "Why the effect happens. Required for a pattern usable by the hypothesizer."},
-    "expected_counters": {"type": "array", "items": {"type": "string"}, "description": "Canonical metrics that should move."},
-    "implementation_traps": {"type": "array", "items": {"type": "string"}}
+    "confirm_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "mean_prediction_error": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "conjecture",
+        "candidate",
+        "established",
+        "under_review",
+        "deprecated"
+      ]
+    },
+    "last_verified": {
+      "type": "string"
+    },
+    "counter_example_note": {
+      "type": "string"
+    },
+    "mechanism": {
+      "type": "string",
+      "description": "Why the effect happens. Required for a pattern usable by the hypothesizer."
+    },
+    "expected_counters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Canonical metrics that should move."
+    },
+    "implementation_traps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "example": {
+      "type": "boolean",
+      "description": "True for a seed card that shows the shape of a scoped, evidenced claim. An example carries no authority: the audit reports it separately and retrieval must not treat its evidence as real."
+    }
   }
 }

@@ -191,6 +191,10 @@ def merge_into_measured(path: Path, report: Dict[str, Any], device: Dict[str, An
             "parameters moved beyond their thresholds: rules that depend on them go under review"
         )
 
+    # The measured layer is the one place the evaluator writes knowledge, and the write policy
+    # says so; a calibration that wandered into kb/rules would be a boundary violation with a
+    # plausible excuse.
+    paths.require_writable("evaluator", path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yamlite.safe_dump_json_style(merged), encoding="utf-8")
     return merged

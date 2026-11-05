@@ -38,12 +38,41 @@ def read_input(argv: List[str]) -> Dict[str, Any]:
 
 
 def scope_key(entry: Dict[str, Any]) -> Tuple[str, ...]:
-    """The retrieval key a rule distilled from this entry would carry."""
+    """The retrieval key a rule distilled from this entry would carry.
+
+    The transformation is part of the key, and it is the most important part: a rule says "under
+    condition C, transformation T has effect E". Grouping by condition alone pools the evidence for
+    different transformations into one card, so two changes that both helped and one that did not
+    produce a confident statement about none of them — which is precisely the superstition the
+    evidence counts exist to prevent.
+    """
     card = entry.get("hypothesis") or {}
     sig = entry.get("signature") or {}
     tags = sorted({str(tag) for tag in (card.get("signature_tags") or sig.get("tags") or [])})
     classes = [str(sig["class"])] if sig.get("class") else []
-    return (str(entry.get("hw_id") or "unknown"),) + tuple(tags) + tuple(classes)
+    # The transformation is part of the key but not part of the tag set: tags are signature
+    # conditions a rule is retrieved by, and a transformation is not a condition. Merging the two
+    # made "aos_to_soa" appear as a signature tag, so the rule would have been retrieved only by
+    # kernels whose signature happened to name their own transformation.
+    return ((str(entry.get("hw_id") or "unknown"),
+             str(card.get("transformation") or "unknown-transformation"))
+            + tuple(tags) + tuple(classes))
+
+
+def scope_parts(key: Tuple[str, ...]) -> Dict[str, Any]:
+    """Split a group key back into its named parts.
+
+    The key is a flat tuple for grouping; this names each slice so no caller has to remember that
+    element 1 is a transformation and not a tag. Reading it positionally is how the transformation
+    ended up in the rule's tag set.
+    """
+    hw = key[0]
+    transformation = key[1]
+    rest = list(key[2:])
+    classes = [item for item in rest if item in ("memory_bound", "compute_bound",
+                                                 "latency_bound", "mixed")]
+    tags = [item for item in rest if item not in classes]
+    return {"hw": hw, "transformation": transformation, "tags": tags, "classes": classes}
 
 
 def group_entries(entries: List[Dict[str, Any]]) -> Dict[Tuple[str, ...], List[Dict[str, Any]]]:
@@ -58,6 +87,27 @@ def group_entries(entries: List[Dict[str, Any]]) -> Dict[Tuple[str, ...], List[D
             continue
         groups.setdefault(scope_key(entry), []).append(entry)
     return groups
+
+
+def _dominant_direction(entries: List[Dict[str, Any]], metric: Optional[str]) -> str:
+    """The direction the cards predicted for this counter, by majority.
+
+    Falls back to "down" only when no card states one, which is visibly a guess in the rule text
+    rather than a claim dressed as evidence.
+    """
+    tally: Dict[str, int] = {}
+    for entry in entries:
+        predictions = ((entry.get("hypothesis") or {}).get("predictions") or {}).get("counters") or []
+        for prediction in predictions:
+            name = str(prediction.get("metric") or "")
+            if metric and name != metric:
+                continue
+            direction = str(prediction.get("direction") or "")
+            if direction in {"up", "down"}:
+                tally[direction] = tally.get(direction, 0) + 1
+    if not tally:
+        return "down"
+    return max(sorted(tally), key=lambda key: tally[key])
 
 
 def counters_moved(entries: List[Dict[str, Any]]) -> List[str]:
@@ -112,10 +162,11 @@ def build(data: Dict[str, Any]) -> Dict[str, Any]:
     skipped: List[Dict[str, Any]] = []
 
     for key, members in sorted(group_entries(rows).items()):
-        hw, *rest = key
-        tags = [item for item in rest if item not in metrics.CLASSES]
-        classes = [item for item in rest if item in metrics.CLASSES]
-        transformation = str((members[-1].get("hypothesis") or {}).get("transformation"))
+        parts = scope_parts(key)
+        hw = parts["hw"]
+        tags = parts["tags"]
+        classes = parts["classes"]
+        transformation = parts["transformation"]
         confirmed = [str(entry.get("exp_id")) for entry in members
                      if entry.get("verdict") == "confirmed"]
         refuted = [str(entry.get("exp_id")) for entry in members
@@ -148,7 +199,10 @@ def build(data: Dict[str, Any]) -> Dict[str, Any]:
             },
             "effect": {
                 "metric": counters[0] if counters else None,
-                "direction": "down",
+                # Taken from the cards, not assumed. A distilled rule that always claims "down"
+                # states the opposite of a transformation whose point was to raise a counter, and
+                # the retrieval step then cites it against the experiments it came from.
+                "direction": _dominant_direction(members, counters[0] if counters else None),
                 "speedup_median": effect["speedup_median"],
                 "range": effect["range"],
             },

@@ -1,5 +1,6 @@
 # Anti-pattern A-004 — merging launches at shapes where the launch cost was never material.
 # EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger.
+example: true  # seed card: shows the shape, carries no evidence
 id: A-004
 statement: >
   Merging several launches into one lowers launch overhead only when launch_overhead_us is a
@@ -29,8 +30,8 @@ effect:
   speedup_median: 1.01
   range: [0.92, 1.24]
 evidence:
-  confirmed: [exp-0061]
-  refuted: [exp-0062, exp-0063]
+  confirmed: [example-exp-0061]
+  refuted: [example-exp-0062, example-exp-0063]
 confirm_rate: 0.33
 mean_prediction_error: 0.19
 status: deprecated

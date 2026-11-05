@@ -3,6 +3,7 @@
 # ledger/experiments.jsonl. Replace this card with one distilled by distill-rules
 # over real ledger entries before relying on it. The evidence ids are shaped like real
 # ones on purpose so the retrieval and life-cycle code paths are exercised unchanged.
+example: true  # seed card: shows the shape, carries no evidence
 id: R-001
 statement: >
   Under a memory-bound signature with sectors_per_request above the uncoalesced threshold,
@@ -30,12 +31,12 @@ effect:
   speedup_median: 1.22
   range: [1.08, 1.41]
 evidence:
-  confirmed: [exp-0001, exp-0002, exp-0003, exp-0004]
-  refuted: [exp-0005]
+  confirmed: [example-exp-0001, example-exp-0002, example-exp-0003, example-exp-0004]
+  refuted: [example-exp-0005]
 confirm_rate: 0.80
 mean_prediction_error: 0.09
 status: established
 last_verified: 2026-10-28
 counter_example_note: >
-  exp-0005 used 32-byte elements: after the split each element straddled a transaction boundary,
+  example-exp-0005 used 32-byte elements: after the split each element straddled a transaction boundary,
   so sectors_per_request fell but device_mem_bytes rose and the kernel did not speed up.

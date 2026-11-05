@@ -47,6 +47,7 @@ class Spec:
         self.cost_model = data["cost_model"]
         self.entry = data["entry"]
         self.setup_cap_us = data.get("setup_cap_us")
+        self.setup_cap_mode = data.get("setup_cap_mode", "relative")
         self.speedup_review_cap = data.get("speedup_review_cap", 2.0)
         self._bytes_fn = _compile_expr(self.cost_model["bytes_expr"], "bytes_expr")
         self._flops_fn = _compile_expr(self.cost_model["flops_expr"], "flops_expr")

@@ -110,7 +110,10 @@
             "vec_add"
           ],
           "rounds": 2,
-          "scaffold_commit": "aaa111"
+          "scaffold_commit": "aaa111",
+          "total_speedup": 1.18,
+          "total_speedup_aggregation": "compounded",
+          "total_speedup_note": "per-step speedups are each measured against that step's parent, so the campaign total is their product. At least one entry does not record its parent, so the compounded figure assumes successive steps"
         },
         {
           "confirmation_rate": 1.0,
@@ -124,7 +127,10 @@
             "vec_add"
           ],
           "rounds": 3,
-          "scaffold_commit": "bbb222"
+          "scaffold_commit": "bbb222",
+          "total_speedup": 1.4112,
+          "total_speedup_aggregation": "compounded",
+          "total_speedup_note": "per-step speedups are each measured against that step's parent, so the campaign total is their product. At least one entry does not record its parent, so the compounded figure assumes successive steps"
         }
       ],
       "developments": [
@@ -177,5 +183,6 @@
         "operators": 3
       }
     }
-  }
+  },
+  "source": "labelled from a seven-experiment history across two scaffold versions. The trend is ordered by when each scaffold version first ran an experiment, and the campaign total says which aggregation produced it: these entries do not record their parent, so the compounded figure states that it assumes successive steps."
 }

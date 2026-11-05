@@ -2,6 +2,7 @@
 # EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger. The card is kept
 # in the store on purpose: an entry that goes under review stays retrievable with a warning,
 # and demoing that state is the point of this file.
+example: true  # seed card: shows the shape, carries no evidence
 id: R-003
 statement: >
   Under a latency-bound signature with occupancy_low and register_pressure, shortening live
@@ -27,14 +28,14 @@ effect:
   speedup_median: 1.05
   range: [0.94, 1.16]
 evidence:
-  confirmed: [exp-0021, exp-0022]
-  refuted: [exp-0023, exp-0024]
+  confirmed: [example-exp-0021, example-exp-0022]
+  refuted: [example-exp-0023, example-exp-0024]
 confirm_rate: 0.50
 mean_prediction_error: 0.27
 status: under_review
 last_verified: 2026-10-31
 counter_example_note: >
-  exp-0023 and exp-0024 raised occupancy_pct as predicted and were slower: the machine was
+  example-exp-0023 and example-exp-0024 raised occupancy_pct as predicted and were slower: the machine was
   already at a utilisation ceiling, so the added residency had nothing to hide and the
   recomputation cost dominated. The prediction error of 0.27 is above the 0.2 hole threshold,
   which is the mechanical reason this card is under review rather than established; the scope is

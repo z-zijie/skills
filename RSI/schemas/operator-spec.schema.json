@@ -5,45 +5,105 @@
   "description": "operators/<op>/spec.yaml. Read-only to every agent; tolerances and shapes live here. Byte and flop formulas feed the roofline.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["op", "dtype", "tolerance", "shapes", "cost_model", "entry"],
+  "required": [
+    "op",
+    "dtype",
+    "tolerance",
+    "shapes",
+    "cost_model",
+    "entry"
+  ],
   "properties": {
-    "op": {"type": "string", "minLength": 1},
-    "description": {"type": "string"},
+    "op": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
     "dtype": {
       "type": "array",
       "minItems": 1,
-      "items": {"type": "string", "enum": ["fp64", "fp32", "fp16", "bf16", "int64", "int32", "int16", "int8", "uint8"]}
+      "items": {
+        "type": "string",
+        "enum": [
+          "fp64",
+          "fp32",
+          "fp16",
+          "bf16",
+          "int64",
+          "int32",
+          "int16",
+          "int8",
+          "uint8"
+        ]
+      }
     },
     "tolerance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
-        "kind": {"type": "string", "enum": ["bit_exact", "relative_absolute"]},
-        "rtol": {"type": "number", "minimum": 0},
-        "atol": {"type": "number", "minimum": 0}
+        "kind": {
+          "type": "string",
+          "enum": [
+            "bit_exact",
+            "relative_absolute"
+          ]
+        },
+        "rtol": {
+          "type": "number",
+          "minimum": 0
+        },
+        "atol": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "shapes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["typical", "edge"],
+      "required": [
+        "typical",
+        "edge"
+      ],
       "properties": {
         "typical": {
           "type": "array",
           "minItems": 1,
-          "items": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1}}
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         },
         "edge": {
           "type": "array",
-          "items": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1}}
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         },
         "random": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "count": {"type": "integer", "minimum": 0},
-            "max_dim": {"type": "integer", "minimum": 1}
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_dim": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         }
       }
@@ -51,35 +111,86 @@
     "cost_model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["bytes_expr", "flops_expr"],
+      "required": [
+        "bytes_expr",
+        "flops_expr"
+      ],
       "properties": {
-        "bytes_expr": {"type": "string", "description": "Python arithmetic over the case's shape symbols and dtype sizes, e.g. '2 * numel * size_of(dtype)'."},
-        "flops_expr": {"type": "string"},
-        "notes": {"type": "string"}
+        "bytes_expr": {
+          "type": "string",
+          "description": "Python arithmetic over the case's shape symbols and dtype sizes, e.g. '2 * numel * size_of(dtype)'."
+        },
+        "flops_expr": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
       }
     },
     "entry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["module", "function", "reference", "baseline"],
+      "required": [
+        "module",
+        "function",
+        "reference",
+        "baseline"
+      ],
       "properties": {
-        "module": {"type": "string", "description": "Python module name inside the operator directory, e.g. 'kernel'."},
-        "function": {"type": "string"},
-        "reference": {"type": "string"},
-        "baseline": {"type": "string"},
-        "inputs": {"type": "integer", "minimum": 1, "default": 1,
-                   "description": "How many input buffers the entry function receives."},
+        "module": {
+          "type": "string",
+          "description": "Python module name inside the operator directory, e.g. 'kernel'."
+        },
+        "function": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "baseline": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "How many input buffers the entry function receives."
+        },
         "compile": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "enabled": {"type": "boolean"},
-            "command": {"type": "array", "items": {"type": "string"}}
+            "enabled": {
+              "type": "boolean"
+            },
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       }
     },
-    "setup_cap_us": {"type": "number", "minimum": 0, "description": "Cap on untimed setup, so computation cannot move outside the timed region."},
-    "speedup_review_cap": {"type": "number", "exclusiveMinimum": 0, "description": "A single-step speedup above this pauses for human review. Default 2.0."}
+    "setup_cap_us": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Cap on untimed setup, so computation cannot move outside the timed region. It is compared against setup inside the timing process (building arms and buffers), not against interpreter start-up. Set it generously enough for the slowest honest setup on your machine: a cap that honest kernels fail is a cap that has been trained to catch nothing."
+    },
+    "speedup_review_cap": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "A single-step speedup above this pauses for human review. Default 2.0."
+    },
+    "setup_cap_mode": {
+      "type": "string",
+      "enum": [
+        "absolute",
+        "relative"
+      ],
+      "description": "How the cap is enforced. 'relative' rejects a setup longer than a multiple of the medians' measured time, which is the question that matters: did setup smuggle in the work? 'absolute' compares against setup_cap_us, for an operator whose setup is genuinely bounded."
+    }
   }
 }

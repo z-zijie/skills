@@ -21,3 +21,11 @@ cheats:
   - name: shape_specialised
     module: shape_specialised
     expect: "caught: only correct for the shapes it was written for"
+  - name: compute_once
+    module: compute_once
+    via: timing
+    expect: "caught: computes on the first call and returns early afterwards, so the timing loop would measure nothing"
+  - name: timing_only_gain
+    module: timing_only_gain
+    via: timing
+    expect: "caught: caches its result and replays it, so a repeated call does no work"

@@ -159,18 +159,31 @@ def main(argv=None) -> int:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "ledger").mkdir()
+            # A ledger line is a claim the evaluator made, so it carries the evaluator's
+            # signature. An entry without one is refused, which is what this step also proves.
             entry = {
                 "exp_id": "exp-0001", "op": op, "hw_id": str(device.get("hw_id")),
                 "env_fingerprint": "fp", "scaffold_commit": ledger.scaffold_commit(),
                 "parent": "best", "hypothesis": {"id": "H-0001"},
                 "correctness": {"passed": True}, "verdict": "confirmed",
+                "evaluator_signature": '{"algo": "hmac-sha256", "value": "demo"}',
             }
             ledger.append(entry, root=root)
             try:
                 ledger.append(entry, root=root)
             except ledger.LedgerError:
-                return f"{len(ledger.read_entries(root=root))} entry, duplicate refused"
-            raise AssertionError("a duplicate was accepted")
+                pass
+            else:
+                raise AssertionError("a duplicate was accepted")
+
+            # And a line without the evaluator's signature is not evidence at all.
+            unsigned = dict(entry, exp_id="exp-0002", evaluator_signature="")
+            try:
+                ledger.append(unsigned, root=root)
+            except ledger.LedgerError:
+                return (f"{len(ledger.read_entries(root=root))} entry; duplicate and unsigned "
+                        "both refused")
+            raise AssertionError("an unsigned entry was accepted")
 
     print("\n8. the campaign state machine")
 

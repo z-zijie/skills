@@ -46,11 +46,20 @@ __all__ = [
 ]
 
 
-def load_module_from_path(name: str, path: Path) -> ModuleType:
-    """Import a single file as a module, under a deterministic name."""
+def load_module_from_path(name: str, path: Path, fresh: bool = False) -> ModuleType:
+    """Import a single file as a module, under a deterministic name.
+
+    ``fresh`` re-executes the file instead of returning a cached module. This matters more than it
+    looks: a kernel that memoises its result holds that state in module globals, so a cached module
+    hands the second measurement the answer the first one computed. The cheat then hides behind the
+    very caching the harness uses, and the timing loop measures a dictionary lookup.
+
+    Each measurement gets a fresh candidate module. The reference and the parent may stay cached:
+    they are trusted code, and re-executing them per case would dominate the run.
+    """
     path = Path(path)
     cache_key = f"{name}@{path}"
-    if cache_key in sys.modules:
+    if not fresh and cache_key in sys.modules:
         return sys.modules[cache_key]
     spec_obj = importlib.util.spec_from_file_location(cache_key, str(path))
     if spec_obj is None or spec_obj.loader is None:
@@ -61,7 +70,8 @@ def load_module_from_path(name: str, path: Path) -> ModuleType:
     return module
 
 
-def load_kernel_module(module_name: str, directory: Path, backend: Any) -> ModuleType:
+def load_kernel_module(module_name: str, directory: Path, backend: Any,
+                       fresh: bool = False) -> ModuleType:
     """Load a kernel module by name from a candidate or reference directory.
 
     A module is one file, ``<module_name>.py``, whose entry function takes
@@ -76,7 +86,7 @@ def load_kernel_module(module_name: str, directory: Path, backend: Any) -> Modul
         path = Path(directory) / f"{module_name}.py"
     if not path.is_file():
         raise FileNotFoundError(f"no kernel module at {path}")
-    return load_module_from_path(path.stem, path)
+    return load_module_from_path(path.stem, path, fresh=fresh)
 
 
 def device_config() -> Dict[str, Any]:

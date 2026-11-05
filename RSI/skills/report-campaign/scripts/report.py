@@ -153,17 +153,50 @@ def system(inputs: Dict[str, Any]) -> Dict[str, Any]:
     versions = []
     for commit, group in sorted(by_version.items()):
         rounds = [entry for entry in group if entry.get("verdict") in ("confirmed", "refuted")]
+        # The primary metric is the log of the campaign's *total* speedup over the number of
+        # experiments. A step's speedup is measured against its parent, so the total is the sum of
+        # the logs of the steps that actually advanced the kernel. Multiplying the raw ratios is a
+        # different and wrong quantity: three steps of 1.2x, 1.3x and 1.4x compound to 2.18x, and
+        # reporting that as a campaign gain overstates it by betting each step already banked the
+        # previous one while every step was measured from the same starting point.
         won = [entry for entry in rounds
-               if entry.get("verdict") == "confirmed" and entry.get("significant") is True]
-        total = 1.0
-        for entry in won:
-            total *= float(entry.get("speedup") or 1.0)
+               if entry.get("verdict") == "confirmed" and entry.get("significant") is True
+               and entry.get("speedup") and float(entry["speedup"]) > 0]
+        # Compounding is valid only when each step was measured against the previous one. When
+        # every step was measured against the same starting point — which is what happens if
+        # `evaluate` was never given a `--parent` — the steps are alternative candidates, not
+        # successive improvements, and their product is a number that does not describe anything.
+        # The campaign total is then the best single step.
+        # A missing parent is not evidence that every step shared one: older entries predate the
+        # field. Treat unknown as unknown and compound, but say so, because the alternative is to
+        # silently pick whichever aggregation makes the number larger.
+        parents = {str(entry.get("parent")) for entry in won if entry.get("parent")}
+        unknown_parent = any(not entry.get("parent") for entry in won)
+        measured_against_one_start = (len(won) > 1 and len(parents) == 1
+                                      and not unknown_parent)
+        if measured_against_one_start:
+            log_speedup = max(math.log(float(entry["speedup"])) for entry in won)
+            aggregation = "best_step"
+            aggregation_note = (
+                f"all {len(won)} winning steps were measured against the same parent "
+                f"({sorted(parents)[0]!r}); the total is the best single step, not a product")
+        else:
+            log_speedup = sum(math.log(float(entry["speedup"])) for entry in won)
+            aggregation = "compounded"
+            aggregation_note = ("per-step speedups are each measured against that step's parent, "
+                               "so the campaign total is their product")
+            if unknown_parent:
+                aggregation_note += (". At least one entry does not record its parent, so the "
+                                     "compounded figure assumes successive steps")
         attempts = len(group)
         versions.append({
             "scaffold_commit": commit,
             "experiments": attempts,
             "rounds": len(rounds),
-            "log_speedup_per_experiment": round(math.log(total) / len(rounds), 4) if rounds and total > 0 else None,
+            "log_speedup_per_experiment": round(log_speedup / len(rounds), 4) if rounds else None,
+            "total_speedup": round(math.exp(log_speedup), 4) if won else None,
+            "total_speedup_aggregation": aggregation if won else None,
+            "total_speedup_note": aggregation_note if won else None,
             "not_implemented_rate": round(
                 sum(1 for entry in group if entry.get("verdict") == "not_implemented") / attempts, 4
             ) if attempts else None,
@@ -175,7 +208,17 @@ def system(inputs: Dict[str, Any]) -> Dict[str, Any]:
                 if entry.get("prediction_error") is not None]),
             "operators": sorted({str(entry.get("op")) for entry in group}),
         })
-    versions.sort(key=lambda item: (item["scaffold_commit"]))
+    # A trend needs a sequence. Scaffold versions are ordered by the first experiment that ran
+    # under them, because that is when they went live; a commit hash sorted lexically would make
+    # the primary-metric trend a picture of the alphabet rather than of time.
+    first_seen: Dict[str, str] = {}
+    for entry in entries:
+        commit = str(entry.get("scaffold_commit") or "unknown")
+        at = str(entry.get("created") or "")
+        if commit not in first_seen or (at and at < first_seen[commit]):
+            first_seen[commit] = at
+    versions.sort(key=lambda item: (first_seen.get(item["scaffold_commit"], ""),
+                                    item["scaffold_commit"]))
 
     operators: Dict[str, List[Dict[str, Any]]] = {}
     for entry in entries:

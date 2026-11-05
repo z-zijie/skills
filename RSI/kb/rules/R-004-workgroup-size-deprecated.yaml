@@ -2,6 +2,7 @@
 # EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger. The card is kept
 # in rules/ with status deprecated so the life cycle has a worked example of every state; its
 # anti-pattern counterpart is kb/antipatterns/A-002-workgroup-size-tuning.yaml.
+example: true  # seed card: shows the shape, carries no evidence
 id: R-004
 statement: >
   Under a memory-bound signature with mem_saturated, reducing the work_group size to raise
@@ -27,13 +28,13 @@ effect:
   speedup_median: 0.97
   range: [0.88, 1.02]
 evidence:
-  confirmed: [exp-0031]
-  refuted: [exp-0032, exp-0033, exp-0034, exp-0035]
+  confirmed: [example-exp-0031]
+  refuted: [example-exp-0032, example-exp-0033, example-exp-0034, example-exp-0035]
 confirm_rate: 0.20
 mean_prediction_error: 0.16
 status: deprecated
 last_verified: 2026-10-24
 counter_example_note: >
-  Confirmation rate 0.20 is below the 0.40 deprecation floor. The single confirmation, exp-0031,
+  Confirmation rate 0.20 is below the 0.40 deprecation floor. The single confirmation, example-exp-0031,
   was a shape whose working set fit on chip, which is a different signature from the one this
   card claimed. Do not resurrect this without a signature that is genuinely latency-bound.

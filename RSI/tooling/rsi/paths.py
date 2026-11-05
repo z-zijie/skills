@@ -53,11 +53,18 @@ def repo_root() -> Path:
 
 
 def rel(path: os.PathLike, root: Optional[Path] = None) -> str:
-    root = root or repo_root()
+    """A path relative to the RSI root.
+
+    Both sides are resolved before the comparison. Resolving only one is a real bug on any
+    platform with a symlinked temp directory: ``/var`` resolves to ``/private/var`` on macOS, so
+    an unresolved root never prefixes a resolved path and every write looks like a violation.
+    """
+    base = Path(root).resolve() if root is not None else repo_root().resolve()
+    resolved = Path(path).resolve()
     try:
-        return Path(path).resolve().relative_to(root).as_posix()
+        return resolved.relative_to(base).as_posix()
     except ValueError:
-        return Path(path).resolve().as_posix()
+        return resolved.as_posix()
 
 
 def _match(pattern: str, target: str) -> bool:

@@ -42,11 +42,19 @@ def key_path(root: Optional[Path] = None) -> Path:
     return (root or paths.repo_root()) / KEY_FILE
 
 
-def load_key(root: Optional[Path] = None, create: bool = False) -> bytes:
-    """The evaluator's signing key. Only the evaluator's user can read the file."""
-    env = os.environ.get(KEY_ENV)
-    if env:
-        return env.encode("utf-8")
+def load_key(root: Optional[Path] = None, create: bool = False,
+             allow_env: bool = False) -> bytes:
+    """The evaluator's signing key.
+
+    The key is a file owned by the evaluator's user, and by default that file is the only source.
+    An environment variable is accepted only when a caller explicitly asks for it, because a key
+    that any process can inject through its environment is a key any agent can sign with — which
+    would make every signature in the ledger worthless while still looking verified.
+    """
+    if allow_env:
+        env = os.environ.get(KEY_ENV)
+        if env:
+            return env.encode("utf-8")
     path = key_path(root)
     if path.is_file():
         return path.read_bytes().strip()
@@ -69,9 +77,40 @@ def canonical_body(result: Dict[str, Any]) -> bytes:
     return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
+def candidate_hash(path: Any) -> str:
+    """Hash of the candidate source a result describes.
+
+    Without this a signed result says "some kernel measured X" rather than "this kernel measured
+    X", so a result could be presented beside code it never ran. The hash is what pins a signature
+    to the file it is evidence about.
+    """
+    target = Path(path)
+    if not target.is_file():
+        return ""
+    return hashlib.sha256(target.read_bytes()).hexdigest()
+
+
+def tolerances_hash(op_spec: Any) -> str:
+    """Hash of the operator's tolerance block, so a loosened tolerance cannot ride a signature.
+
+    A result signed under ``rtol=1e-5`` must not be presentable as one signed under ``1e-2``: the
+    numbers would be unchanged and the claim about them would not be.
+    """
+    tolerance = getattr(op_spec, "tolerance", None)
+    if tolerance is None:
+        return ""
+    payload = json.dumps(tolerance, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
 def sign(result: Dict[str, Any], key: Optional[bytes] = None, root: Optional[Path] = None,
          key_id: str = "local") -> Dict[str, Any]:
-    """Return a copy of ``result`` with a signature block added."""
+    """Return a copy of ``result`` with a signature block added.
+
+    The signature covers the whole body, which now includes the candidate's source hash, the
+    tolerance hash and the environment fingerprint. Those three are what turn a signed number into
+    a claim that can be checked against the code and the rules it came from.
+    """
     secret = key if key is not None else load_key(root)
     digest = hmac.new(secret, canonical_body(result), hashlib.sha256).hexdigest()
     signed = dict(result)
@@ -151,7 +190,17 @@ def next_exp_id(entries: Optional[List[Dict[str, Any]]] = None, root: Optional[P
 
 
 def validate_entry(entry: Dict[str, Any], root: Optional[Path] = None) -> None:
-    """Schema-check an entry and refuse canonical-name violations in its counters."""
+    """Schema-check an entry and refuse canonical-name violations in its counters.
+
+    An entry with no evaluator signature is refused: the ledger's whole value is that its lines
+    are claims the evaluator made, and a line without one is a claim somebody else made in the
+    same format.
+    """
+    if not str(entry.get("evaluator_signature") or "").strip():
+        raise LedgerError(
+            f"{entry.get('exp_id')}: no evaluator signature. A line without one is not evidence, "
+            "it is an assertion in the same format"
+        )
     jsonschema_lite.check(entry, entry_schema(root), label=f"ledger entry {entry.get('exp_id')}")
     for field in ("counters_before", "counters_after"):
         raw = list((entry.get(field) or {}).keys())
@@ -160,9 +209,17 @@ def validate_entry(entry: Dict[str, Any], root: Optional[Path] = None) -> None:
             raise LedgerError(f"{entry.get('exp_id')}: {field} names unregistered metrics {unknown}")
 
 
-def append(entry: Dict[str, Any], root: Optional[Path] = None) -> Path:
-    """Validate and append one entry. The file is opened append-only and never rewritten."""
+def append(entry: Dict[str, Any], root: Optional[Path] = None,
+           role: str = "inner_loop") -> Path:
+    """Validate and append one entry. The file is opened append-only and never rewritten.
+
+    The write policy is checked here, at the write, rather than described in a document: a
+    boundary that no call site enforces is a comment.
+    """
+    from . import paths as paths_mod
+
     validate_entry(entry, root)
+    paths_mod.require_writable(role, paths_mod.ledger_path(root), root=root)
     existing = read_entries(root)
     if any(existing_entry.get("exp_id") == entry.get("exp_id") for existing_entry in existing):
         raise LedgerError(f"{entry.get('exp_id')} already exists: the ledger is append-only")
@@ -189,9 +246,13 @@ def evidence_counts(entries: List[Dict[str, Any]]) -> Dict[str, int]:
     return counts
 
 
-def archive_artifact(exp_id: str, name: str, data: Any, root: Optional[Path] = None) -> Path:
+def archive_artifact(exp_id: str, name: str, data: Any, root: Optional[Path] = None,
+                     role: str = "inner_loop") -> Path:
     """Store a diff, report or log under ``ledger/artifacts/<exp_id>/``."""
+    from . import paths as paths_mod
+
     directory = paths.artifacts_dir(root) / exp_id
+    paths_mod.require_writable(role, directory / name, root=root)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / name
     if isinstance(data, (dict, list)):

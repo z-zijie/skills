@@ -252,7 +252,17 @@ def advance(campaign: Campaign, outcome: Dict[str, Any]) -> Dict[str, Any]:
         campaign.last_speedup = outcome.get("speedup")
         campaign.significant = outcome.get("significant")
         campaign.prediction_error = outcome.get("prediction_error")
-        campaign.state = "promote" if outcome.get("qualifies") else "gap"
+        # A round that produced no qualifying candidate is exactly the round the stall counters
+        # exist for. Counting only the promote path meant a campaign of failed experiments never
+        # advanced its stall count, so neither the re-profile nor the five-round stop ever fired —
+        # the loop would have spent its whole budget walking in the same direction.
+        if not outcome.get("qualifies"):
+            campaign.stalled_rounds += 1
+            campaign.history.append({"state": "record",
+                                     "note": "no qualifying candidate: stalled round incremented"})
+            campaign.state = "gap"
+            return next_step(campaign)
+        campaign.state = "promote"
         return next_step(campaign)
 
     if state == "promote":

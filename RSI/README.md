@@ -23,6 +23,7 @@ pattern library. See [`docs/moving-to-a-new-device.md`](docs/moving-to-a-new-dev
 | run an optimization | [`docs/workflows.md`](docs/workflows.md) W3, then [`skills/optimize-operator/`](skills/optimize-operator/SKILL.md) |
 | know what an agent may write | [`docs/permissions.md`](docs/permissions.md) |
 | write or change a skill | [`docs/AUTHORING.md`](docs/AUTHORING.md) and [`docs/contracts.md`](docs/contracts.md) |
+| know what is guaranteed and what is not | [`docs/guarantees.md`](docs/guarantees.md) |
 | know what is built and what is not | [`docs/roadmap.md`](docs/roadmap.md) |
 
 ## The seven principles
@@ -92,7 +93,9 @@ tools/rsi-cli campaign --op vec_add --budget 20
 
 Step 3 is not optional. A framework that measures experience is only worth what its
 measurement is worth, and the cheapest way to find out is to hand it kernels that cheat on
-purpose.
+purpose. Eight of them ship, and each one names the detector responsible for it: six are caught by
+correctness, and two — compute once, and cache the answer — are caught by the timing arm, because
+those are the cheats a correctness-only evaluator cannot see.
 
 ## What is deliberately not automatic
 

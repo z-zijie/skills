@@ -22,15 +22,22 @@ and an attempt to write outside it is logged because the attempt itself is worth
 
 ## How it is enforced
 
-Three mechanisms, because a rule that only exists in prose is a suggestion:
+Four mechanisms, because a rule that only exists in prose is a suggestion:
 
-1. **A write policy in code.** `paths.writable(role, path)` decides, and `paths.require_writable`
-   raises `PermissionDenied` and records the attempt. Every tool that writes calls it. Roles are
-   `inner_loop`, `outer_loop`, `distiller`, `replay_judge`, `evaluator` and `human`; the human
-   may write everything.
+1. **A write policy in code, called at the write.** `paths.require_writable` raises
+   `PermissionDenied` and records the attempt, and `ledger.append`, `ledger.archive_artifact` and
+   the calibration writer actually call it. Roles are `inner_loop`, `outer_loop`, `distiller`,
+   `replay_judge`, `evaluator` and `human`; the human may write everything. A boundary with no
+   call site is a comment, which is why the enforcement lives at the three writes the system
+   performs rather than in a document nobody executes.
 2. **A read block on the held-out split.** `paths.hidden_from_agents` and `paths.require_hidden`
    refuse to hand `benchmark/holdout.txt` to anything except the replay judge.
-3. **Process isolation for the evaluator.** Run Layer 0 under its own system user or in a
+3. **Process isolation for candidate code.** Correctness runs in the evaluator's process, so
+   timing runs in a separate interpreter (`evaluator/sandbox.py`): the child gets a minimal
+   environment with `RSI_SIGNING_KEY` stripped, holds no reference output, and returns only
+   samples. The parent does the statistics and the signing, so candidate code never runs in the
+   process that holds the key.
+4. **A separate user for the evaluator.** Run Layer 0 under its own system user or in a
    container with `evaluator/` mounted read-only and its signing key readable only by that user.
    The signing key is what makes a forged result detectable: the ledger accepts only signed
    results, and the signature covers the whole body.
@@ -47,6 +54,10 @@ The evaluator's own user owns the signing key, so an agent process running as an
 cannot mint a result even if it can read the source.
 
 ## What is not enforced, and why
+
+The process split in mechanism 3 is a real boundary at the process level: candidate code cannot
+read the key, the reference output or the parent's timing. It is not a security sandbox, because
+both processes run as the same user and a determined kernel can still reach the filesystem.
 
 The write policy is a guardrail against an agent wandering, not a security boundary against the
 human who owns the machine. An agent with the same filesystem permissions as the owner can

@@ -63,6 +63,18 @@
         "prediction_error": 0.18,
         "cost": 1.0
       }
+    },
+    {
+      "operator": "softmax_fwd",
+      "split": "holdout",
+      "old": {
+        "attainment_gain": 1.0,
+        "not_implemented_rate": 0.1
+      },
+      "new": {
+        "attainment_gain": 1.05,
+        "not_implemented_rate": 0.1
+      }
     }
   ],
   "proposal": {

@@ -97,12 +97,16 @@ def peak_compute(backend: Any, samples: int = 15, **_: Any) -> Dict[str, Any]:
     out = backend.zeros(size)
     elapsed = timing.median(_time(lambda: ops.mul_add(a, b, c, out), backend, samples))
     flops = size * 2  # one multiply and one add per element
-    value = flops / elapsed * 1e6 / 1e9 if elapsed else 0.0
+    # Stored in FLOP/s, which is the unit the roofline divides by. Emitting GFLOP/s here and
+    # dividing it as FLOP/s downstream understates the bound by 1e9, so every kernel appears to
+    # beat the roofline and every campaign stops at "target reached" on a measurement error.
+    value = flops / (elapsed / 1e6) if elapsed else 0.0
     return {
         "value": {"fp32": value},
         "curve": {f"elements_{size}": elapsed},
-        "unit": "GFLOP/s per dtype",
-        "note": "device peak is a ceiling, not an achievement: compare attainment, not raw GFLOP/s",
+        "unit": "FLOP/s per dtype",
+        "note": ("device peak is a ceiling, not an achievement: compare attainment, not raw "
+                 "throughput. Stored in FLOP/s because that is what the roofline divides by."),
     }
 
 

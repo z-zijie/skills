@@ -32,6 +32,8 @@ from ._tooling import jsonschema_lite, ledger, paths, timing
 MIN_REPEATS = 3
 #: The screening subset: cheap dev operators, used for the first pass.
 SCREEN_OPERATORS = 3
+#: The fewest dev operators a replay may use. One operator is an anecdote.
+MIN_DEV_OPERATORS = 2
 #: A holdout regression larger than this fails the change.
 HOLDOUT_REGRESSION_TOLERANCE = 0.0
 #: Secondary metrics may not degrade by more than this relative amount.
@@ -101,6 +103,22 @@ def evaluate_change(configs: Sequence[Dict[str, Any]], budget: Dict[str, Any],
 
     if not dev_deltas:
         raise ReplayError("a replay needs at least one dev configuration")
+    # A single dev operator cannot separate a scaffold's effect from that operator's idiosyncrasy.
+    # The design asks for two or three even in screening, so the minimum is enforced here rather
+    # than trusted to the caller.
+    if len(dev_deltas) < MIN_DEV_OPERATORS:
+        raise ReplayError(
+            f"a replay needs at least {MIN_DEV_OPERATORS} dev operators; "
+            f"{len(dev_deltas)} cannot separate a scaffold's effect from one operator's quirks")
+    # An empty holdout is not evidence that the change generalises. Absence of a regression test
+    # must not read as passing one, so a full replay without holdout results is refused rather
+    # than merged: this is the gate that stops a change from being tuned on the operators that
+    # decide whether it merges.
+    if not holdout_deltas and not budget.get("allow_empty_holdout"):
+        raise ReplayError(
+            "a full replay needs holdout results; an empty holdout split is not evidence that "
+            "the change generalises. Populate benchmark/holdout.txt, or record "
+            "budget.allow_empty_holdout for a screening-only run")
     interval = timing.bootstrap_ci(dev_deltas, seed=seed) if len(dev_deltas) > 1 else {
         "point": dev_deltas[0], "low": dev_deltas[0], "high": dev_deltas[0]
     }
@@ -124,6 +142,8 @@ def evaluate_change(configs: Sequence[Dict[str, Any]], budget: Dict[str, Any],
     return {
         "primary_metric": {
             "name": "attainment_gain_per_experiment",
+            "dev_operators": len(dev_deltas),
+            "holdout_operators": len(holdout_deltas),
             "delta": interval["point"],
             "ci_low": interval.get("low"),
             "ci_high": interval.get("high"),
@@ -141,8 +161,16 @@ def evaluate_change(configs: Sequence[Dict[str, Any]], budget: Dict[str, Any],
 
 def screen(configs: Sequence[Dict[str, Any]], budget: Dict[str, Any],
            repeats: int = MIN_REPEATS, seed: int = 0) -> Dict[str, Any]:
-    """Two-stage screening: decide whether the full replay is worth its cost."""
-    report = evaluate_change(configs, budget, repeats=repeats, seed=seed)
+    """Two-stage screening: decide whether the full replay is worth its cost.
+
+    Screening is the first stage, so it never has holdout results: that is the point of screening.
+    It therefore states that explicitly rather than being excused by the caller. A screen can only
+    return "run the full replay" or "not worth it" — it can never merge, which is where the holdout
+    requirement belongs.
+    """
+    screening_budget = dict(budget or {})
+    screening_budget.setdefault("allow_empty_holdout", True)
+    report = evaluate_change(configs, screening_budget, repeats=repeats, seed=seed)
     report["screening_stage"] = "two_stage_screen"
     if report["decision"] == "rollback" and report["primary_metric"]["delta"] <= 0:
         report["decision"] = "rollback"

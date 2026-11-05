@@ -39,5 +39,8 @@ entry:
   baseline: baseline/kernel
   inputs: 1
 
-setup_cap_us: 200000.0
+# Relative by default: reject setup longer than ten times the measured time, which asks whether
+# setup smuggled in the work. An absolute cap flags honest kernels on a slow interpreter.
+setup_cap_mode: relative
+setup_cap_us: 2000000.0
 speedup_review_cap: 2.0

@@ -1,5 +1,6 @@
 # Anti-pattern A-003 — a scratchpad pad that changes the allocation but not the addresses.
 # EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger.
+example: true  # seed card: shows the shape, carries no evidence
 id: A-003
 statement: >
   Padding a scratchpad row length by a value that shares a factor with the bank count, or
@@ -28,7 +29,7 @@ effect:
   range: [0.95, 1.03]
 evidence:
   confirmed: []
-  refuted: [exp-0051, exp-0052]
+  refuted: [example-exp-0051, example-exp-0052]
 confirm_rate: 0.0
 mean_prediction_error: 0.05
 status: deprecated

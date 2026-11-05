@@ -17,7 +17,13 @@ defences are code in `evaluator/`, not instructions in a prompt.
 | Return before asynchronous work finishes | Sync before and after every timed region, and time only the kernel | `evaluator/harness/timing.py` |
 | Move computation outside the timed region | Setup is timed separately and capped by the spec | `timing_report` |
 | Lower precision or skip part of the computation | Tolerances fixed in the spec; random shapes exercise every path | `spec.compare` |
-| Forge a result file | The evaluator signs results; the ledger accepts nothing unsigned | `tooling/rsi/ledger.py` |
+| Forge a result file | The evaluator signs results over the candidate's source hash, the tolerance hash and the environment; the ledger refuses anything unsigned; the environment cannot supply the key | `tooling/rsi/ledger.py` |
+| Re-attribute a result to other code or looser tolerances | The signature covers `candidate_hash` and `tolerance_hash`, so a result cannot be shown beside code it never ran | `schemas/result.schema.json` |
+| Choose your own verdict | The verdict comes from the verifier's output object, not a flag, and it must name the same card | `skills/record-experiment/` |
+| Read the key from the process that measures | Timing runs in a separate interpreter with the key stripped from its environment | `evaluator/sandbox.py` |
+| Compute once, then return early | The timed arm clears the output and calls again after warm-up | `evaluator/harness/timing.py` |
+| Cache the answer and replay it | The timed arm perturbs an input and checks the output follows it | `evaluator/harness/timing.py` |
+| Specialise for the shapes you saw | Shapes and inputs are drawn fresh per run from a seed that is recorded | `evaluator/cli.py`, `spec.cases` |
 | A single step that is implausibly large | Any step at or above the review cap pauses for human review | `evaluator/cli.py`, spec's `speedup_review_cap` |
 
 ## The red-team requirement
@@ -29,10 +35,23 @@ the evaluator catches every one:
 tools/rsi-cli redteam --op <op>
 ```
 
-`operators/vec_add/redteam/` ships six: a kernel that writes nothing, one that copies an input
-instead of computing, one that covers half the output, one that writes past the end, one that
-drops precision, and one that is correct only for the shape it was written for. They are caught
-by the sentinel, the guard elements, the tolerance comparison and the random shapes respectively.
+`operators/vec_add/redteam/` ships eight, and each names the detector responsible for it — because
+running every cheat against every detector would report either false holes or false catches:
+
+| Cheat | Detector | How it is caught |
+| --- | --- | --- |
+| writes nothing | correctness | the sentinel survives |
+| copies an input | correctness | the tolerance comparison |
+| covers half the output | correctness | the sentinel count |
+| writes past the end | correctness | the guard elements |
+| drops precision | correctness | the tolerance comparison |
+| correct only for one shape | correctness | fresh random shapes |
+| computes once, then returns | timing | the output is cleared and the call repeated |
+| caches its answer and replays it | timing | an input is perturbed and the output must follow |
+
+The two timing cheats are the ones a correctness-only evaluator cannot see: each correctness case
+loads the module fresh, so a stateful cheat resets and answers honestly. That is why the timing arm
+checks repeat behaviour itself rather than trusting that correctness already did.
 
 A cheat that passes is a hole in Layer 0, and every piece of experience built on top of it is
 noise. It is also the cheapest test in the system, which makes skipping it indefensible.

@@ -178,8 +178,13 @@ def cmd_report(args: argparse.Namespace) -> int:
         "op": args.op,
         "experiments": len(entries),
         "evidence": counts,
-        "best_speedup": max(speedups) if speedups else None,
-        "total_speedup": _product(speedups) if speedups else None,
+        # Per-step speedups are each measured against that step's parent, so the campaign total
+        # compounds only steps that advanced the kernel — and the report says which quantity it
+        # is reporting instead of leaving a bare number that reads as one step's gain.
+        "best_step_speedup": max(speedups) if speedups else None,
+        "compounded_speedup": _product(speedups) if speedups else None,
+        "speedup_semantics": ("compounded_speedup multiplies per-step speedups, each measured "
+                              "against that step's parent"),
         "confirmed_changes": [entry.get("hypothesis", {}).get("transformation") for entry in confirmed],
         "unexplained": [entry.get("exp_id") for entry in entries
                         if entry.get("verdict") == "refuted" and entry.get("significant")],
@@ -217,6 +222,8 @@ def cmd_kb_audit(args: argparse.Namespace) -> int:
         "under_review": [],
         "deprecated": [],
         "unverified_but_cited": [],
+        "evidence_not_in_ledger": [],
+        "examples": [],
         "status_disagrees_with_evidence": [],
         "health": {},
     }
@@ -246,10 +253,22 @@ def cmd_kb_audit(args: argparse.Namespace) -> int:
             # The life cycle is mechanical: an entry whose recorded status disagrees with what
             # its own evidence implies is a stale status, and a stale status is how a rule
             # quietly keeps its authority after the evidence has gone.
-            if store == "antipatterns" or not evaluable:
-                continue
+            # A rule citing evidence that does not exist is not "not yet evaluable": it is a card
+            # making a claim with nothing behind it. This check runs before the ledger-dependent
+            # one, because a missing experiment is visible whether or not the ledger has other
+            # lines — reporting it as skipped is how an example card survives every audit forever.
             cited = set(confirmed) | set(refuted)
-            if not cited <= set(operator_of_exp):
+            missing = sorted(exp_id for exp_id in cited if exp_id not in set(operator_of_exp))
+            if missing and rule.get("example"):
+                # A seed card marked as an example is reported as such, not as a defect: it is
+                # documentation of a shape, and the report says so out loud so nobody mistakes a
+                # clean audit for evidence that these claims are supported.
+                audit["examples"].append({"id": rule.get("id"), "unbacked_ids": missing})
+                continue
+            if missing:
+                audit["evidence_not_in_ledger"].append({"id": rule.get("id"), "missing": missing})
+                continue
+            if store == "antipatterns" or not evaluable:
                 continue
             verdict = knowledge.lifecycle(rule, operator_of_exp)
             if verdict["status"] != status:
@@ -284,7 +303,11 @@ def cmd_kb_audit(args: argparse.Namespace) -> int:
     }
     print(json.dumps(audit, indent=2, ensure_ascii=False))
     problems = (audit["invalid"] or audit["no_evidence"] or audit["unverified_but_cited"]
-                or audit["status_disagrees_with_evidence"])
+                or audit["status_disagrees_with_evidence"] or audit["evidence_not_in_ledger"])
+    if audit["examples"]:
+        audit["health"]["example_cards"] = (f"{len(audit['examples'])} seed card(s) show the shape of "
+                                           "a claim and carry no evidence; replace them with "
+                                           "distilled rules once the ledger has real experiments")
     return 0 if not problems else 1
 
 
@@ -309,6 +332,9 @@ def cmd_record(args: argparse.Namespace) -> int:
 
     result = json.loads(Path(args.result).read_text(encoding="utf-8"))
     ledger.validate_result(result)
+    verdict_doc = json.loads(Path(args.verdict_json).read_text(encoding="utf-8"))
+    if verdict_doc.get("verdict") not in ("confirmed", "refuted", "not_implemented"):
+        return _fail("--verdict-json must carry verdict/confirmed|refuted|not_implemented")
     if args.dry_run:
         print(json.dumps({"validated": True, "result": result}, indent=2, ensure_ascii=False))
         return 0
@@ -328,11 +354,24 @@ def cmd_record(args: argparse.Namespace) -> int:
             "failing_cases": [f"{failure.get('shape')}: {failure.get('reason')}"
                               for failure in result["correctness"].get("failures", [])],
         },
-        "timing_before": {"median_us": result["timing"].get("baseline_us"), "samples": result["timing"].get("samples", 0)},
-        "timing_after": {"median_us": result["timing"].get("candidate_us"), "samples": result["timing"].get("samples", 0)},
+        "timing_before": {
+            "median_us": result["timing"].get("baseline_us"),
+            "ci_low_us": (result["timing"].get("baseline_summary") or {}).get("ci_low_us"),
+            "ci_high_us": (result["timing"].get("baseline_summary") or {}).get("ci_high_us"),
+            "samples": result["timing"].get("samples", 0),
+        },
+        "timing_after": {
+            "median_us": result["timing"].get("candidate_us"),
+            "ci_low_us": (result["timing"].get("candidate_summary") or {}).get("ci_low_us"),
+            "ci_high_us": (result["timing"].get("candidate_summary") or {}).get("ci_high_us"),
+            "samples": result["timing"].get("samples", 0),
+        },
+        "speedup_ci_low": result["timing"].get("speedup_ci_low"),
+        "speedup_ci_high": result["timing"].get("speedup_ci_high"),
+        "parent": result["timing"].get("parent") or args.parent,
         "counters_before": {},
         "counters_after": {},
-        "verdict": args.verdict,
+        "verdict": verdict_doc["verdict"],
         "verifier_notes": "",
         "speedup": result["timing"].get("speedup"),
         "significant": result["timing"].get("significant"),
@@ -433,8 +472,9 @@ def build_parser() -> argparse.ArgumentParser:
     record.add_argument("--result", required=True)
     record.add_argument("--parent", default="best")
     record.add_argument("--hypothesis")
-    record.add_argument("--verdict", default="confirmed",
-                        choices=["confirmed", "refuted", "not_implemented"])
+    record.add_argument("--verdict-json", required=True,
+                        help="the verifier's verdict object; the verdict is read from it, never "
+                             "chosen by whoever records")
     record.add_argument("--exp-id")
     record.add_argument("--dry-run", action="store_true")
     record.set_defaults(func=cmd_record)

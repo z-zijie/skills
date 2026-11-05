@@ -189,8 +189,9 @@ def _split_key(text: str, line: int) -> Optional[Tuple[str, str]]:
 
 class _Parser:
     def __init__(self, text: str) -> None:
+        self.raw_lines: List[str] = text.splitlines()
         self.lines: List[Tuple[int, str, int]] = []
-        for number, raw in enumerate(text.splitlines(), start=1):
+        for number, raw in enumerate(self.raw_lines, start=1):
             if "\t" in raw[: len(raw) - len(raw.lstrip(" \t"))]:
                 raise YamlError("tab indentation is not supported", number)
             stripped = _strip_comment(raw)
@@ -201,6 +202,8 @@ class _Parser:
             indent = len(stripped) - len(stripped.lstrip(" "))
             self.lines.append((number, stripped[indent:], indent))
         self.position = 0
+        #: The line number the current scalar's content starts on, set by _parse_value.
+        self._scalar_body_start: Optional[int] = None
 
     def parse(self) -> Any:
         if not self.lines:
@@ -344,20 +347,45 @@ class _Parser:
         return " ".join(part for part in parts if part)
 
     def _parse_block_scalar(self, header: str, line: int, parent_indent: int) -> str:
+        """Read a ``|`` or ``>`` block verbatim from the raw source lines.
+
+        The pre-pass strips comments and blank lines because they are noise between scalars, but
+        inside a block scalar they are content: an inline diff is mostly blank context lines and
+        ``#`` comment lines, and a folded code sample loses its shape without them. So this reads
+        the original lines, keeps them as written, and advances the parse position past them.
+        """
         fold = header[0] == ">"
         chomp = header[1] if len(header) > 1 else ""
-        # Raw lines with their original indentation are needed for block scalars.
         collected: List[str] = []
         block_indent: Optional[int] = None
-        while self.position < len(self.lines):
-            number, text, indent = self.lines[self.position]
+        index = line  # raw_lines is zero-based and `line` is one-based
+        consumed_until = line
+        while index < len(self.raw_lines):
+            raw = self.raw_lines[index]
+            if not raw.strip():
+                # A blank line inside the block is content; one after a dedent ends the block.
+                if block_indent is None:
+                    index += 1
+                    continue
+                collected.append("")
+                index += 1
+                consumed_until = index
+                continue
+            indent = len(raw) - len(raw.lstrip(" "))
             if indent <= parent_indent:
                 break
             if block_indent is None:
                 block_indent = indent
             if indent < block_indent:
                 break
-            collected.append(" " * (indent - block_indent) + text)
+            collected.append(raw[block_indent:])
+            index += 1
+            consumed_until = index
+        # Drop trailing blank lines that belong to the block's chomping, not to its content.
+        while collected and collected[-1] == "":
+            collected.pop()
+        # Move the structural position past every line this scalar consumed.
+        while self.position < len(self.lines) and self.lines[self.position][0] <= consumed_until:
             self.position += 1
         if fold:
             joined: List[str] = []

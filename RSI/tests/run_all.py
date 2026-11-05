@@ -186,6 +186,7 @@ def _():
             "exp_id": "exp-0001", "op": "vec_add", "hw_id": "hw", "env_fingerprint": "fp",
             "scaffold_commit": "abc", "parent": "best",
             "hypothesis": {}, "correctness": {"passed": True}, "verdict": "confirmed",
+            "evaluator_signature": "stub",
         }
         ledger.append(entry, root=root)
         try:
@@ -205,6 +206,7 @@ def _():
         "exp_id": "exp-0002", "op": "vec_add", "hw_id": "hw", "env_fingerprint": "fp",
         "scaffold_commit": "abc", "parent": "best", "hypothesis": {},
         "correctness": {"passed": True}, "verdict": "confirmed",
+        "evaluator_signature": "stub",
         "counters_before": {"totally_unregistered_counter": 1.0},
     }
     try:
@@ -418,6 +420,65 @@ def _():
         expect(result["value"] is not None, f"{name} reported a null value as measured")
 
 
+@case("evaluate: the CLI runs correctness, timing, guards and signing end to end")
+def _():
+    """Exercise the real `evaluate` command, which is where the trust layer actually lives.
+
+    Every earlier test checked one piece: correctness alone, statistics alone, the signature alone.
+    The command that composes them was the one path nothing ran, so a break in the composition
+    would have shipped.
+    """
+    import json
+    import subprocess
+    import tempfile
+
+    from rsi import ledger
+
+    with tempfile.TemporaryDirectory() as directory:
+        out = Path(directory) / "result.json"
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "evaluator" / "cli.py"), "evaluate",
+             "--op", "vec_add", "--candidate", "operators/vec_add/baseline/kernel.py",
+             "--samples", "5", "--warmup", "1", "--out", str(out)],
+            capture_output=True, text=True, cwd=str(ROOT), timeout=1800, check=False)
+        expect(completed.returncode == 0,
+               f"evaluate failed: {completed.stderr[-600:]}")
+        result = json.loads(out.read_text())
+
+    # The shape and the signature.
+    ledger.validate_result(result, key=ledger.load_key())
+    expect(result["correctness"]["passed"], "the baseline failed correctness")
+    expect(result["timing"]["samples"] == 5, "the sample count is wrong")
+
+    # The bindings: a signature over numbers alone can be re-attributed to other code.
+    expect(len(result.get("candidate_hash") or "") == 64,
+           "the result does not pin the candidate source")
+    expect(len(result.get("tolerance_hash") or "") > 0,
+           "the result does not pin the tolerances it was judged under")
+    expect(isinstance(result.get("seed"), int),
+           "the seed was not recorded, so the run cannot be reproduced")
+
+    # The timing ran away from the signing process, and setup was measured where it happens.
+    expect(result["timing"].get("measured_in") == "separate-process",
+           "timing did not run in a separate process")
+    expect("setup_us" in result["timing"], "setup was not measured")
+
+
+@case("evaluate: a kernel that caches its answer is refused, not timed fast")
+def _():
+    import subprocess
+
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "evaluator" / "cli.py"), "evaluate",
+         "--op", "vec_add", "--candidate", "operators/vec_add/redteam/timing_only_gain.py",
+         "--samples", "5", "--warmup", "1"],
+        capture_output=True, text=True, cwd=str(ROOT), timeout=1800, check=False)
+    expect(completed.returncode != 0,
+           "a candidate that replays a cached answer was accepted for timing")
+    expect("timing child failed" in completed.stderr or "cached" in completed.stderr,
+           f"the refusal did not explain itself: {completed.stderr[-300:]}")
+
+
 @case("pipeline: a signed result reaches the ledger only when it verifies")
 def _():
     from rsi import ledger, spec as spec_mod
@@ -433,8 +494,8 @@ def _():
 
     arms = protocol.build_arms(op_spec, ROOT / "operators/vec_add/baseline/kernel.py",
                                op_spec.entry["baseline"], backend, case={"n": 256})
-    samples = protocol.interleaved(arms["candidate"], arms["baseline"], backend, samples=6, warmup=1)
-    timing_block = protocol.timing_report(samples["candidate"], samples["baseline"], noise_threshold=1.0)
+    samples = protocol.interleaved(arms["candidate"], arms["parent"], backend, samples=6, warmup=1)
+    timing_block = protocol.timing_report(samples["candidate"], samples["parent"], noise_threshold=1.0)
     result = {
         "schema_version": "1", "exp_kind": "evaluate", "op": "vec_add",
         "candidate": "operators/vec_add/baseline/kernel.py", "hw_id": "test",
@@ -581,8 +642,26 @@ def _():
     noise = [
         {"operator": "a", "split": "dev", "old": {"attainment_gain": 1.0}, "new": {"attainment_gain": 1.01}},
         {"operator": "b", "split": "dev", "old": {"attainment_gain": 1.0}, "new": {"attainment_gain": 0.98}},
+        {"operator": "h", "split": "holdout", "old": {"attainment_gain": 1.0}, "new": {"attainment_gain": 1.0}},
     ]
     expect(replay.evaluate_change(noise, budget)["decision"] == "rollback", "noise merged")
+
+    # An empty holdout must not read as "did not regress": absence of a generalisation test is not
+    # evidence of generalisation.
+    try:
+        replay.evaluate_change([good[0], good[1]], budget)
+    except replay.ReplayError as error:
+        expect("holdout" in str(error), str(error))
+    else:
+        raise AssertionError("a replay with no holdout results was accepted")
+
+    # One dev operator is an anecdote, whatever its interval says.
+    try:
+        replay.evaluate_change([good[0], good[2]], budget)
+    except replay.ReplayError as error:
+        expect("dev operators" in str(error), str(error))
+    else:
+        raise AssertionError("a single-operator replay was accepted")
 
     regressed = [
         {"operator": "a", "split": "dev", "old": {"attainment_gain": 1.0}, "new": {"attainment_gain": 1.6}},

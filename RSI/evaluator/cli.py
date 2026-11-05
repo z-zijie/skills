@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import secrets
 import json
 import os
 import sys
@@ -98,8 +99,9 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     device = hardware.discover_device()
     fingerprint = hardware.env_fingerprint(device)
 
+    seed = _seed(args.seed)
     correctness_report = correctness.run_suite(
-        op_spec, candidate, backend, seed=args.seed, max_cases=args.max_cases
+        op_spec, candidate, backend, seed=seed, max_cases=args.max_cases
     )
     result: Dict[str, Any] = {
         "schema_version": "1",
@@ -111,6 +113,9 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         "evaluator_version": EVALUATOR_VERSION,
         "evaluator_hash": evaluator_hash(),
         "created": _now(),
+        "seed": seed,
+        "candidate_hash": ledger.candidate_hash(candidate),
+        "tolerance_hash": ledger.tolerances_hash(op_spec),
         "correctness": {
             "passed": correctness_report["passed"],
             "cases_run": correctness_report["cases_run"],
@@ -135,20 +140,49 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         _emit(signed)
         return 0
 
-    # Setup is timed on its own and capped: work that migrates out of the timed region would
-    # otherwise look like a faster kernel.
-    setup_start = backend.now()
-    prepared = harness.build_arms(op_spec, candidate, op_spec.entry["baseline"], backend,
-                                  case=args.case or None)
-    setup_us = (backend.now() - setup_start) * 1e6
-
-    interval = harness.interleaved(prepared["candidate"], prepared["baseline"], backend,
-                                   samples=args.samples, warmup=args.warmup)
+    # The second arm is the parent this experiment started from. `--parent` names it; without one
+    # it is the spec baseline, which is the parent of the campaign's first experiment.
+    parent = args.parent or op_spec.entry["baseline"]
     noise = _noise_threshold(device, root=None)
+
+    # Timing runs in a separate interpreter. Correctness has already imported the candidate into
+    # this process; a fresh child means a candidate that patched something during its correctness
+    # run cannot reach the timing loop, and this process never holds candidate state while it signs.
+    from evaluator import sandbox
+
+    root = paths.repo_root()
+    measured = sandbox.measure_in_child({
+        "op": op_spec.op,
+        "root": str(root),
+        "candidate": str(Path(candidate)),
+        "parent": str(parent),
+        "case": args.case or None,
+        "seed": seed,
+        "samples": args.samples,
+        "warmup": args.warmup,
+        "backend": args.backend,
+        "device": device,
+        "verify_output": not args.no_output_check,
+    }, root=root)
+    if not measured.get("ok"):
+        # The child refused the candidate, which is a finding, not a crash. Say what it found and
+        # say which candidate: a refusal that arrives as a traceback reads like a broken tool.
+        error = str(measured.get("error") or "")
+        raise SystemExit(
+            f"the timing child refused {paths.rel(candidate)}: {error}"
+            if error else f"the timing child failed for {paths.rel(candidate)}")
+
     timing_block = harness.timing_report(
-        interval["candidate"], interval["baseline"],
-        noise_threshold=noise, setup_us=setup_us, setup_cap_us=op_spec.setup_cap_us, seed=args.seed,
+        measured["candidate"], measured["parent"],
+        noise_threshold=noise, setup_us=float(measured.get("setup_us") or 0.0),
+        setup_cap_us=op_spec.setup_cap_us,
+        setup_cap_mode=getattr(op_spec, "setup_cap_mode", "relative"), seed=seed,
     )
+    timing_block["measured_in"] = "separate-process"
+    timing_block["setup_us"] = float(measured.get("setup_us") or 0.0)
+    timing_block["process_launch_us"] = float(measured.get("process_launch_us") or 0.0)
+    timing_block["interleaved"] = True
+    timing_block["parent"] = paths.rel(parent) if isinstance(parent, (str, Path)) else str(parent)
     timing_block.pop("samples_candidate", None), timing_block.pop("samples_baseline", None)
     result["timing"] = timing_block
 
@@ -175,9 +209,9 @@ def cmd_aa(args: argparse.Namespace) -> int:
     """A/A test: the same kernel measured as two candidates, to get the noise floor."""
     op_spec = _spec(args.op)
     backend = _backend(args)
-    baseline = args.candidate or op_spec.entry["baseline"]
-    arms = harness.build_arms(op_spec, baseline, op_spec.entry["baseline"], backend)
-    report = harness.aa_test(arms["baseline"], backend, samples=args.samples,
+    kernel = args.candidate or op_spec.entry["baseline"]
+    arms = harness.build_arms(op_spec, kernel, kernel, backend)
+    report = harness.aa_test(arms["parent"], backend, samples=args.samples,
                              warmup=args.warmup, seed=args.seed)
     device = hardware.discover_device()
     payload = {
@@ -198,7 +232,14 @@ def cmd_aa(args: argparse.Namespace) -> int:
 def cmd_profile(args: argparse.Namespace) -> int:
     op_spec = _spec(args.op)
     device = hardware.discover_device()
-    adapter = adapters.select(args.adapter or device.get("profiler"), device.get("profiler") or {})
+    # `device.profiler` names the adapter; the adapter's *settings* live in a separate block.
+    # Passing the name where a settings mapping is expected made `profiler: msopprof` in
+    # device.yaml crash `profile`, which is a documented configuration rather than an edge case.
+    adapter_name = args.adapter or device.get("profiler")
+    adapter_settings = device.get("profiler_settings") or {}
+    if not isinstance(adapter_settings, dict):
+        adapter_settings = {}
+    adapter = adapters.select(adapter_name, adapter_settings)
     out_dir = Path(args.out_dir or (paths.artifacts_dir() / "profile"))
     out_dir.mkdir(parents=True, exist_ok=True)
     command = args.command or [sys.executable, "-c", "pass"]
@@ -275,6 +316,9 @@ def _red_team_kernels(op_spec: spec_mod.Spec) -> List[Dict[str, str]]:
             "name": str(entry.get("name")),
             "path": str(directory / str(entry.get("module", entry.get("name")))),
             "expect": str(entry.get("expect", "caught")),
+            # Which detector is responsible for this cheat. Defaults to correctness, which is
+            # right for a wrong-output cheat; a cheat aimed at the timing loop declares `timing`.
+            "via": str(entry.get("via", "correctness")),
         })
     return cheats
 
@@ -304,6 +348,17 @@ def _emit(payload: Dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
+def _seed(requested: Optional[int]) -> int:
+    """The run's seed: the caller's, or a fresh one.
+
+    A fixed default would make "fresh random shapes" a claim about the code rather than about the
+    run. The seed is always recorded in the result, so a run remains reproducible after the fact.
+    """
+    if requested is not None:
+        return int(requested)
+    return secrets.randbelow(2 ** 31 - 1)
+
+
 def _now() -> str:
     import time
 
@@ -321,12 +376,18 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate = sub.add_parser("evaluate", help="correctness plus timing; emits a signed result")
     evaluate.add_argument("--op", required=True)
     evaluate.add_argument("--candidate", required=True, help="path to the candidate kernel module")
+    evaluate.add_argument("--parent",
+                          help="the kernel this experiment started from, usually best/. Defaults "
+                               "to the spec baseline, which is the parent of the first experiment")
     evaluate.add_argument("--out", help="write the signed result here")
     evaluate.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
     evaluate.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
-    evaluate.add_argument("--seed", type=int, default=0)
+    evaluate.add_argument("--seed", type=int, default=None,
+                          help="reproduce a previous run; omit for a fresh one, which is recorded")
     evaluate.add_argument("--max-cases", type=int, default=None)
     evaluate.add_argument("--case", help="fixed case as JSON, for the timing run")
+    evaluate.add_argument("--no-output-check", action="store_true",
+                          help="skip the repeat-call and input-tracking checks")
     evaluate.add_argument("--backend", help="execution backend name")
     evaluate.set_defaults(func=cmd_evaluate)
 

@@ -88,13 +88,29 @@ def build_entry(root: Path, request: Dict[str, Any], result: Dict[str, Any],
     """Assemble the ledger entry. Every value is copied from an artifact or the environment."""
     card = load_document(root, request.get("hypothesis"), request.get("hypothesis_file")) or {}
     signature = load_document(root, request.get("signature"), request.get("signature_file"))
+    # The verdict is read from the verifier's output, not supplied beside the result. A caller
+    # that can choose the verdict can declare its own change confirmed, which is exactly the
+    # coupling the verifier exists to prevent.
+    verdict_doc = load_document(root, request.get("verdict"), request.get("verdict_file"))
+    if verdict_doc is None:
+        raise SystemExit("record-experiment needs the verifier's verdict object, not a flag")
+    if not isinstance(verdict_doc, dict) or verdict_doc.get("verdict") not in (
+            "confirmed", "refuted", "not_implemented"):
+        raise SystemExit(f"the verdict object must carry verdict/confirmed|refuted|not_implemented: {verdict_doc!r}")
+    if str(verdict_doc.get("hypothesis_id") or "") and str(verdict_doc.get("hypothesis_id")) != str(card.get("id") or ""):
+        raise SystemExit(
+            f"the verdict is for {verdict_doc.get('hypothesis_id')!r} but the card is "
+            f"{card.get('id')!r}: a verdict for another experiment is not evidence for this one")
     timing_after = result.get("timing") or {}
     speedup = timing_after.get("speedup")
     predicted = ((card.get("predictions") or {}).get("speedup") or {}).get("expect")
     entry: Dict[str, Any] = {
         "exp_id": exp_id,
-        "op": str(request.get("op") or result.get("op") or ""),
-        "hw_id": str(request.get("hw_id") or result.get("hw_id") or ""),
+        # Copied from the signed result, never from the request. A request that disagrees is
+        # refused below rather than silently winning: filing an experiment under a different
+        # operator or device is how a rule acquires evidence it never had.
+        "op": str(result.get("op") or ""),
+        "hw_id": str(result.get("hw_id") or ""),
         "env_fingerprint": str(result.get("env_fingerprint") or ""),
         "scaffold_commit": ledger.scaffold_commit(root),
         "parent": str(request.get("parent") or ""),
@@ -109,11 +125,11 @@ def build_entry(root: Path, request: Dict[str, Any], result: Dict[str, Any],
         },
         "timing_after": {
             "median_us": timing_after.get("candidate_us"),
-            "ci_low_us": timing_after.get("speedup_ci_low"),
-            "ci_high_us": timing_after.get("speedup_ci_high"),
+            "ci_low_us": (timing_after.get("candidate_summary") or {}).get("ci_low_us"),
+            "ci_high_us": (timing_after.get("candidate_summary") or {}).get("ci_high_us"),
             "samples": int(timing_after.get("samples") or 0),
         },
-        "verdict": str(request.get("verdict")),
+        "verdict": str(verdict_doc["verdict"]),
         "speedup": speedup,
         "significant": timing_after.get("significant"),
         "implausible": bool((result.get("guards") or {}).get("implausible_speedup")),
@@ -121,6 +137,12 @@ def build_entry(root: Path, request: Dict[str, Any], result: Dict[str, Any],
         "cost": request.get("cost") or {},
         "evaluator_signature": json.dumps((result.get("signature") or {}), sort_keys=True),
     }
+    for field in ("op", "hw_id"):
+        claimed = str(request.get(field) or "")
+        if claimed and claimed != entry[field]:
+            raise SystemExit(
+                f"the request says {field}={claimed!r} but the signed result says "
+                f"{entry[field]!r}: a signed result cannot be re-attributed")
     if signature:
         entry["signature"] = signature
     if request.get("timing_before"):
