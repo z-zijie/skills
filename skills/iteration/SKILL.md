@@ -93,14 +93,14 @@ Ascend950PR 的 L2 是 128 MiB，而小 case 的输入输出整块装得下。�
 
 | 模式 | 内容 | kernel-perf Duration（56 block） |
 |---|---|---:|
-| `FLOOR_MODE=0` | `Process()` 立即 return | **2.07–2.58 µs** |
+| `FLOOR_MODE=0` | `Process()` 立即 return | **2.07 µs**（另一版构建 2.58）|
 | `FLOOR_MODE=1` | 保留 Init + 一个 64 元素 tile | 8.81 µs（含一趟真实 DMA 往返）|
 
 实测要点（Ascend950PR，本机）：
 
 - 地板随 block 数线性涨：**1 block 1.34 µs → 56 block 2.07 µs**，约 13 ns/block。小 case 的总时长常常只有 3 µs，地板占掉三分之二。
-- 同样的空 kernel，**host-event 口径 4.08 µs**、kernel-perf 口径 2.07 µs。地板本身也带口径差，两个数不能互相折算。
-- 所以"某 case 还能快 40%"这种判断，先减去地板再算。地板以上的部分才是代码能动的。
+- 同样的空 kernel（`FLOOR_MODE=0`、56 block），**host-event 口径 4.08 µs**、kernel-perf 口径 2.07 µs。地板本身也带口径差，两个数不能互相折算：拿 bench 的 4.08 去减评分口径的数会得到错的上界。
+- 所以"某 case 还能快 40%"这种判断，先减去地板再算。地板以上的部分才是代码能动的：3 µs 的 case 里 2.07 µs 是地板，代码能动的只有 0.9 µs。
 
 用它回答两个问题：
 
