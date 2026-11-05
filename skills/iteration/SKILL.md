@@ -63,6 +63,7 @@ Ascend950PR 的 L2 是 128 MiB，而小 case 的输入输出整块装得下。�
 | 批内另一组 | 进程间极差 25.5% |
 | **批间：同一二进制，三个独立批** | **9.65 / 8.86 / 9.21 µs（差 8.9%）** |
 | kernel-perf 同一二进制采 5 次 Duration | 7.65 / 7.65 / 7.73 / 7.73 / 7.80 µs（极差 2.0%） |
+| kernel-perf 块级 skew，同二进制两次 | **0.000 vs 0.619 µs**（只覆盖 12/56 子核，见下）|
 | 同上，pipe 占比 | scalar 9.55–10.18%、MTE2 52.50–52.93%（稳定到 1 个点） |
 | 同上，逐核 spread | 13.8% – 19.4%（同一二进制抖 5.6 个点） |
 
@@ -80,6 +81,7 @@ Ascend950PR 的 L2 是 128 MiB，而小 case 的输入输出整块装得下。�
 - **方向一致**：多次重复里配对差都朝同一方向、且跨过批内噪声，才算效应。
 - 噪声取上表的**批内**极差（10–25%），不是批间差；批间差不是噪声，是要被成对设计消掉的系统性偏移。
 - Duration 与 pipe 占比可以当判据；逐核 spread 只能当线索——它在同一二进制上就抖 5.6 个点。
+- kernel-perf 的块级 skew 也一样：同一二进制两次采集给出 0.000 与 0.619 µs，因为它只覆盖 12/56 个子核、且可能退化成同一个起点。核间不均衡看全 56 核的 per-core spread。
 
 完成判据：每个 keep/discard 都能指到一批内部交错的配对比较，写出每组差、符号是否一致、以及跨没跨过批内噪声。
 
@@ -144,4 +146,4 @@ Ascend950PR 的 L2 是 128 MiB，而小 case 的输入输出整块装得下。�
 - [`scripts/build.sh`](scripts/build.sh)、[`scripts/measure.sh`](scripts/measure.sh)：已验证的编译与重复矩阵脚本
 - [`references/ablation-axes.md`](references/ablation-axes.md)：按瓶颈分类的消融轴清单、已证伪项、工具链陷阱
 - [`references/floor-probe.asc`](references/floor-probe.asc)：地板探针，两种模式各一条命令
-- [`kernel-perf`](../kernel-perf/SKILL.md)：pipe 画像与逐核分布的采集工具，本 skill 只定测量纪律，采集走它
+- [`kernel-perf`](../kernel-perf/SKILL.md)：pipe 画像与逐核分布的采集工具，本 skill 只定测量纪律，采集走它。块级时间戳的 metric 组合与覆盖限制见 [`references/measurement-protocol.md`](references/measurement-protocol.md)

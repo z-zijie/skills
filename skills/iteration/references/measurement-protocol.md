@@ -46,24 +46,47 @@ scripts/measure.sh ./bench 5 10
 
 ## kernel-perf
 
-块级时间戳（每核起止、launch skew、tail）是本机唯一能看见"派发斜坡"的数据，但要拿对 metric 组合才出得来。`--with-timeline` 只加 `BasicInfo`，**不产出 `trace.json`**，报告第 7 节仍是 Unavailable。要块级数据必须显式请求 `PipeTimeline`：
+直调二进制直接喂给 `--app`，不需要 python 探针——这正是直调链路的价值。
 
 ```shell
---metrics=PipeUtilization,ResourceConflictRatio,PipeTimeline
-```
-
-拿到之后第 7 节才出现 skew / tail / 逐块区间（实测一次 56 block 的 kernel：12 个可见子核、skew 0.619 µs = 13.9%、tail 2.635 µs = 59.0%）。
-
-```shell
-WARMUP=5 ITERS=10 FLUSH=1 /workspace/cannbench/bin/cnb-npu-lock \
+WARMUP=5 ITERS=10 /workspace/cannbench/bin/cnb-npu-lock \
   /workspace/cannbench/bin/cnb-env /workspace/cannbench/evalenv/bin/python \
   /root/kernel-perf/scripts/kernel_perf.py profile \
   --app ./bench --out prof/r1 --warmup 3 --launch-count 1
 ```
 
-- `--app` 直接指向上面编出的二进制；不需要 python 探针，这正是直调链路的价值。
-- 一次采集约 40–60 s（8 组 metric、多 pass），比 bench 的一次计时贵两个数量级，所以 kernel-perf 只用来取 pipe 画像与 Duration 复核，不用来跑重复矩阵。
-- 采集要拿 NPU 锁（`cnb-npu-lock`），且一次只跑一个 NPU 任务。
+- 一次采集约 40–60 s（8 组 metric、多 pass），比 bench 的一次计时贵两个数量级。用它取 pipe 画像与 Duration 复核，不用它跑重复矩阵。
+- 采集要拿 NPU 锁（`cnb-npu-lock`），一次只跑一个 NPU 任务。
+
+### 块级时间戳：先确认它真的采到了
+
+报告第 7 节（launch skew / tail / 逐块起止）依赖采集目录里的 `trace.json`。这份文件**不是每次都有**：
+
+| 请求方式 | 结果 |
+|---|---|
+| 默认 metric 组 | 无 `trace.json`，第 7 节 `Unavailable` |
+| `--with-timeline` | 只追加 `BasicInfo`，**仍无 `trace.json`**，第 7 节照旧 `Unavailable` |
+| `--metrics=PipeUtilization,ResourceConflictRatio,PipeTimeline` | 实测产出 `trace.json`，第 7 节有内容 |
+| `--metrics=PipeUtilization,PipeTimeline` | 实测**没有** `trace.json` |
+
+用法上的结论：要块级数据显式写带上 `ResourceConflictRatio` 的那一组，并**在采完后先 `find <out> -name trace.json` 确认**。看不到文件就是没有数据，不要因为"我请求了 PipeTimeline"就假定第 7 节有值。
+
+### 块级 skew 只能当线索
+
+同一份二进制（本流程骨架），两次采集的第 7 节：
+
+| 采集 | 覆盖 | Launch skew | Tail | 逐块时长范围 |
+|---|---:|---:|---:|---|
+| 一次 | 12 子核 | **0.000 µs** | 0.690 µs (12.3%) | 1.884–2.575 µs |
+| 另一次 | 12 子核 | **0.619 µs (13.9%)** | 2.635 µs (59.0%) | 2.080–4.959 µs |
+
+skew 从 0 跳到 0.619，而代码没变。直接原因是 `trace.json` 里所有被观测子核的 `min(ts)` 完全相同（0.0121），"最晚开始减最早开始"于是恒等于 0——**这是观测方式造成的零，不是"派发没有斜坡"**。同一批采集的第 8 节（全 56 核）给出 duration 3.305–4.125 µs、spread 22.68%，那里才是真实形状。
+
+所以：
+
+- 逐块起止**只覆盖 12/56 个子核**，且可能整体退化成一个原点；skew 当一个下界/线索读，不当结论。
+- 想看核间不均衡，用第 8 节的 **per-core spread（全 56 核）**，配合 bench 的重复矩阵确认方向。
+- 第 7 节真正稳的是 **tail** 与逐块时长范围，两者在两次采集里都给出了非零且可解释的值。
 
 ## 噪声实测全表
 
