@@ -36,6 +36,11 @@ from rsi import hardware, knowledge, ledger, signature as signature_mod, spec as
 
 STEPS: list = []
 
+#: A self-contained key, so the demo runs on a fresh checkout with no deployment step taken. The
+#: point of the demo is to show the machinery works, and requiring `keygen` first would make it a
+#: test of the setup instructions instead.
+DEMO_KEY = b"rsi-demo-key-not-a-secret-0123456789"
+
 
 def step(name: str):
     """Record one step's outcome; keep going, so one failure still shows the rest."""
@@ -115,12 +120,12 @@ def main(argv=None) -> int:
             "correctness": {"passed": True, "cases_run": 1, "cases_failed": 0},
             "timing": {"candidate_us": 1.0, "baseline_us": 1.2, "samples": 30, "setup_us": 0.0},
         }
-        signed = ledger.sign(result)
-        ledger.validate_result(signed)
+        signed = ledger.sign(result, key=DEMO_KEY)
+        ledger.validate_result(signed, key=DEMO_KEY)
         tampered = dict(signed)
         tampered["timing"] = dict(signed["timing"], candidate_us=0.01)
         try:
-            ledger.validate_result(tampered)
+            ledger.validate_result(tampered, key=DEMO_KEY)
         except ledger.SignatureError:
             return "refused, as it must be"
         raise AssertionError("an edited result kept a valid signature")
