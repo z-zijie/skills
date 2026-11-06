@@ -927,6 +927,26 @@ def test_pipeline_waveform() -> None:
                   "log", "timeline.bin.0" in marked, marked)
             check("the marker's attempt count is reported",
                   "3 times" in marked, marked)
+
+            # The marker is written into the *PipeTimeline* pass, but analysis
+            # runs on the core pass (OPPROF_merged). Regression: reading only
+            # the analyzed root and its parents lost the count in exactly the
+            # layout the collector normally produces.
+            mp = Path(tempfile.mkdtemp(prefix="kp-waveform-mp-"))
+            try:
+                mp_cap = mp / "capture"
+                mp_core = mp_cap / "pass0_core" / "OPPROF_core"
+                mp_tl = mp_cap / "pass1_pipetimeline" / "OPPROF_tl"
+                mp_core.mkdir(parents=True)
+                mp_tl.mkdir(parents=True)
+                (mp_core / "OpBasicInfo.csv").write_text("Op Name=x\n")
+                (mp_cap / "OPPROF_merged").symlink_to(mp_core.resolve())
+                KP._mark_waveform_requested(mp_tl, attempts=2, recovered=False)
+                mp_reason = KP._explain_missing_waveform(mp_core)
+                check("a marker in the PipeTimeline pass is found",
+                      "2 times" in mp_reason, mp_reason)
+            finally:
+                shutil.rmtree(mp, ignore_errors=True)
             # Not requested at all: silence, because the report must not nag
             # about a layer nobody asked for.
             quiet = Path(tempfile.mkdtemp(prefix="kp-waveform-quiet-"))

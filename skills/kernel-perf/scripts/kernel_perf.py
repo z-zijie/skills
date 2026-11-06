@@ -681,9 +681,29 @@ def _explain_missing_waveform(root: Path,
 
 
 def _read_waveform_marker(root: Path) -> Optional[Dict[str, Any]]:
-    """The note `_mark_waveform_requested` left, if this capture has one."""
-    for candidate in (root, root.parent, root.parent.parent):
-        marker = candidate / "waveform_requested.json"
+    """The note `_mark_waveform_requested` left, if this capture has one.
+
+    In a multi-pass collection the marker is written into the *PipeTimeline*
+    pass, while the analyzed root is the core pass (``OPPROF_merged``). So the
+    pass directories have to be searched too -- otherwise the attempt count is
+    silently lost in exactly the layout the collector normally produces.
+    """
+    direct = (root, root.parent, root.parent.parent)
+    candidates: List[Path] = [c / "waveform_requested.json" for c in direct]
+    for base in (root.parent, root.parent.parent):
+        try:
+            if not base.is_dir():
+                continue
+            for pattern in ("pass*/OPPROF_*/waveform_requested.json",
+                            "pass*/waveform_requested.json"):
+                candidates.extend(sorted(base.glob(pattern)))
+            for child in sorted(base.iterdir()):
+                if child.is_dir() and "pipetimeline" in child.name.lower():
+                    candidates.extend(sorted(
+                        child.glob("OPPROF_*/waveform_requested.json")))
+        except OSError:
+            continue
+    for marker in candidates:
         try:
             if marker.is_file():
                 return json.loads(marker.read_text(errors="replace"))
