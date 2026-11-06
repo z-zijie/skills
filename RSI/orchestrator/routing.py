@@ -35,6 +35,7 @@ DEFAULT_ROUTING: Dict[str, Dict[str, Any]] = {
     "implement-change": {"tier": "cheap", "retries": 2},
     "verify-mechanism": {"tier": "strong", "isolated_context": True},
     "plan-campaign": {"tier": "strong"},
+    "revisit-closures": {"tier": "strong"},
     "distill-rules": {"tier": "strong"},
     "analyze-failures": {"tier": "strong"},
     "audit-knowledge": {"tier": "mid"},

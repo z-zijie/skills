@@ -12,6 +12,11 @@ workflow (W3). Its two loops are the ones that make the system honest:
   toward no rule — it never becomes evidence.
 * The timing result is sealed until the verdict exists. The verifier never sees it, so
   "it got faster" cannot bias "it was implemented".
+
+A third loop is not a retry loop but it is what keeps the campaign honest about its own history:
+before a direction is written off, ``revisit`` checks whether it was ever really tried. A stop
+whose closures all failed to reach machine code is not a stop, and ``apply_plan`` refuses to
+report one.
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
 
-from ._tooling import knowledge, ledger, paths
+from ._tooling import closures, knowledge, ledger, paths
 
 #: W2's two retry ceilings. Raising them is a scaffold change, not a tuning knob.
 IMPLEMENT_RETRIES = 2
@@ -29,6 +34,8 @@ CORRECTNESS_RETRIES = 2
 TARGET_ATTAINMENT_PCT = 85.0
 NO_GAIN_ROUNDS = 5
 REPROFILE_AFTER_STALLED_ROUNDS = 3
+#: Closures that force a revisit before the campaign may call a direction exhausted.
+REVISIT_AFTER_OPEN_CLOSURES = closures.MIN_OPEN_CLOSURES
 
 
 class CampaignError(RuntimeError):
@@ -48,6 +55,7 @@ STATES = (
     "record",            # record-experiment
     "promote",           # the evaluator promotes a qualifying candidate into best/
     "gap",               # queue a microbenchmark design when prediction error is large
+    "revisit",           # revisit-closures: were the written-off directions ever really tried?
     "plan",              # plan-campaign
     "report",            # report-campaign
     "done",
@@ -66,6 +74,7 @@ STATE_SKILL = {
     "record": "record-experiment",
     "promote": "record-experiment",
     "gap": "design-microbench",
+    "revisit": "revisit-closures",
     "plan": "plan-campaign",
     "report": "report-campaign",
 }
@@ -94,6 +103,11 @@ class Campaign:
     significant: Optional[bool] = None
     prediction_error: Optional[float] = None
     queued_tasks: List[Dict[str, Any]] = field(default_factory=list)
+    closures: List[Dict[str, Any]] = field(default_factory=list)
+    revisit_due: bool = False
+    revisit_checked: bool = False
+    reopen_direction: Optional[str] = None
+    reopen_retry: Optional[str] = None
     history: List[Dict[str, Any]] = field(default_factory=list)
     note: str = ""
 
@@ -163,6 +177,7 @@ def _state_reason(campaign: Campaign) -> str:
         "record": "unseal the timing and append one experiment",
         "promote": "the evaluator promotes a confirmed and significant candidate",
         "gap": "prediction error is large: the hardware model has a hole here",
+        "revisit": "check the closures before a direction is written off",
         "plan": "continue, change direction, combine confirmed changes, or stop",
         "report": "write the campaign report",
     }
@@ -247,8 +262,11 @@ def advance(campaign: Campaign, outcome: Dict[str, Any]) -> Dict[str, Any]:
         return next_step(campaign)
 
     if state == "record":
+        campaign.revisit_checked = False
         # One experiment was spent the moment a verdict existed, whether or not it qualified.
         campaign.experiments += 1
+        if isinstance(outcome.get("closure"), dict):
+            campaign.closures.append(dict(outcome["closure"]))
         campaign.last_speedup = outcome.get("speedup")
         campaign.significant = outcome.get("significant")
         campaign.prediction_error = outcome.get("prediction_error")
@@ -285,8 +303,11 @@ def advance(campaign: Campaign, outcome: Dict[str, Any]) -> Dict[str, Any]:
                 "op": campaign.op,
             })
         campaign.round += 1
-        campaign.state = "plan"
+        campaign.state = "revisit"
         return next_step(campaign)
+
+    if state == "revisit":
+        return record_revisit(campaign, outcome)
 
     if state == "plan":
         decision = outcome.get("decision", "continue")
@@ -299,12 +320,78 @@ def advance(campaign: Campaign, outcome: Dict[str, Any]) -> Dict[str, Any]:
     raise CampaignError(f"no transition from state {state!r}")
 
 
-def apply_plan(campaign: Campaign, decision: str, outcome: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Act on ``plan-campaign``'s decision, including every stop condition."""
+def unresolved_directions(campaign: Campaign) -> List[str]:
+    """The directions on record that may not be called exhausted yet.
+
+    The campaign stores a closure record after every failed experiment and the summarised rows
+    after a revisit plan, so both shapes are read here: a record carries `evidence` and
+    `points_tried`, a row carries the `retirable` verdict the plan already computed.
+    """
+    found: List[str] = []
+    for item in campaign.closures:
+        if not isinstance(item, dict):
+            continue
+        direction = str(item.get("direction") or "")
+        retirable = item.get("retirable")
+        if retirable is None:
+            retirable = closures.is_retirable(item)
+        if not retirable and direction and direction not in found:
+            found.append(direction)
+    return found
+
+
+def record_revisit(campaign: Campaign, outcome: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Consume ``revisit-closures``' plan and decide whether the campaign owes a reopen.
+
+    A closure that never reached machine code, a confirmed mechanism whose score did not follow,
+    and a premise refuted at one point of its parameter are all *open*: they are not evidence that
+    the direction does not pay. When any of them is open, the next card is that reopen rather than
+    a new direction or a stop.
+    """
     outcome = outcome or {}
+    plan = outcome.get("plan") if isinstance(outcome.get("plan"), dict) else outcome
+    decision = str(plan.get("decision") or "not_triggered")
+    if isinstance(plan.get("closures"), list):
+        # A plan that carried no closure list must not erase the ones the record step collected.
+        campaign.closures = list(plan["closures"])
+    campaign.revisit_due = decision in {"reopen", "hold"}
+    reopen = (plan.get("reopens") or [None])[0] if decision == "reopen" else None
+    campaign.reopen_direction = str(reopen.get("direction")) if isinstance(reopen, dict) else None
+    campaign.reopen_retry = str(reopen.get("retry")) if isinstance(reopen, dict) else None
+    campaign.history.append({"state": "revisit", "decision": decision,
+                             "reopen": campaign.reopen_direction,
+                             "open": unresolved_directions(campaign)})
+    if decision == "reopen" and campaign.reopen_direction:
+        campaign.state = "hypothesize"
+        campaign.note = (f"reopening {campaign.reopen_direction} ({campaign.reopen_retry}): the "
+                         "closure it rests on is not evidence that the direction does not pay")
+        return next_step(campaign)
+    campaign.state = "plan"
+    if decision in {"hold", "exhausted"}:
+        campaign.note = str(plan.get("note") or campaign.note)
+    return next_step(campaign)
+
+
+def apply_plan(campaign: Campaign, decision: str, outcome: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Act on ``plan-campaign``'s decision, including every stop condition.
+
+    A stop that rests on refuted directions also rests on their closures, so the closures are
+    re-checked once before one of them is reported. ``stop_target`` and the budget ceiling are
+    exempt: neither claims that the playbook is exhausted.
+    """
+    outcome = outcome or {}
+    if decision in {"stop", "stop_plateau", "stop_budget"} and not campaign.revisit_checked:
+        # One check per stop attempt chain: the revisit either produces a reopen (and the campaign
+        # continues) or answers the question once, so a capped closure cannot loop here forever.
+        campaign.revisit_checked = True
+        campaign.state = "revisit"
+        campaign.note = (f"stop proposed: {len(unresolved_directions(campaign))} direction(s) on "
+                         "record are not settled; check whether they were ever really tried before "
+                         "reporting the playbook exhausted")
+        return next_step(campaign)
     if decision in {"stop_target", "stop_plateau", "stop_budget", "stop"}:
         campaign.state = "report"
-        campaign.note = outcome.get("reason", f"stopped: {decision}")
+        campaign.note = outcome.get("reason") or campaign.note or f"stopped: {decision}"
         return next_step(campaign)
     if campaign.experiments >= campaign.budget_experiments:
         campaign.state = "report"
@@ -332,6 +419,7 @@ def apply_plan(campaign: Campaign, decision: str, outcome: Optional[Dict[str, An
 def stop_conditions(campaign: Campaign) -> Dict[str, Any]:
     """Every stop condition, evaluated together, so a plan decision is auditable."""
     return {
+        "unresolved_closures": unresolved_directions(campaign),
         "target_reached": (
             campaign.current_attainment_pct is not None
             and campaign.current_attainment_pct >= campaign.target_attainment_pct
@@ -361,5 +449,6 @@ def _better(current: Optional[float], candidate: float) -> float:
 def _trim(outcome: Dict[str, Any]) -> Dict[str, Any]:
     """Keep the history small: signatures and verdicts, not whole profiles."""
     keys = ("signature", "verdict", "decision", "diff", "correctness", "speedup", "significant",
-            "cards", "prediction_error", "qualifies", "attained_pct", "reason")
+            "cards", "prediction_error", "qualifies", "attained_pct", "reason", "closure",
+            "plan")
     return {key: outcome[key] for key in keys if key in outcome}

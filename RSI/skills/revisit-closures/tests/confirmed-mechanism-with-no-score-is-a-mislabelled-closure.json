@@ -1,0 +1,86 @@
+{
+  "name": "a confirmed mechanism that did not move the score is not a refutation and reopens to bank it",
+  "note": "groups A, B and C all passed and the operator score did not follow: the direction is mislabelled, and the reopen keeps the patch",
+  "script": "scripts/revisit_closures.py",
+  "input": {
+    "op": "mla_prolog",
+    "proposed_action": "change_direction",
+    "stalled_rounds": 3,
+    "entries": [
+      {
+        "exp_id": "exp-0003",
+        "op": "mla_prolog",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 0.9932,
+        "hypothesis": {
+          "direction": "rope-tile-deinterleave",
+          "transformation": "de-interleave the rope tile, gated on launches above 8192 rows",
+          "predictions": {
+            "speedup": {
+              "expect": 1.8,
+              "low": 1.1,
+              "high": 2.5
+            }
+          }
+        }
+      }
+    ],
+    "verdicts": {
+      "exp-0003": {
+        "hypothesis_id": "H-0003",
+        "verdict": "refuted",
+        "checks": [
+          {
+            "id": "A1",
+            "group": "A",
+            "conclusion": "pass",
+            "evidence": "ProcessTiledDeinterleaved added, call site gated on rows_ >= 8192"
+          },
+          {
+            "id": "B1",
+            "group": "B",
+            "conclusion": "pass",
+            "evidence": "the symbol is present in the built object"
+          },
+          {
+            "id": "C1",
+            "group": "C",
+            "conclusion": "pass",
+            "evidence": "rope 95.4 -> 64.3 us on the largest case"
+          },
+          {
+            "id": "C2",
+            "group": "C",
+            "conclusion": "pass",
+            "evidence": "vector pipe 91.8% -> 71.4%, core time 86.9 -> 50.5 us"
+          },
+          {
+            "id": "D1",
+            "group": "D",
+            "conclusion": "fail",
+            "evidence": "the operator score did not improve against the parent"
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "triggered": true,
+    "decision": "reopen",
+    "counts": {
+      "implementation": 0,
+      "measurement": 1,
+      "premise": 0,
+      "unclassified": 0
+    },
+    "retirable": [],
+    "reopen_directions": [
+      "rope-tile-deinterleave"
+    ],
+    "reopen_retries": [
+      "bank_and_recheck"
+    ]
+  },
+  "source": "the real campaign's exp-0015: mechanism confirmed and significant per kernel, operator score flat inside the run-to-run drift, recorded as refuted because promotion required a significant operator gain"
+}

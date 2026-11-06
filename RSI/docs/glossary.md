@@ -18,6 +18,11 @@ base holds.
 **Card** — a hypothesis card: one falsifiable experiment, with a mechanism, named counters with
 predicted directions, an expected speedup, and the evidence that would show the change landed.
 
+**Closure** — the record a failed experiment leaves behind: which direction it closed, why (the
+mechanism never landed, it landed without moving the score, or it was measured and did not move),
+how many points of the direction's parameter were tried, and any condition under which it should
+be retried. Only an admissible, swept closure is negative evidence about a direction.
+
 **Conjecture** — an unverified idea. It may inspire a hypothesis and may not be evidence. Stored
 separately so it cannot be mistaken for a rule.
 
@@ -55,6 +60,9 @@ excludes zero while holdout holds.
 
 **Scaffold** — everything around the model: knowledge base, playbooks, skills, prompts, tools.
 The thing that improves. Model weights never do.
+
+**Open closure** — a refutation that is not evidence about its direction, so the direction is
+resting rather than dead and has to be reopened before it can be reported as exhausted.
 
 **Signature tag** — one discretized metric condition, e.g. `uncoalesced`. Tags are what retrieval
 matches on.

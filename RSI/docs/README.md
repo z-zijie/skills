@@ -9,6 +9,8 @@
 | [`permissions.md`](permissions.md) | Who may write what, how it is enforced, and what the guarantee honestly is. |
 | [`anti-cheating.md`](anti-cheating.md) | Every way around the evaluator, the defence that catches it, which detector owns it, and where that defence lives in code. |
 | [`guarantees.md`](guarantees.md) | What this scaffold guarantees, the mechanism behind each, and the cases where it does not hold. Read before trusting a reported number. |
+| [`closures.md`](closures.md) | What a failed direction actually proved, when it may be written off, and how an open closure is reopened. |
+| [`campaign-audit.md`](campaign-audit.md) | One real campaign read against this scaffold: what it followed, what it skipped, and which recorded refutations were not refutations. |
 | [`metrics.md`](metrics.md) | The system metrics, why efficiency is the primary one, and where each is computed. |
 | [`moving-to-a-new-device.md`](moving-to-a-new-device.md) | The six-step porting checklist: describe, measure, map the profiler, seed the documented layer, re-tune thresholds, re-baseline. |
 | [`roadmap.md`](roadmap.md) | The five phases, their gates, and what this repository has and has not built. |
@@ -19,4 +21,5 @@
 **Running it:** QUICKSTART → workflows (W3) → anti-cheating.
 **Porting it:** vocabulary → moving-to-a-new-device → QUICKSTART.
 **Changing it:** vocabulary → contracts → AUTHORING → permissions → roadmap (what the gates are).
+**Trusting a refutation:** closures → campaign-audit → verification.
 **Deciding whether to trust it:** anti-cheating → metrics → roadmap.

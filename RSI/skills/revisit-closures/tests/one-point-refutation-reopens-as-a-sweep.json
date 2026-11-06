@@ -1,0 +1,59 @@
+{
+  "name": "a one-point refutation of a parameter reopens as a sweep instead of retiring the direction",
+  "note": "the mechanism landed, the counter was measured, and one width of a split was tried: below MIN_POINTS the closure is provisional",
+  "script": "scripts/revisit_closures.py",
+  "input": {
+    "op": "mla_prolog",
+    "min_points": 2,
+    "proposed_action": "stop",
+    "stalled_rounds": 5,
+    "entries": [
+      {
+        "exp_id": "exp-0002",
+        "op": "mla_prolog",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0016,
+        "closure": {
+          "direction": "head-gemm-n-split",
+          "evidence": "premise",
+          "landed": true,
+          "points_tried": 1,
+          "parameters": [
+            "headNSplit"
+          ]
+        },
+        "hypothesis": {
+          "direction": "head-gemm-n-split",
+          "transformation": "split each head's N across blocks in the head GEMM",
+          "predictions": {
+            "speedup": {
+              "expect": 1.03,
+              "low": 1.01,
+              "high": 1.1
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "triggered": true,
+    "decision": "reopen",
+    "counts": {
+      "implementation": 0,
+      "measurement": 0,
+      "premise": 1,
+      "unclassified": 0
+    },
+    "retirable": [],
+    "reopen_directions": [
+      "head-gemm-n-split"
+    ],
+    "reopen_retries": [
+      "widen_sweep"
+    ],
+    "retirable_directions": []
+  },
+  "source": "the real campaign's H-0011: the split did not engage because 128 heads already exceed the array, which one width cannot distinguish from a wrong mechanism"
+}

@@ -67,6 +67,22 @@
       }
     },
     "evaluator_signature": {"type": "string", "description": "Signature block of the evaluator result this entry was built from."},
+    "closure": {
+      "type": "object",
+      "description": "Why this failed experiment closed a direction. `evidence` is derived from the verifier's checks by record-experiment, never chosen by the implementer: implementation (the mechanism never reached machine code), measurement (it landed and moved its counters but not the score), premise (it landed, was measured, and did not move), unclassified (no checks recorded). Only `premise`, swept over at least two points and with no retry condition, is evidence against a direction.",
+      "additionalProperties": false,
+      "properties": {
+        "direction": {"type": "string", "minLength": 1, "description": "Stable slug for the direction, so a retry under a new sentence accumulates instead of looking new."},
+        "evidence": {"type": "string", "enum": ["implementation", "measurement", "premise", "unclassified"]},
+        "landed": {"type": "boolean", "description": "Whether every group A and B check passed."},
+        "reason": {"type": "string", "description": "What the closure rests on, in the verifier's words."},
+        "checks_failed": {"type": "array", "items": {"type": "string"}, "description": "Check ids that failed or were unknown."},
+        "points_tried": {"type": "integer", "minimum": 1, "description": "How many points of the direction's parameter were actually tried."},
+        "parameters": {"type": "array", "items": {"type": "string"}, "description": "What the direction varies, so the next card can widen the sweep."},
+        "reopen_when": {"type": ["string", "null"], "description": "Condition under which the direction deserves another experiment; a closure with one is not retirable."},
+        "reopened_by": {"type": "array", "items": {"type": "string"}, "description": "Experiment ids that reopened this direction."}
+      }
+    },
     "result_ref": {"type": "string"}
   }
 }
