@@ -693,12 +693,16 @@ def test_pipeline_waveform() -> None:
         # Build one AIV record: SCALAR 100 cycles, then MTE2 50, then idle 30.
         # The encoding pairs a mask with the NEXT token's duration, so the
         # tokens are: mask, dur-of-previous, mask, dur-of-previous, ...
+        # A token's mask is paired with the NEXT token's duration, so the
+        # sequence below encodes: SCALAR [10,110), MTE2 [110,160), VECTOR
+        # [160,190). MTE2 and VECTOR are both present, which is what the
+        # serial-vs-overlapped verdict needs in order to say anything.
         payload: List[int] = [
             (0xE000 << 16) | 0x1234,        # header
             (0xF001 << 16) | 10,            # lead-in 10 cycles, mask SCALAR
             (0xF010 << 16) | 100,           # SCALAR held for 100
-            (0xF000 << 16) | 50,            # MTE2 held for 50
-            (0xF001 << 16) | 30,            # idle held for 30
+            (0xF002 << 16) | 50,            # MTE2 held for 50
+            (0xF000 << 16) | 30,            # VECTOR held for 30
             (0x0D88 << 16) | 7,             # counter, ends the group
         ]
         stride = PW.STRIDE_WORDS
@@ -731,7 +735,7 @@ def test_pipeline_waveform() -> None:
                 # The clock starts at 10 (the lead-in), so states are
                 # [10,110) SCALAR, [110,160) MTE2, [160,190) idle.
                 check("three intervals", len(intervals) == 3, str(len(intervals)))
-                expected = [(10, 110, "SCALAR"), (110, 160, "MTE2"), (160, 190, None)]
+                expected = [(10, 110, "SCALAR"), (110, 160, "MTE2"), (160, 190, "VECTOR")]
                 got = [
                     (iv.start, iv.end, iv.pipes[0] if iv.pipes else None)
                     for iv in intervals
@@ -743,10 +747,10 @@ def test_pipeline_waveform() -> None:
                       groups[0].end_cycle == 190, str(groups[0].end_cycle))
                 busy = PW.busy_by_pipe(groups[0])
                 check("busy cycles per pipe",
-                      busy.get("SCALAR") == 100 and busy.get("MTE2") == 50,
-                      str(busy))
-                check("idle interval detected",
-                      len(PW.bubbles(groups[0])) == 1)
+                      busy.get("SCALAR") == 100 and busy.get("MTE2") == 50
+                      and busy.get("VECTOR") == 30, str(busy))
+                check("no idle interval when every cycle is busy",
+                      len(PW.bubbles(groups[0])) == 0)
 
         # --- freq fallback ---------------------------------------------------
         check("clock read from capture metadata",
@@ -759,8 +763,8 @@ def test_pipeline_waveform() -> None:
         core = result["per_core"][0]
         check("span converts at the capture clock",
               abs(core["span_us"] - 0.190) < 1e-6, str(core["span_us"]))
-        check("idle share computed",
-              abs(core["idle_pct"] - 30 / 190 * 100) < 0.01, str(core["idle_pct"]))
+        check("idle share is zero when fully busy",
+              abs(core["idle_pct"]) < 0.01, str(core["idle_pct"]))
         check("windows counted", core["windows"] == 1, str(core.get("windows")))
         check("pipe share and spread present",
               "SCALAR" in core["pipes"] and "pct_sd" in core["pipes"]["SCALAR"],
@@ -784,6 +788,16 @@ def test_pipeline_waveform() -> None:
         pieces, unnamed = PW.pipe_mask_names(0x04, "aic")
         check("same bit is CUBE on AIC", pieces == ("CUBE",) and unnamed == 0,
               f"{pieces}/{unnamed:#x}")
+
+        # --- the overlap verdict must survive a relocated capture ----------
+        # Regression: re-deriving the stream path from the capture directory
+        # silently dropped this section whenever the stream lived elsewhere,
+        # and a missing verdict reads exactly like "nothing to report".
+        (root / "trace.json").unlink(missing_ok=True)
+        summary = PW.summarize(root, 1000.0)
+        rendered = PW.render_markdown(summary)
+        check("overlap verdict is rendered", "Serial or overlapped" in rendered,
+              "section missing")
 
         # --- verify() must distinguish "wrong" from "cannot check" ----------
         check("verify with no trace.json is INCONCLUSIVE",
@@ -815,6 +829,8 @@ def test_pipeline_waveform() -> None:
              "ts": 10 / 1000.0, "dur": 100 / 1000.0},
             {"ph": "X", "name": "MTE2", "pid": "core3.veccore0",
              "ts": 110 / 1000.0, "dur": 50 / 1000.0},
+            {"ph": "X", "name": "VECTOR", "pid": "core3.veccore0",
+             "ts": 160 / 1000.0, "dur": 30 / 1000.0},
         ]}))
         check("matching pipe trace is VERIFIED",
               PW.verify(root)["verdict"] == "VERIFIED",

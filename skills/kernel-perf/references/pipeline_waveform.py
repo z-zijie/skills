@@ -1014,8 +1014,18 @@ def _render_overlap(result: Dict[str, object]) -> List[str]:
     """
     lines: List[str] = []
     add = lines.append
-    capture = Path(str(result["capture"]))
-    timeline = locate_timeline(capture)
+    # Prefer the stream path the summary already resolved. Re-deriving it from
+    # `capture` silently produced no section whenever the caller passed a
+    # capture whose ``timeline`` lived outside it (a multi-pass layout), and a
+    # missing verdict is indistinguishable from "no overlap to report".
+    timeline: Optional[Path] = None
+    recorded = result.get("timeline")
+    if recorded:
+        candidate = Path(str(recorded))
+        if candidate.is_file():
+            timeline = candidate
+    if timeline is None:
+        timeline = locate_timeline(Path(str(result["capture"])))
     if timeline is None:
         return lines
     records = read_records(timeline)
@@ -1052,6 +1062,7 @@ def _render_overlap(result: Dict[str, object]) -> List[str]:
         total = both + only_left + only_right
         if not total:
             continue
+        freq = freq or 1.0
         pct = 100.0 * both / total
         add("## 4. Serial or overlapped: %s vs %s" % (left, right))
         add("")

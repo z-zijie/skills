@@ -1458,7 +1458,10 @@ def render_waveform(waveform: Dict[str, Any], number: int) -> List[str]:
     if PW is None:
         return []
     try:
-        body = PW.render_markdown(waveform)
+        # The stored result names the stream it was decoded from. Re-derive the
+        # capture-level sections from that same stream so they cannot silently
+        # go missing when the capture directory has moved.
+        body = PW.render_markdown(waveform, None)
     except Exception:  # noqa: BLE001 - a broken section must not kill the report
         return [
             f"## {number}. Pipeline waveform",
