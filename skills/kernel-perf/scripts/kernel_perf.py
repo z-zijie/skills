@@ -1449,79 +1449,40 @@ def summarize_timeline(capture: Capture) -> Optional[Dict[str, Any]]:
 def render_waveform(waveform: Dict[str, Any], number: int) -> List[str]:
     """Report section for the raw pipeline waveform.
 
-    This is the only part of the report that describes *ordering*. Every other
-    section is a sum over the kernel, so "MTE2 30%, VECTOR 7%" looks the same
-    whether the pipes overlapped or took strict turns. These numbers say which.
+    The heavy lifting lives in ``references/pipeline_waveform.py``: it owns the
+    format, the statistics and the wording, so there is exactly one place that
+    decides what a number means. This wrapper only re-nests the headings, because
+    the decoder numbers its sections from 1 for standalone use while this report
+    needs them under section ``number``.
     """
-    lines: List[str] = []
-    add = lines.append
-    agg = waveform["aggregate"]
-    freq = waveform.get("freq_mhz") or 0
+    if PW is None:
+        return []
+    try:
+        body = PW.render_markdown(waveform)
+    except Exception:  # noqa: BLE001 - a broken section must not kill the report
+        return [
+            f"## {number}. Pipeline waveform",
+            "",
+            "> The raw waveform was collected but could not be rendered. "
+            "`metrics.json` still carries the decoded values.",
+            "",
+        ]
 
-    add(f"## {number}. Pipeline waveform (raw per-cycle stream)")
-    add("")
-    add(f"Decoded from `{Path(str(waveform['timeline'])).name}` in the capture "
-        f"({waveform['records']} core records, {freq:g} MHz), not from the parsed "
-        "`trace.json`: the vendor's trace keeps only its first sampling group and "
-        "clips the tail, while this stream is complete and carries explicit idle "
-        "intervals.")
-    add("")
-
-    add(f"### {number}.1 Pipe occupancy")
-    add("")
-    add("| Pipe | Share | Cycles |")
-    add("|---|---:|---:|")
-    for name, pct in agg["pipes_weighted_pct"].items():
-        add(f"| {name} | {pct:.1f}% | {agg['pipe_cycles'][name]:,} |")
-    add("")
-    add("Shares are of summed core span. Pipes run in parallel, so a pipe near "
-        "100% means it was busy for the whole sampled window -- not that it used "
-        "all the machine.")
-    add("")
-
-    add(f"### {number}.2 Idle and overlap")
-    add("")
-    add(f"- Mean idle across {agg['cores_active']} sampled cores: "
-        f"**{_fmt(agg['mean_idle_pct'], '%')}**")
-    add(f"- Worst core `{agg['max_idle_pid']}`: {_fmt(agg['max_idle_pct'], '%')} idle")
-    add("")
-    add("Idle here means *no* pipe was busy -- the core was waiting on something "
-        "outside the pipes. A core that is idle and has low pipe shares points at "
-        "a dependency or sync problem, not at a pipe at its limit.")
-    add("")
-
-    add("| Core | Span us | Idle | Busiest pipe | Longest idle us |")
-    add("|---|---:|---:|---|---:|")
-    for core in waveform["per_core"]:
-        if not core.get("span_cycles"):
+    out: List[str] = [f"## {number}. Pipeline waveform (raw per-cycle stream)"]
+    seen_title = False
+    for line in body.splitlines():
+        if line.startswith("# "):
+            # The decoder's own document title becomes the section heading.
+            seen_title = True
             continue
-        pipes = core.get("pipes") or {}
-        if pipes:
-            top = max(pipes.items(), key=lambda kv: kv[1]["cycles"])
-            busiest = f"{top[0]} {top[1]['pct']:.0f}%"
-        else:
-            busiest = "-"
-        add(f"| `{core['pid']}` | {core['span_us']:.3f} | "
-            f"{core['idle_pct']:.1f}% | {busiest} | "
-            f"{core.get('longest_idle_us') or 0.0:.2f} |")
-    add("")
-
-    unknown = {c["pid"]: c["unknown_masks"] for c in waveform["per_core"]
-               if c.get("unknown_masks")}
-    if unknown:
-        add("Unnamed pipe states (a bit this tool has not verified):")
-        add("")
-        for pid, masks in unknown.items():
-            detail = ", ".join(f"`{m}` {d['cycles']:,} cyc"
-                               for m, d in masks.items())
-            add(f"- `{pid}`: {detail}")
-        add("")
-
-    add("**Coverage limit**: the profiler samples a subset of cores and keeps a "
-        "short window per core. Treat these as per-core samples, never add them "
-        "up into a kernel duration. Every number is tier C (sampled) or better.")
-    add("")
-    return lines
+        if line.startswith("## "):
+            head, _, tail = line[3:].partition(". ")
+            if head.isdigit() and tail:
+                # "## 2. Idle" under section 15 -> "### 15.2 Idle"
+                out.append(f"### {number}.{head} {tail}")
+                continue
+        out.append(line)
+    return out
 
 
 def render_markdown(result: Dict[str, Any]) -> str:

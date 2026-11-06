@@ -102,18 +102,29 @@ On a cube matmul (28 blocks): CUBE 47.8%, MTE2 39.5%, MTE1 11.8%, SCALAR 5.7%,
 FIXP 3.4%, with CUBE and MTE2 overlapping across the whole body -- a healthy
 double-buffered matmul.
 
-> **The vendor's `trace.json` is not the waveform.** It is a sampled, clipped
-> parse of it (first sampling group only), and it rounds to microseconds. The
-> decoder reads the raw stream and keeps integer cycles.
+> **The vendor's `trace.json` is not the waveform.** It is a sampled parse of it
+> that rounds to microseconds. The decoder reads the raw stream and keeps integer
+> cycles.
 
-The decode is verified by `--verify`, which requires an exact interval-for-
-interval match against `trace.json` for the same run: 142/142 checks across five
-captures, both AIV and AIC, including one captured by the collector itself. The container format, timing convention and pipe bit
-assignment are documented in `references/pipeline-waveform.md`, including the one
-non-obvious rule -- a token's mask pairs with the *next* token's duration.
+`--verify` returns three verdicts rather than pass/fail: `VERIFIED` (exact
+interval match), `NOT VERIFIED` (compared and disagrees) and `INCONCLUSIVE`
+(cannot compare -- e.g. an instruction-level vendor trace). Over a 17-capture
+corpus: 5 verified, 11 inconclusive, 1 not verified. Collapsing "cannot check"
+into "failed" is what makes a check ignorable.
 
-> **Coverage limit**: the profiler samples a subset of cores over a short window.
-> These are per-core samples; never add them up into a kernel duration.
+Statistics pool **every** sampling window, not just the first: each pipe's
+per-window busy share is averaged across all of them, with the standard deviation
+printed beside it. On a 30-window capture the first window alone reports SCALAR
+at 24.1% where the figure across all windows is 40.2%.
+
+> **Coverage limit**: coverage is reported per core and as an upper bound. Cores
+> are sampled concurrently, so their spans cannot be added; when the windows total
+> more than the kernel's duration the report says coverage is not computable
+> instead of printing a number above 100%.
+
+The container format, timing convention and pipe bit assignment are documented in
+`references/pipeline-waveform.md`, including the one non-obvious rule -- a token's
+mask pairs with the *next* token's duration.
 
 ## What is collected
 

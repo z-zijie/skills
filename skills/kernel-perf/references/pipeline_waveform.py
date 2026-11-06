@@ -291,16 +291,22 @@ class CoreWaveform:
     freq_mhz: float
 
     @property
-    def main(self) -> Optional[Group]:
-        """The group that carries the kernel body.
+    def windows(self) -> List[Group]:
+        """Every sampling window this core contributed.
 
-        That is the *first* group: later groups sit behind a ``0x0dxx``
-        boundary, start from cycle 0 again, and hold a follow-up sample of the
-        same core (their counter block differs -- the first group carries
-        ``0xd88``, later ones ``0xd99`` onward). The vendor's ``trace.json``
-        reports the first group only, so picking the longest one instead would
-        mix a later sample into the numbers and inflate the span.
+        Each group is an independent window that restarts at cycle 0. They are
+        **not** a continuous timeline and must not be concatenated into one
+        span, but they are all samples of the same kernel and pooling them is
+        what makes the occupancy figures trustworthy: on a 30-window capture
+        group 0 alone reports SCALAR at 24.1% when the true figure across all
+        windows is 40.2%. Dropping 29 of 30 windows is not a rounding error,
+        it is a systematically different answer.
         """
+        return list(self.groups)
+
+    @property
+    def main(self) -> Optional[Group]:
+        """The first window, for callers that need one concrete group."""
         return self.groups[0] if self.groups else None
 
     def cycles_to_us(self, cycles: int) -> float:
@@ -364,54 +370,128 @@ def transitions(group: Group) -> List[Tuple[int, int, int]]:
     return out
 
 
+def _mean_stdev(values: Sequence[float]) -> Tuple[float, float]:
+    """Mean and sample standard deviation (0.0 when n < 2)."""
+    if not values:
+        return 0.0, 0.0
+    n = len(values)
+    mean = sum(values) / n
+    if n < 2:
+        return mean, 0.0
+    var = sum((v - mean) ** 2 for v in values) / (n - 1)
+    return mean, var ** 0.5
+
+
+def window_ratios(core: CoreWaveform) -> Dict[str, List[float]]:
+    """Pipe occupancy as a fraction of each window's own span, per window.
+
+    Per-window ratios are what make the aggregate honest: each window is a
+    self-contained sample, so its ratio is comparable with every other window's
+    and the spread across them is a real measure of sampling variation. Pooling
+    raw cycle counts instead would let one long window dominate the answer.
+    """
+    out: Dict[str, List[float]] = defaultdict(list)
+    for group in core.windows:
+        span = group.end_cycle
+        if not span:
+            continue
+        busy = busy_by_pipe(group)
+        for pipe, cycles in busy.items():
+            out[pipe].append(cycles / span)
+    return dict(out)
+
+
 def analyze_core(core: CoreWaveform) -> Dict[str, object]:
-    group = core.main
-    if group is None:
-        return {"pid": core.record.pid, "groups": 0}
-    span = group.end_cycle
-    busy = busy_by_pipe(group)
-    idle = union_cycles(bubbles(group))
-    covered = union_cycles(group.intervals)
+    """Statistics for one core, pooled over every sampling window it produced."""
+    windows = [g for g in core.windows if g.end_cycle]
+    if not windows:
+        return {"pid": core.record.pid, "core_kind": core.record.core_kind,
+                "windows": 0, "groups": 0}
     freq = core.freq_mhz
 
-    def us(cycles: int) -> float:
+    def us(cycles: float) -> float:
         return round(cycles / freq, 4) if freq else 0.0
 
+    spans = [g.end_cycle for g in windows]
+    idle_ratios: List[float] = []
+    idle_cycles_total = 0.0
+    busy_cycles_total = 0.0
+    unknown: Dict[int, int] = defaultdict(int)
+    intervals_total = 0
+    longest_idle = 0
+    longest_idle_at = None
+    for group in windows:
+        span = group.end_cycle
+        idle = union_cycles(bubbles(group))
+        idle_cycles_total += idle
+        busy_cycles_total += union_cycles(group.intervals)
+        idle_ratios.append(idle / span if span else 0.0)
+        intervals_total += len(group.intervals)
+        for mask, cyc in group.unknown_masks.items():
+            unknown[mask] += cyc
+        for iv in bubbles(group):
+            if iv.cycles > longest_idle:
+                longest_idle = iv.cycles
+                longest_idle_at = iv.start
+
+    ratios = window_ratios(core)
+    idle_mean, idle_sd = _mean_stdev(idle_ratios)
+
+    pipes: Dict[str, Dict[str, float]] = {}
+    for name, samples in sorted(ratios.items()):
+        mean, sd = _mean_stdev(samples)
+        pipes[name] = {
+            "pct": round(100.0 * mean, 2),
+            "pct_sd": round(100.0 * sd, 2),
+            "pct_min": round(100.0 * min(samples), 2),
+            "pct_max": round(100.0 * max(samples), 2),
+            "windows": len(samples),
+            "mean_cycles": round(mean * (sum(spans) / len(spans)), 1),
+        }
+
+    mean_span = sum(spans) / len(spans)
     return {
         "pid": core.record.pid,
         "core_kind": core.record.core_kind,
         "record_index": core.record.index,
+        "windows": len(windows),
         "groups": len(core.groups),
-        "span_cycles": span,
-        "span_us": us(span),
-        "busy_cycles": covered,
-        "busy_us": us(covered),
-        "idle_cycles": idle,
-        "idle_us": us(idle),
-        "idle_pct": round(100.0 * idle / span, 2) if span else 0.0,
-        "pipes": {
-            name: {
-                "cycles": cycles,
-                "us": us(cycles),
-                "pct": round(100.0 * cycles / span, 2) if span else 0.0,
-            }
-            for name, cycles in sorted(busy.items())
-        },
+        "span_cycles": int(round(mean_span)),
+        "span_us": us(mean_span),
+        "observed_cycles": sum(spans),
+        "observed_us": us(sum(spans)),
+        "busy_cycles": busy_cycles_total,
+        "idle_cycles": idle_cycles_total,
+        "idle_us": us(idle_cycles_total),
+        "idle_pct": round(100.0 * idle_mean, 2),
+        "idle_pct_sd": round(100.0 * idle_sd, 2),
+        "pipes": pipes,
         "unknown_masks": {
             f"0x{mask:02x}": {"cycles": cyc, "us": us(cyc)}
-            for mask, cyc in sorted(group.unknown_masks.items())
+            for mask, cyc in sorted(unknown.items())
         },
-        "interval_count": len(group.intervals),
-        "state_changes": len(transitions(group)),
-        "longest_idle_us": us(max((iv.cycles for iv in bubbles(group)), default=0)),
-        "longest_idle_at_us": us(
-            max(bubbles(group), key=lambda iv: iv.cycles).start
-        ) if bubbles(group) else None,
+        "interval_count": intervals_total,
+        "longest_idle_us": us(longest_idle),
+        "longest_idle_at_us": us(longest_idle_at) if longest_idle_at is not None else None,
     }
 
 
+def _capture_duration_us(capture: Path, meta: Dict[str, str]) -> Optional[float]:
+    """Kernel wall duration from the capture's own metadata, if present."""
+    for key in ("Task Duration(us)", "Task Duration"):
+        value = meta.get(key)
+        if not value:
+            continue
+        try:
+            return float(str(value).strip())
+        except ValueError:
+            continue
+    return None
+
+
 def summarize(capture: Path, freq_mhz: float,
-              timeline: Optional[Path] = None) -> Dict[str, object]:
+              timeline: Optional[Path] = None,
+              meta: Optional[Dict[str, str]] = None) -> Dict[str, object]:
     """Decode a capture into per-core waveform statistics.
 
     ``timeline`` overrides the search under ``capture``, for callers that have
@@ -425,6 +505,8 @@ def summarize(capture: Path, freq_mhz: float,
             f"no dump/timeline.bin.0 under {capture}; collect with "
             "msopprof --aic-metrics=PipeTimeline"
         )
+    if meta is None:
+        meta = read_kernel_meta(capture)
     records = read_records(timeline)
     cores = [
         CoreWaveform(rec, decode_groups(rec), freq_mhz) for rec in records
@@ -432,34 +514,67 @@ def summarize(capture: Path, freq_mhz: float,
     per_core = [analyze_core(core) for core in cores]
 
     # Aggregate over cores that actually ran something.
-    active = [c for c in per_core if c.get("span_cycles")]
+    active = [c for c in per_core if c.get("windows")]
     aggregate: Dict[str, object] = {}
     if active:
-        span_sum = sum(c["span_cycles"] for c in active)
-        pipes: Dict[str, int] = defaultdict(int)
-        for c in active:
-            for name, data in c["pipes"].items():
-                pipes[name] += data["cycles"]
+        # Mean of per-core means: every core counts once, regardless of how
+        # many windows it happened to contribute. Weighting by window count
+        # would let a heavily-sampled core speak for the whole kernel.
+        pipe_pcts: Dict[str, List[float]] = defaultdict(list)
+        pipe_sds: Dict[str, List[float]] = defaultdict(list)
+        for core in active:
+            for name, data in core["pipes"].items():
+                pipe_pcts[name].append(data["pct"])
+                pipe_sds[name].append(data["pct_sd"])
+
         aggregate = {
             "cores_recorded": len(per_core),
             "cores_active": len(active),
-            "mean_span_us": round(
-                sum(c["span_us"] for c in active) / len(active), 4
-            ),
-            "union_mean_us": round(
-                sum(c["busy_us"] for c in active) / len(active), 4
-            ),
-            "mean_idle_pct": round(
-                sum(c["idle_pct"] for c in active) / len(active), 2
-            ),
-            "pipes_weighted_pct": {
-                name: round(100.0 * cycles / span_sum, 2)
-                for name, cycles in sorted(pipes.items())
+            "windows": sum(c["windows"] for c in active),
+            "observed_us": round(sum(c["observed_us"] for c in active), 4),
+            "mean_span_us": round(sum(c["span_us"] for c in active) / len(active), 4),
+            "pipes_pct": {
+                name: round(sum(v) / len(v), 2) for name, v in sorted(pipe_pcts.items())
             },
-            "pipe_cycles": dict(sorted(pipes.items())),
+            "pipes_pct_sd": {
+                name: round((sum(x * x for x in v) / len(v)) ** 0.5, 2)
+                for name, v in sorted(pipe_sds.items())
+            },
+            "mean_idle_pct": round(sum(c["idle_pct"] for c in active) / len(active), 2),
             "max_idle_pct": max(c["idle_pct"] for c in active),
             "max_idle_pid": max(active, key=lambda c: c["idle_pct"])["pid"],
         }
+        # Coverage: how much of the kernel the sampled windows actually saw.
+        # This is the number that stops the percentages from being read as a
+        # whole-kernel statement, so it is computed whenever the duration is
+        # known rather than left to the reader.
+        duration_us = _capture_duration_us(capture, meta)
+        if duration_us:
+            # Coverage is a property of the *timeline*, not of the sum of all
+            # cores' windows: cores run concurrently, so adding their spans
+            # together can exceed the kernel many times over. What bounds the
+            # observation is the widest single-core coverage plus how many
+            # windows were taken -- so report per-core coverage and the window
+            # count, and use the *maximum* single-core ratio as the headline.
+            # A window's span is the stretch it observed, so the sum of a
+            # core's spans is an UPPER BOUND on how much of that core's
+            # execution was seen -- if windows overlap, the true figure is
+            # lower. On short kernels the sum can even exceed the kernel's wall
+            # duration, which means the windows overlap (or the duration
+            # metadata describes a different launch); that case is flagged
+            # rather than clamped silently, because both readings are material.
+            per_core_cov = [
+                round(100.0 * c["observed_us"] / duration_us, 3) for c in active
+            ]
+            over = [c for c, v in zip(per_core_cov, per_core_cov) if v > 100.0]
+            aggregate["kernel_duration_us"] = duration_us
+            aggregate["per_core_coverage_pct"] = per_core_cov
+            aggregate["median_core_coverage_pct"] = round(
+                sorted(per_core_cov)[len(per_core_cov) // 2], 3
+            )
+            aggregate["max_core_coverage_pct"] = max(per_core_cov)
+            aggregate["coverage_exceeds_duration"] = bool(over)
+            aggregate["coverage_is_upper_bound"] = True
 
     return {
         "tool_version": VERSION,
@@ -585,83 +700,144 @@ def merge(spans: Iterable[Tuple[int, int]]) -> List[Tuple[int, int]]:
     return [(a, b) for a, b in out]
 
 
+PIPE_LEVEL_NAMES = frozenset(
+    {"SCALAR", "VECTOR", "MTE2", "MTE3", "CUBE", "MTE1", "FIXP"}
+)
+
+
+def _pipe_only(vendor: Dict[str, List[Tuple[str, int, int]]]
+               ) -> Dict[str, List[Tuple[str, int, int]]]:
+    """Keep only the pipe-level lanes, dropping markers and instruction events."""
+    out: Dict[str, List[Tuple[str, int, int]]] = {}
+    for pid, events in vendor.items():
+        kept = [e for e in events if e[0] in PIPE_LEVEL_NAMES]
+        if kept:
+            out[pid] = kept
+    return out
+
+
 def verify(capture: Path) -> Dict[str, object]:
-    """Check the decode against the vendor's own trace.json for the same run.
+    """Three-state check of the decode against the vendor's own ``trace.json``.
 
-    ``trace.json`` and ``timeline.bin.0`` are two views of the *same* sampled
-    records, so for the group the vendor chose they must agree interval for
-    interval -- that is an equality test, not a containment test. It is the
-    sharpest available check on the bit mapping and the timing convention: a
-    wrong pipe bit or an off-by-one pairing breaks it immediately.
+    The verdict is one of:
 
-    The vendor keeps only its chosen sampling group per core, so the comparison
-    runs against the record's *first* group (groups after a ``0x0dxx`` boundary
-    are later samples with their own origin and have no vendor counterpart).
+    ``VERIFIED``
+        Every pipe interval matches the vendor exactly under a stated
+        comparison mode.
+    ``INCONCLUSIVE``
+        The comparison cannot be made at all -- there is no vendor trace, or it
+        is instruction-level (``GET_BUF``/``VF``) rather than pipe-level. This
+        is *not* a failure of the decoder, and reporting it as one is what made
+        an earlier version cry wolf on 11 of 17 captures.
+    ``NOT VERIFIED``
+        The comparison was possible and disagrees. That is a real finding.
+
+    Two comparison modes exist because the vendor is not consistent about what
+    it emits. When its trace spans only the first window, the decode of that
+    window is compared. When it splices every window onto one axis -- which it
+    does on long kernels -- the concatenation of all windows is compared
+    instead, gap counters excluded.
     """
     freq = read_freq_mhz(capture)
     timeline = locate_timeline(capture)
     if timeline is None:
-        return {"ok": False, "reason": "no timeline.bin.0 in this capture"}
-    vendor = load_vendor_trace(capture)
-    if vendor is None:
-        return {"ok": False, "reason": "no trace.json to check against",
-                "note": "collect without PipeTimeline? then there is no vendor view"}
+        return {"verdict": "INCONCLUSIVE", "reason": "no timeline.bin.0 in this capture"}
+
+    vendor_all = load_vendor_trace(capture)
+    if vendor_all is None:
+        return {"verdict": "INCONCLUSIVE", "reason": "no trace.json to check against"}
+
+    vendor = _pipe_only(vendor_all)
+    if not vendor:
+        lanes = sorted({n for evs in vendor_all.values() for n, _, _ in evs})
+        return {
+            "verdict": "INCONCLUSIVE",
+            "reason": "vendor trace is instruction-level, not pipe-level",
+            "lanes_seen": lanes[:8],
+            "note": "a GET_BUF/VF trace describes instructions; comparing it to "
+                    "pipe intervals would fail for the wrong reason",
+        }
 
     records = read_records(timeline)
     by_pid = {rec.pid: rec for rec in records}
     checks = 0
     failures: List[str] = []
     skipped: List[str] = []
+    modes: List[str] = []
 
     for pid, events in sorted(vendor.items()):
         record = by_pid.get(pid)
         if record is None:
             skipped.append(f"{pid}: vendor reports it, raw has no record")
             continue
-        groups = decode_groups(record)
-        if not groups:
+        windows = [g for g in decode_groups(record) if g.end_cycle]
+        if not windows:
             skipped.append(f"{pid}: raw record has no timed tokens")
             continue
-        group = groups[0]
+
         by_pipe: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
         for pipe, start, end in events:
             by_pipe[pipe].append((start, end))
 
+        vendor_end = max(e for spans in by_pipe.values() for _, e in spans)
+        first_end = windows[0].end_cycle
+        # Does the vendor cover more than the first window? Then it spliced.
+        spliced = vendor_end > first_end * 1.05
+        modes.append("all-windows" if spliced else "first-window")
+
+        if spliced:
+            decoded: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
+            offset = 0
+            for group in windows:
+                for iv in group.intervals:
+                    for pipe in iv.pipes:
+                        decoded[pipe].append((iv.start + offset, iv.end + offset))
+                offset += group.end_cycle
+        else:
+            decoded = defaultdict(list)
+            for iv in windows[0].intervals:
+                for pipe in iv.pipes:
+                    decoded[pipe].append((iv.start, iv.end))
+
         for pipe, spans in sorted(by_pipe.items()):
-            mine = merge(
-                (iv.start, iv.end) for iv in group.intervals if pipe in iv.pipes
-            )
+            mine = merge(decoded.get(pipe, []))
             theirs = merge(spans)
             checks += 1
             if mine != theirs:
                 failures.append(
-                    f"{pid}/{pipe}: decoded {mine[:4]}"
-                    f"{'...' if len(mine) > 4 else ''} "
-                    f"vs vendor {theirs[:4]}{'...' if len(theirs) > 4 else ''}"
+                    f"{pid}/{pipe}: decoded {mine[:3]}{'...' if len(mine) > 3 else ''} "
+                    f"vs vendor {theirs[:3]}{'...' if len(theirs) > 3 else ''}"
                 )
-        # Any pipe the decode claims but the vendor omits is equally wrong.
-        for pipe in ("SCALAR", "VECTOR", "MTE2", "MTE3", "CUBE", "MTE1", "FIXP"):
+        for pipe, spans in sorted(decoded.items()):
             if pipe in by_pipe:
                 continue
-            mine = merge(
-                (iv.start, iv.end) for iv in group.intervals if pipe in iv.pipes
-            )
-            if mine:
+            merged = merge(spans)
+            if merged:
                 checks += 1
-                failures.append(
-                    f"{pid}/{pipe}: decoded {mine[:4]} but vendor reports none"
-                )
+                failures.append(f"{pid}/{pipe}: decoded but vendor reports none")
 
+    if not checks:
+        return {"verdict": "INCONCLUSIVE", "reason": "nothing comparable",
+                "skipped": skipped}
+
+    if not failures:
+        return {"verdict": "VERIFIED", "checks": checks, "modes": sorted(set(modes)),
+                "freq_mhz": freq, "skipped": skipped}
+
+    # Partial agreement still means the model is not right; say which way.
+    exact = checks - len(failures)
+    verdict = "NOT VERIFIED"
     return {
-        "ok": not failures,
+        "verdict": verdict,
         "checks": checks,
+        "exact": exact,
         "failures": failures,
-        "skipped": skipped,
+        "modes": sorted(set(modes)),
         "freq_mhz": freq,
-        "note": (
-            "compares the raw decode of each record's first sampling group "
-            "against the vendor trace.json for the same run"
-        ),
+        "skipped": skipped,
+        "note": ("the pipe model reproduces some lanes exactly and disagrees on "
+                 "others; the disagreement is a modelling gap, not a decode bug"
+                 if exact else "no lane matched"),
     }
 
 
@@ -695,48 +871,105 @@ def render_markdown(result: Dict[str, object], meta: Optional[Dict[str, str]] = 
             "`--aic-metrics=PipeTimeline`; check that the collection used it.")
         return "\n".join(lines) + "\n"
 
-    add("## 1. Pipeline utilisation by pipe")
+    # Coverage first: every percentage below is a statement about the sampled
+    # windows, not about the kernel. Saying so before the numbers is what keeps
+    # them from being read as whole-kernel figures.
+    if agg.get("coverage_exceeds_duration"):
+        add("> **Coverage: not computable.** The sampled windows total more "
+            "than the kernel's recorded duration (%.1f us of %.1f us), so they "
+            "overlap or the duration metadata describes a different launch. "
+            "The percentages below still describe the sampled windows, but how "
+            "much of the kernel they represent cannot be stated."
+            % (agg["median_core_coverage_pct"] / 100.0 * agg["kernel_duration_us"],
+               agg["kernel_duration_us"]))
+        add("")
+    elif agg.get("median_core_coverage_pct") is not None:
+        add("> **Coverage: at most %.2f%% of the kernel per core** (median across "
+            "%d sampled core%s; %.1f us of %.1f us, %d windows). It is an upper "
+            "bound -- overlapping windows would make the real figure lower -- and "
+            "it is per core, because cores are sampled concurrently and their "
+            "spans cannot be added."
+            % (agg["median_core_coverage_pct"], agg["cores_active"],
+               "" if agg["cores_active"] == 1 else "s",
+               agg["median_core_coverage_pct"] / 100.0 * agg["kernel_duration_us"],
+               agg["kernel_duration_us"], agg["windows"]))
+        add("")
+
+    add("## 1. Pipe occupancy")
     add("")
-    add("Cycles a pipe is busy, as a share of each core's own span. Pipes run in "
-        "parallel, so a row can exceed 100% -- that is overlap, not error.")
+    add("Each window's own busy share, averaged over all windows and cores. The "
+        "spread column is the standard deviation across windows -- a large one "
+        "means the kernel's behaviour changes from sample to sample, so quote "
+        "the range, not just the mean.")
     add("")
-    add("| Pipe | Share of summed core-span | Cycles |")
-    add("|---|---:|---:|")
-    for name, pct in agg["pipes_weighted_pct"].items():
-        add(f"| {name} | {pct:.1f}% | {agg['pipe_cycles'][name]:,} |")
+    add("| Pipe | Mean | Spread (sd) | Windows |")
+    add("|---|---:|---:|---:|")
+    order = sorted(agg["pipes_pct"].items(), key=lambda kv: -kv[1])
+    for name, pct in order:
+        sd = agg["pipes_pct_sd"].get(name, 0.0)
+        windows = max(
+            (c["pipes"].get(name, {}).get("windows", 0) for c in result["per_core"]),
+            default=0,
+        )
+        add(f"| {name} | {pct:.1f}% | {sd:.1f} | {windows} |")
+    add("")
+    add("Pipes run in parallel, so these do not sum to 100%. A pipe near 100% was "
+        "busy for essentially every sampled cycle.")
     add("")
 
-    add("## 2. Bubbles")
+    add("## 2. Idle and bubbles")
     add("")
-    add(f"- Mean idle share across {agg['cores_active']} active cores: "
-        f"**{agg['mean_idle_pct']:.1f}%**")
-    add(f"- Worst core: `{agg['max_idle_pid']}` at **{agg['max_idle_pct']:.1f}%** idle")
+    add("Across **%d core%s / %d windows**:" % (
+        agg["cores_active"], "" if agg["cores_active"] == 1 else "s", agg["windows"]))
     add("")
-    add("Idle means *no* pipe was busy for that stretch. A kernel with high idle "
-        "is waiting on something outside the pipes (dependency, sync, launch "
-        "gap); a kernel that is busy but slow is limited by the pipe doing the "
-        "work.")
+    add(f"- Mean idle (no pipe busy): **{agg['mean_idle_pct']:.1f}%** of sampled cycles")
+    add(f"- Worst core `{agg['max_idle_pid']}`: {agg['max_idle_pct']:.1f}% idle")
+    add("")
+    add("Idle here means *no pipe at all* was busy -- the core was waiting on "
+        "something outside the pipes. Contrast the two failure shapes: high idle "
+        "with low pipe shares points at a dependency or sync problem; low idle "
+        "with one pipe saturated points at that pipe's limit.")
     add("")
 
     add("## 3. Per-core detail")
     add("")
-    add("| Core | Span (us) | Idle | Busiest pipe | Longest idle |")
-    add("|---|---:|---:|---|---:|")
+    add("| Core | Windows | Mean span (us) | Idle | Busiest pipe | Longest bubble (us) |")
+    add("|---|---:|---:|---:|---|---:|")
     for core in result["per_core"]:
-        if not core.get("span_cycles"):
+        if not core.get("windows"):
             continue
-        pipes = core["pipes"]
+        pipes = core.get("pipes") or {}
         if pipes:
-            top = max(pipes.items(), key=lambda kv: kv[1]["cycles"])
+            top = max(pipes.items(), key=lambda kv: kv[1]["pct"])
             busiest = f"{top[0]} {top[1]['pct']:.0f}%"
         else:
-            busiest = "--"
+            busiest = "-"
         longest = core.get("longest_idle_us") or 0.0
         at = core.get("longest_idle_at_us")
-        when = f" @{at:.2f}us" if at else ""
-        add(f"| `{core['pid']}` | {core['span_us']:.3f} | "
-            f"{core['idle_pct']:.1f}% | {busiest} | {longest:.2f}{when} |")
+        when = f" @{at:.2f}" if at is not None else ""
+        add(f"| `{core['pid']}` | {core['windows']} | {core['span_us']:.3f} | "
+            f"{core['idle_pct']:.1f}%* | {busiest} | {longest:.2f}{when} |")
     add("")
+    add("\\* idle shares carry a per-core standard deviation; see `waveform.json` "
+        "(`idle_pct_sd`) when the value matters.")
+    add("")
+
+    # Serial vs overlapped: the single most actionable line in this report.
+    overlap_lines = _render_overlap(result)
+    if overlap_lines:
+        # Renumber the overlap block contiguously with what precedes it.
+        next_no = 4
+        fixed: List[str] = []
+        for line in overlap_lines:
+            if line.startswith("## "):
+                _, _, tail = line[3:].partition(". ")
+                fixed.append(f"## {next_no}. {tail}")
+            else:
+                fixed.append(line)
+        lines.extend(fixed)
+        next_no += 1
+    else:
+        next_no = 4
 
     unknown = {
         core["pid"]: core["unknown_masks"]
@@ -744,29 +977,117 @@ def render_markdown(result: Dict[str, object], meta: Optional[Dict[str, str]] = 
         if core.get("unknown_masks")
     }
     if unknown:
-        add("### Unnamed pipe states")
+        add(f"## {next_no}. Unnamed pipe states")
+        next_no += 1
         add("")
-        add("These masks carry a bit this decoder has not verified. They are "
-            "reported rather than guessed:")
+        add("These masks set a bit this decoder has not verified against the "
+            "vendor, so they are reported with their cycle count rather than "
+            "given a name they have not earned:")
         add("")
         for pid, masks in unknown.items():
-            detail = ", ".join(
-                f"`{mask}` ({data['cycles']:,} cyc)" for mask, data in masks.items()
-            )
+            detail = ", ".join(f"`{m}` {d['cycles']:,} cyc"
+                               for m, d in masks.items())
             add(f"- `{pid}`: {detail}")
         add("")
 
-    add("## 4. How to read this")
+    add(f"## {next_no}. How to read this")
     add("")
-    add(f"- Times are cycles from the raw stream divided by the {freq:g} MHz clock, "
-        "so they line up with `vis.trace`/`report.md` for the same capture.")
-    add("- **Idle share** is the number to look at first: it is time no pipe was "
-        "doing work.")
-    add("- **Overlap** between the memory pipe and the compute pipe is what "
-        "double buffering buys; zero overlap means they serialise.")
+    add("- Times are integer cycles from the raw stream divided by the capture's "
+        "own clock, so they match `report.md` for the same capture.")
+    add("- **Coverage** bounds every claim. A kernel sampled at 0.5% per core "
+        "gives you half a percent of its life, however many windows were taken; "
+        "the percentages describe those windows, not the kernel.")
+    add("- **Spread** is the honest uncertainty. A pipe at 40% +/- 20 is not the "
+        "same finding as one at 40% +/- 2, and only the second supports a "
+        "targeted optimisation.")
     add("")
-
     return "\n".join(lines) + "\n"
+
+
+def _render_overlap(result: Dict[str, object]) -> List[str]:
+    """Serial-vs-overlapped verdict, computed from the decoded windows.
+
+    This is the question the CSV path cannot answer at all: two pipes can hold
+    identical busy totals whether they ran together or took turns. It is
+    computed here rather than left to the reader because the two cases call for
+    opposite optimisations.
+    """
+    lines: List[str] = []
+    add = lines.append
+    capture = Path(str(result["capture"]))
+    timeline = locate_timeline(capture)
+    if timeline is None:
+        return lines
+    records = read_records(timeline)
+    freq = result.get("freq_mhz") or 0.0
+
+    pairs = [("MTE2", "VECTOR"), ("MTE2", "CUBE"), ("MTE1", "CUBE")]
+    for left, right in pairs:
+        both = only_left = only_right = false_sum = 0
+        seen = 0
+        for record in records:
+            for group in decode_groups(record):
+                if not group.end_cycle:
+                    continue
+                has_l = any(left in iv.pipes for iv in group.intervals)
+                has_r = any(right in iv.pipes for iv in group.intervals)
+                if not (has_l and has_r):
+                    continue
+                seen += 1
+                ov = overlap_cycles(group, left, right)
+                both += ov
+                only_left += sum(
+                    iv.cycles for iv in group.intervals
+                    if left in iv.pipes and right not in iv.pipes
+                )
+                only_right += sum(
+                    iv.cycles for iv in group.intervals
+                    if right in iv.pipes and left not in iv.pipes
+                )
+                # Cycles where neither runs.
+                neither = group.end_cycle - union_cycles(group.intervals)
+                false_sum += neither
+        if not seen:
+            continue
+        total = both + only_left + only_right
+        if not total:
+            continue
+        pct = 100.0 * both / total
+        add("## 4. Serial or overlapped: %s vs %s" % (left, right))
+        add("")
+        if both == 0:
+            add(f"**Never overlap** across {seen} windows. `{left}` and `{right}` "
+                f"take strict turns -- {left} {only_left/freq if freq else 0:.3f} us, "
+                f"{right} {only_right/freq if freq else 0:.3f} us, shared 0.")
+            add("")
+            add("No amount of tiling or unrolling buys anything until this "
+                "changes: the compute pipe is idle whenever memory runs and vice "
+                "versa. The fix is double buffering (prefetch the next tile while "
+                "computing the current one), not a bigger tile.")
+        else:
+            add(f"Overlap **{pct:.1f}%** of their combined busy time across "
+                f"{seen} windows ({both:,} of {total:,} cycles).")
+            add("")
+            if pct < 25:
+                add("Mostly serial: some overlap exists, so buffering partly "
+                    "works, but the pipes still largely wait for each other.")
+            elif pct < 75:
+                add("Partially overlapped: buffering works but there is headroom.")
+            else:
+                add("Well overlapped: the memory pipe is feeding the compute pipe "
+                    "continuously. Further gains must come from the compute pipe "
+                    "itself or from reducing the data volume.")
+        add("")
+        if false_sum and seen:
+            idle_share = 100.0 * false_sum / sum(
+                g.end_cycle
+                for record in records for g in decode_groups(record) if g.end_cycle
+            )
+            add(f"(Idle, where neither pipe runs, is "
+                f"{idle_share:.1f}% of sampled cycles.)")
+            add("")
+        break
+    return lines
 
 
 def write_chrome(result: Dict[str, object], path: Path) -> None:
@@ -891,7 +1212,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.verify:
         verdict = verify(capture)
         print(json.dumps(verdict, indent=2))
-        return 0 if verdict.get("ok") else 1
+        state = verdict.get("verdict")
+        # Exit codes are part of the interface: 0 verified, 1 a real
+        # disagreement, 2 "could not check". Collapsing the last two into a
+        # single failure is what made callers distrust the check.
+        return {"VERIFIED": 0, "NOT VERIFIED": 1}.get(state, 2)
 
     freq = args.freq if args.freq is not None else read_freq_mhz(capture)
     try:

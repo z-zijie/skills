@@ -761,6 +761,13 @@ def test_pipeline_waveform() -> None:
               abs(core["span_us"] - 0.190) < 1e-6, str(core["span_us"]))
         check("idle share computed",
               abs(core["idle_pct"] - 30 / 190 * 100) < 0.01, str(core["idle_pct"]))
+        check("windows counted", core["windows"] == 1, str(core.get("windows")))
+        check("pipe share and spread present",
+              "SCALAR" in core["pipes"] and "pct_sd" in core["pipes"]["SCALAR"],
+              str(core["pipes"].get("SCALAR")))
+        check("aggregate exposes pipe shares",
+              "SCALAR" in result["aggregate"]["pipes_pct"],
+              str(result["aggregate"].get("pipes_pct")))
 
         # --- missing raw stream is not an error ------------------------------
         empty = root / "empty"
@@ -777,6 +784,41 @@ def test_pipeline_waveform() -> None:
         pieces, unnamed = PW.pipe_mask_names(0x04, "aic")
         check("same bit is CUBE on AIC", pieces == ("CUBE",) and unnamed == 0,
               f"{pieces}/{unnamed:#x}")
+
+        # --- verify() must distinguish "wrong" from "cannot check" ----------
+        check("verify with no trace.json is INCONCLUSIVE",
+              PW.verify(root)["verdict"] == "INCONCLUSIVE",
+              str(PW.verify(root).get("verdict")))
+
+        # A pipe-level vendor trace that disagrees must be NOT VERIFIED.
+        import json as _json
+        (root / "trace.json").write_text(_json.dumps({"traceEvents": [
+            {"ph": "X", "name": "MTE2", "pid": "core3.veccore0",
+             "ts": 10 / 1000.0, "dur": 100 / 1000.0},
+        ]}))
+        check("disagreeing pipe trace is NOT VERIFIED",
+              PW.verify(root)["verdict"] == "NOT VERIFIED",
+              str(PW.verify(root).get("verdict")))
+
+        # An instruction-level trace must not be reported as a failure.
+        (root / "trace.json").write_text(_json.dumps({"traceEvents": [
+            {"ph": "X", "name": "GET_BUF", "pid": "core3.veccore0",
+             "ts": 1.0, "dur": 1.0},
+        ]}))
+        check("instruction trace is INCONCLUSIVE, not NOT VERIFIED",
+              PW.verify(root)["verdict"] == "INCONCLUSIVE",
+              str(PW.verify(root).get("verdict")))
+
+        # And the matching pipe trace must verify.
+        (root / "trace.json").write_text(_json.dumps({"traceEvents": [
+            {"ph": "X", "name": "SCALAR", "pid": "core3.veccore0",
+             "ts": 10 / 1000.0, "dur": 100 / 1000.0},
+            {"ph": "X", "name": "MTE2", "pid": "core3.veccore0",
+             "ts": 110 / 1000.0, "dur": 50 / 1000.0},
+        ]}))
+        check("matching pipe trace is VERIFIED",
+              PW.verify(root)["verdict"] == "VERIFIED",
+              str(PW.verify(root).get("verdict")))
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

@@ -129,16 +129,37 @@ A `0x0dxx` counter block ends the current group. Everything after it is a
 separate sample of the same core, starting again from cycle 0, with a different
 counter block (the first group carries `0xd88`, later ones `0xd99` onward).
 
-The kernel body is the **first** group. Later groups are follow-up samples with
-no counterpart in `trace.json`, so `--verify` compares group 0 only, and the
-report's span/idle figures come from group 0. Picking the longest group instead
-silently mixes a later sample into the numbers.
+**Every group is a sample, and all of them are used.** They are not a continuous
+timeline -- each restarts at cycle 0 -- so they must not be concatenated into one
+span, but pooling them is what makes the occupancy numbers trustworthy. On a
+30-window capture, group 0 alone reports SCALAR at 24.1% while the figure across
+all windows is **40.2%**. Dropping 29 of 30 windows is not a rounding difference,
+it is a different answer.
+
+The report therefore averages each pipe's **per-window ratio** across all windows
+and cores, and prints the standard deviation across windows next to it. That
+spread is the honest uncertainty: a pipe at 40% +/- 20 and one at 40% +/- 2
+support very different optimisation decisions.
+
+`--verify` picks its comparison mode from the vendor's own span: if the vendor
+trace covers more than the first window it has spliced all of them, so the
+concatenation is compared; otherwise the first window is. The mode used is
+reported.
 
 ## Verification
 
-`--verify` asserts equality, not containment. For every core and pipe that
-`trace.json` reports, the decoded intervals must match it interval for interval,
-and the decoder must not claim a pipe the vendor omits.
+`--verify` returns one of three verdicts, and the difference matters:
+
+| verdict | meaning | exit code |
+|---|---|---|
+| `VERIFIED` | every pipe interval matched the vendor exactly | 0 |
+| `NOT VERIFIED` | the comparison was possible and disagrees -- a real finding | 1 |
+| `INCONCLUSIVE` | the comparison cannot be made (no trace, or the vendor trace is instruction-level rather than pipe-level) | 2 |
+
+`INCONCLUSIVE` is not a failure. An earlier version collapsed it into "failed"
+and so reported 11 of 17 captures as broken when the vendor trace simply used a
+different vocabulary (`GET_BUF`/`VF`). A check that cries wolf is worse than no
+check, because it teaches people to ignore it.
 
 Measured on CANN 9.3.0 / Ascend950PR_9579 / dav-3510, 1650 MHz:
 
@@ -150,13 +171,19 @@ Measured on CANN 9.3.0 / Ascend950PR_9579 / dav-3510, 1650 MHz:
 | matmul 128 | `MatmulKernel`, 28 blocks, AIC | 6 | 10 | pass |
 | end-to-end (fresh) | `add_kernel` via `profile --with-timeline` | 12 | 48 | pass |
 
-142/142 checks. Both core kinds, small and large kernels, including one captured
-by the new collector itself rather than by hand.
+Both core kinds, small and large kernels, including one captured by the
+collector itself rather than by hand.
 
-The check is only worth what a failure it can catch is worth, so it was tested
-both ways: given a `trace.json` that disagrees with the decode it fails (2
-failures on a two-interval fixture), and given the matching one it passes. A
-plain mirror of the decoder would pass both.
+Over the wider 17-capture corpus in `/workspace/kperf` the verdicts split as:
+**5 VERIFIED, 11 INCONCLUSIVE** (instruction-level vendor traces, comparison not
+applicable), **1 NOT VERIFIED** (a 30-window long kernel whose all-windows splice
+still drifts ~16 cycles -- a genuine open item and the only known disagreement).
+
+The check is only worth what a failure it can catch is worth, so it is tested
+both ways in `selftest.py`: a `trace.json` that disagrees must yield
+`NOT VERIFIED`, a matching one must yield `VERIFIED`, and an instruction-level
+one must yield `INCONCLUSIVE` rather than either. A plain mirror of the decoder
+would pass the first and fail the other two.
 
 A third check is possible against `PipeUtilization.csv`, which the profiler
 produces through a different path. On the vector kernel it agrees to the CSV's
