@@ -3,10 +3,14 @@
 #
 # Builds + evaluates one operator and prints one JSON record.
 #
-# HARD CONSTRAINT: this single-card Ascend950PR box wedges when NPU work runs
-# concurrently, and the full `run_evaluation.sh` fans every case out to several
-# processes at once. So evaluation here runs case by case in separate OS
-# processes under the one NPU lock -- never the full harness.
+# The full `run_evaluation.sh` fans its correctness and batch-performance
+# stages out to several worker processes. This entry instead runs exactly one
+# case per OS process through the harness's own `eval-child`, so accuracy,
+# timing and the Eq.3 per-case score still come from the official code.
+#
+# No NPU lock here: the driver queues kernels in task-submission order. Running
+# two evaluations at once is safe, but each one's kernel time is then inflated
+# by the other's queueing, so compare performance numbers one run at a time.
 #
 # case_spec (default "1"):
 #   1        one representative case -- the fast accept/reject signal
@@ -18,10 +22,6 @@
 # so existing readers of state/scores.jsonl keep working. `score` is null for a
 # sampled subset, because a partial pass cannot produce a real operator score.
 set -uo pipefail
-# Hold the single NPU lock for the whole run; re-exec once under cnb-npu-lock.
-if [ "${CNB_NPU_LOCK_HELD:-0}" != "1" ]; then
-  exec /workspace/cannbench/bin/cnb-npu-lock "$0" "$@"
-fi
 source /workspace/cannbench/loop/scripts/lib.sh
 
 OP=${1:?op}
