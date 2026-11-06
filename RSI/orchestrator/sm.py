@@ -331,7 +331,9 @@ def record_revisit(campaign: Campaign, outcome: Optional[Dict[str, Any]] = None)
     outcome = outcome or {}
     plan = outcome.get("plan") if isinstance(outcome.get("plan"), dict) else outcome
     decision = str(plan.get("decision") or "not_triggered")
-    campaign.closures = list(plan.get("closures") or [])
+    if isinstance(plan.get("closures"), list):
+        # A plan that carried no closure list must not erase the ones the record step collected.
+        campaign.closures = list(plan["closures"])
     campaign.revisit_due = decision in {"reopen", "hold"}
     reopen = (plan.get("reopens") or [None])[0] if decision == "reopen" else None
     campaign.reopen_direction = str(reopen.get("direction")) if isinstance(reopen, dict) else None
