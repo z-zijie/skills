@@ -569,7 +569,9 @@ def derive_bw_peaks(rows: List[Dict[str, str]]) -> Dict[str, List[float]]:
 # capture loading
 # ---------------------------------------------------------------------------
 
-def load_waveform(root: Path, extra_roots: Iterable[Path] = ()) -> Optional[Dict[str, Any]]:
+def load_waveform(root: Path, extra_roots: Iterable[Path] = (),
+                  cores: Optional[Iterable[str]] = None
+                  ) -> Optional[Dict[str, Any]]:
     """Decode the raw per-cycle pipe stream, if this capture has one.
 
     ``--aic-metrics=PipeTimeline`` is what writes ``dump/timeline.bin.0``: the
@@ -609,7 +611,8 @@ def load_waveform(root: Path, extra_roots: Iterable[Path] = ()) -> Optional[Dict
         return None
     timeline = max(candidates, key=lambda p: p.stat().st_mtime)
     freq = PW.read_freq_mhz(root)
-    result = PW.summarize(root, freq, timeline=timeline)
+    result = PW.summarize(root, freq, timeline=timeline,
+                          cores=list(cores) if cores else None)
     if not result.get("aggregate"):
         return None
     return result
@@ -2146,6 +2149,7 @@ def command_profile(args: argparse.Namespace) -> int:
         capture_path = out_dir
     capture = load_capture(capture_path, home)
     result = analyze(capture)
+    _apply_waveform_filter(result, getattr(args, "waveform_core", None))
 
     metrics_path = out_dir / "metrics.json"
     metrics_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
@@ -2161,11 +2165,39 @@ def command_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_waveform_filter(result: Dict[str, Any],
+                           cores: Optional[List[str]]) -> None:
+    """Re-decode the waveform section restricted to the requested cores.
+
+    Filtering has to happen at decode time because the statistics are pooled
+    over windows; trimming the finished per-core list would leave the aggregate
+    still describing every core.
+    """
+    if not cores or PW is None or not result.get("waveform"):
+        return
+    capture = Path(str(result["waveform"].get("capture", "")))
+    timeline = result["waveform"].get("timeline")
+    if not capture.exists():
+        return
+    try:
+        filtered = PW.summarize(
+            capture,
+            result["waveform"].get("freq_mhz") or PW.read_freq_mhz(capture),
+            timeline=Path(str(timeline)) if timeline else None,
+            cores=list(cores),
+        )
+    except (OSError, ValueError):
+        return
+    if filtered.get("records"):
+        result["waveform"] = filtered
+
+
 def command_analyze(args: argparse.Namespace) -> int:
     home = find_cann_home()
     out_dir = Path(args.out).resolve()
     capture = load_capture(out_dir, home)
     result = analyze(capture)
+    _apply_waveform_filter(result, getattr(args, "waveform_core", None))
     (out_dir / "metrics.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
     report = render_markdown(result)
     (out_dir / "report.md").write_text(report)
@@ -2250,6 +2282,11 @@ def build_parser() -> argparse.ArgumentParser:
     profile.add_argument("--with-timeline", action="store_true",
                          help="also collect BasicInfo and PipeTimeline: adds the block "
                               "timeline and the raw per-cycle pipeline waveform section")
+    profile.add_argument("--waveform-core", action="append", default=None,
+                         metavar="CORE",
+                         help="restrict the waveform section to one core "
+                              "('core4.veccore0', '4', or 'aic'). The capture still "
+                              "records every sampled core; this only filters the view.")
     profile.add_argument("--with-instructions", action="store_true",
                          help="add a separate InstrTimeline pass for instruction-level cost "
                               "(slow: tens to hundreds of MB of intermediates, usually 1-4 minutes)")
@@ -2267,6 +2304,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze_cmd = sub.add_parser("analyze", help="re-analyse an existing capture")
     analyze_cmd.add_argument("--out", required=True)
+    analyze_cmd.add_argument("--waveform-core", action="append", default=None,
+                             metavar="CORE",
+                             help="restrict the waveform section to one core")
     analyze_cmd.add_argument("--json", action="store_true")
     analyze_cmd.set_defaults(func=command_analyze)
 

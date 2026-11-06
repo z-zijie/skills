@@ -50,6 +50,11 @@ the decoder needs `dump/timeline.bin.0`, and the cross-check needs `trace.json`.
 # report + machine-readable numbers
 python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --out ./waveform
 
+# one core only (name, number, or kind -- all accepted)
+python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --core core4.veccore0
+python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --core 4 --core 5
+python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --core aic
+
 # verify the decoder against the vendor's own parse of the same run
 python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --verify
 
@@ -60,6 +65,84 @@ python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --chrome trace.
 Add `--out` to write `waveform.md` and `waveform.json`; without it the report
 goes to stdout. `--json` prints the full decode, so another tool can consume it
 without re-parsing markdown.
+
+## What the capability can and cannot do
+
+Answers to the questions people actually ask, with the limits attached.
+
+### Can I look at one specific core?
+
+Yes. `--core` accepts the vendor's name (`core4.veccore0`), a bare number
+(`4`, which selects every subcore of that core), or a kind (`aic`/`aiv`), and
+repeats. This is a **view filter, not a collection setting**: the stream always
+holds every core the profiler sampled, so the same capture answers "what did
+core 4 do" without re-running the kernel.
+
+You cannot ask the profiler to sample a core it did not choose. `--core-id` is
+rejected (`requires --aic-metrics=TimelineDetail`) and TimelineDetail fails on
+dav-3510. Which cores get sampled is up to the instrumentation, and it varies:
+captures on this machine have come back with 3, 5 and 6 cores.
+
+### How long a wave can I see?
+
+Not a duration you choose — the profiler decides. What you get is a series of
+**sampling windows**, each a few microseconds long, separated by a gap. Measured
+on this machine:
+
+| Kernel | Windows per core | Window span | Total observed | Share of kernel |
+|---|---:|---:|---:|---:|
+| vector_add, 4.2 us | 2 | ~2.5 us | ~5 us | window sum exceeds the kernel, so coverage is not computable |
+| long kernel, 22.4 ms | 30 | ~3.3 us | 100 us | **0.45%** |
+
+So the honest answer is: **you see a sparse strobe, not a continuous recording.**
+Short kernels are covered well enough to characterise; a long kernel is sampled
+at well under one percent. There is no flag to widen the window or raise the
+window count — the cadence is the hardware's.
+
+### Can I control the sampling precision?
+
+No. Every candidate knob was measured and none of them change the waveform:
+
+| Knob | Effect on the waveform |
+|---|---|
+| `--warm-up` (0 vs 3) | none — identical record and window counts |
+| `--launch-count 2` | none — still 2 windows per record, so a window is not a launch |
+| `--launch-skip-before-match 1` | produces an **empty** capture (it skips the only launch) |
+| `--core-id` | rejected outright on this part |
+
+What you *can* control is the analysis: which cores to include (`--core`), the
+clock used for unit conversion (`--freq`), and the output format (`--json`,
+`--chrome`, `--out`).
+
+### How is it normally used?
+
+1. **Collect** with `--with-timeline` (or `msprof op --aic-metrics=PipeTimeline`).
+2. **Read the verdict, not the table.** The serial-vs-overlapped section answers
+   the question the CSV path cannot: two pipes can hold identical busy totals
+   whether they ran together or took turns.
+3. **Only then** decide what to change. If the verdict is "never overlap", tiling
+   work is wasted and double buffering is the fix.
+4. **Re-collect and compare shapes.** The state-sequence fingerprint is stable
+   across runs where the percentages are not, so it is the better A/B signal.
+
+### What can it do?
+
+- Per-pipe busy share per core, pooled over every window, **with the spread**
+  across windows so a number cannot be quoted more precisely than it is known
+- Idle/bubble intervals with duration and position (the CSV path cannot express
+  "no pipe was busy")
+- Overlap between any two pipes — the ordering evidence
+- Per-core span, window count, longest bubble
+- A Chrome/Perfetto trace of every window, one lane per (core, pipe)
+
+### What extra information does it carry?
+
+Beyond the report, `--json` and `waveform.json` expose: per-pipe `pct`, `pct_sd`,
+`pct_min`, `pct_max`, `windows`; per-core `span_cycles`, `observed_cycles`,
+`idle_cycles`, `idle_pct_sd`, `interval_count`; and `unknown_masks` for pipe bits
+the decoder has not verified. The raw stream also contains `0x0d99`-`0x0dff`
+counters and, under `InstrTimeline`, an instruction-level token vocabulary —
+both preserved but **not decoded**, and reported as such.
 
 ## The container format
 

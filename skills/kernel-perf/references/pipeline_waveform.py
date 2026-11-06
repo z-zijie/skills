@@ -489,14 +489,44 @@ def _capture_duration_us(capture: Path, meta: Dict[str, str]) -> Optional[float]
     return None
 
 
+def select_records(records: Sequence[Record], wanted: Optional[Sequence[str]] = None
+                   ) -> List[Record]:
+    """Keep the records the caller asked for.
+
+    ``wanted`` accepts the vendor's own core names (``core4.veccore0``), a bare
+    core number (``4``), or a core kind (``aic``). Matching is deliberately
+    forgiving because the three spellings are all natural to type and getting a
+    silent empty result from a typo would be worse than a loose match.
+    """
+    if not wanted:
+        return list(records)
+    tokens = {str(w).strip().lower() for w in wanted if str(w).strip()}
+    if not tokens:
+        return list(records)
+    kept = []
+    for rec in records:
+        pid = rec.pid.lower()
+        if (pid in tokens
+                or str(rec.core_id) in tokens
+                or rec.core_kind in tokens
+                or f"core{rec.core_id}" in tokens):
+            kept.append(rec)
+    return kept
+
+
 def summarize(capture: Path, freq_mhz: float,
               timeline: Optional[Path] = None,
-              meta: Optional[Dict[str, str]] = None) -> Dict[str, object]:
+              meta: Optional[Dict[str, str]] = None,
+              cores: Optional[Sequence[str]] = None) -> Dict[str, object]:
     """Decode a capture into per-core waveform statistics.
 
     ``timeline`` overrides the search under ``capture``, for callers that have
     already found the stream elsewhere -- a multi-pass collection keeps
     PipeTimeline in its own pass, next to the capture rather than inside it.
+
+    ``cores`` restricts the analysis to the named cores. The stream always
+    contains every sampled core, so this is a view filter, not a collection
+    setting: the same capture answers "what did core 4 do" without re-running.
     """
     if timeline is None:
         timeline = locate_timeline(capture)
@@ -507,11 +537,11 @@ def summarize(capture: Path, freq_mhz: float,
         )
     if meta is None:
         meta = read_kernel_meta(capture)
-    records = read_records(timeline)
-    cores = [
+    records = select_records(read_records(timeline), cores)
+    waveforms = [
         CoreWaveform(rec, decode_groups(rec), freq_mhz) for rec in records
     ]
-    per_core = [analyze_core(core) for core in cores]
+    per_core = [analyze_core(core) for core in waveforms]
 
     # Aggregate over cores that actually ran something.
     active = [c for c in per_core if c.get("windows")]
@@ -582,6 +612,7 @@ def summarize(capture: Path, freq_mhz: float,
         "timeline": str(timeline),
         "freq_mhz": freq_mhz,
         "records": len(records),
+        "core_filter": list(cores) if cores else [],
         "per_core": per_core,
         "aggregate": aggregate,
     }
@@ -856,6 +887,9 @@ def render_markdown(result: Dict[str, object], meta: Optional[Dict[str, str]] = 
     add("")
     add(f"- Capture: `{result['capture']}`")
     add(f"- Raw stream: `{result['timeline']}`")
+    if result.get("core_filter"):
+        add(f"- **Filtered to cores: {', '.join(result['core_filter'])}** "
+            "(other cores are in the stream but excluded from these figures)")
     if meta:
         name = meta.get("Op Name") or meta.get("name")
         block = meta.get("Block Dim") or meta.get("block_dim")
@@ -1018,14 +1052,7 @@ def _render_overlap(result: Dict[str, object]) -> List[str]:
     # `capture` silently produced no section whenever the caller passed a
     # capture whose ``timeline`` lived outside it (a multi-pass layout), and a
     # missing verdict is indistinguishable from "no overlap to report".
-    timeline: Optional[Path] = None
-    recorded = result.get("timeline")
-    if recorded:
-        candidate = Path(str(recorded))
-        if candidate.is_file():
-            timeline = candidate
-    if timeline is None:
-        timeline = locate_timeline(Path(str(result["capture"])))
+    timeline = _resolve_stream(result)
     if timeline is None:
         return lines
     records = read_records(timeline)
@@ -1101,6 +1128,16 @@ def _render_overlap(result: Dict[str, object]) -> List[str]:
     return lines
 
 
+def _resolve_stream(result: Dict[str, object]) -> Optional[Path]:
+    """The stream this result was decoded from, preferring the recorded path."""
+    recorded = result.get("timeline")
+    if recorded:
+        candidate = Path(str(recorded))
+        if candidate.is_file():
+            return candidate
+    return locate_timeline(Path(str(result["capture"])))
+
+
 def write_chrome(result: Dict[str, object], path: Path) -> None:
     """Emit one Chrome Trace Event file, one track per (core, pipe)."""
     freq = result["freq_mhz"] or 1.0
@@ -1118,14 +1155,23 @@ def write_chrome(result: Dict[str, object], path: Path) -> None:
             })
 
     # Re-read the timelines: the summary dropped the intervals themselves.
-    capture = Path(str(result["capture"]))
-    timeline = locate_timeline(capture)
+    timeline = _resolve_stream(result)
     records = read_records(timeline) if timeline else []
+    wanted = {c["pid"] for c in result["per_core"] if c.get("windows")}
     for record in records:
-        groups = decode_groups(record)
+        if record.pid not in wanted:
+            continue
+        groups = [g for g in decode_groups(record) if g.end_cycle]
         if not groups:
             continue
-        group = groups[0]   # same group the summary reports
+        # Every window is shown, laid out one after another. They are separate
+        # samples of the same core, so they are offset rather than merged -- the
+        # same rule the statistics follow.
+        windows = []
+        offset = 0
+        for group in groups:
+            windows.append((group, offset))
+            offset += group.end_cycle
         pid = record.pid
         if pid not in pids:
             pids[pid] = len(pids) + 1
@@ -1134,7 +1180,8 @@ def write_chrome(result: Dict[str, object], path: Path) -> None:
                 "args": {"name": pid},
             })
         index = pids[pid]
-        pipe_names = sorted({p for iv in group.intervals for p in iv.pipes})
+        pipe_names = sorted({p for group, _ in windows
+                             for iv in group.intervals for p in iv.pipes})
         for pipe in pipe_names:
             key = (pid, pipe)
             if key in lanes:
@@ -1144,41 +1191,39 @@ def write_chrome(result: Dict[str, object], path: Path) -> None:
                 "name": "thread_name", "ph": "M", "pid": index,
                 "tid": lanes[key], "args": {"name": pipe},
             })
-        for iv in group.intervals:
-            for pipe in iv.pipes:
-                events.append({
-                    "name": pipe, "ph": "X", "pid": index,
-                    "tid": lanes[(pid, pipe)],
-                    "ts": round(iv.start / freq, 6),
-                    "dur": round(iv.cycles / freq, 6),
-                    "args": {"mask": f"0x{iv.mask:02x}"},
-                })
-        # Idle stretches get their own lane so the gaps are visible.
-        idle_lane = len([k for k in lanes if k[0] == pid])
         idle_key = (pid, "__idle__")
-        if idle_key not in lanes and any(iv.idle for iv in group.intervals):
-            lanes[idle_key] = idle_lane
+        if idle_key not in lanes and any(iv.idle for group, _ in windows
+                                        for iv in group.intervals):
+            lanes[idle_key] = len([k for k in lanes if k[0] == pid])
             events.append({
                 "name": "thread_name", "ph": "M", "pid": index,
-                "tid": idle_lane, "args": {"name": "IDLE"},
+                "tid": lanes[idle_key], "args": {"name": "IDLE"},
             })
-        if idle_key in lanes:
+        for window_index, (group, offset) in enumerate(windows):
             for iv in group.intervals:
-                if iv.idle:
+                for pipe in iv.pipes:
+                    events.append({
+                        "name": pipe, "ph": "X", "pid": index,
+                        "tid": lanes[(pid, pipe)],
+                        "ts": round((iv.start + offset) / freq, 6),
+                        "dur": round(iv.cycles / freq, 6),
+                        "args": {"mask": f"0x{iv.mask:02x}",
+                                 "window": window_index},
+                    })
+                if iv.idle and idle_key in lanes:
                     events.append({
                         "name": "IDLE", "ph": "X", "pid": index,
                         "tid": lanes[idle_key],
-                        "ts": round(iv.start / freq, 6),
+                        "ts": round((iv.start + offset) / freq, 6),
                         "dur": round(iv.cycles / freq, 6),
                         "cname": "grey",
+                        "args": {"window": window_index},
                     })
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(
         {"displayTimeUnit": "us", "traceEvents": events}, separators=(",", ":")
     ))
-    if result.get("aggregate"):
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -1208,6 +1253,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="write a Chrome/Perfetto trace here")
     parser.add_argument("--freq", type=float, default=None,
                         help="clock in MHz (default: read from the capture)")
+    parser.add_argument("--core", action="append", default=None,
+                        metavar="CORE",
+                        help="only analyse this core. Accepts the vendor name "
+                             "('core4.veccore0'), a core number ('4'), or a kind "
+                             "('aic'/'aiv'). Repeatable.")
     parser.add_argument("--json", action="store_true",
                         help="print the full result as JSON")
     parser.add_argument("--verify", action="store_true",
@@ -1231,9 +1281,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     freq = args.freq if args.freq is not None else read_freq_mhz(capture)
     try:
-        result = summarize(capture, freq)
+        result = summarize(capture, freq, cores=args.core)
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.core and not result["records"]:
+        available = sorted({r.pid for r in read_records(locate_timeline(capture))})
+        print("error: no core matched %s" % ", ".join(args.core), file=sys.stderr)
+        print("cores in this capture: %s" % ", ".join(available), file=sys.stderr)
         return 2
 
     meta = read_kernel_meta(capture)

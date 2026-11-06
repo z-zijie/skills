@@ -799,6 +799,23 @@ def test_pipeline_waveform() -> None:
         check("overlap verdict is rendered", "Serial or overlapped" in rendered,
               "section missing")
 
+        # --- core selection is a view filter, not a collection setting ------
+        check("no filter keeps every record",
+              len(PW.select_records(records)) == 1)
+        check("exact pid filters to that core",
+              [r.pid for r in PW.select_records(records, ["core3.veccore0"])]
+              == ["core3.veccore0"])
+        check("bare core number filters",
+              [r.core_id for r in PW.select_records(records, ["3"])] == [3])
+        check("unknown core filters everything out",
+              PW.select_records(records, ["core9.veccore9"]) == [])
+        filtered = PW.summarize(root, 1000.0, cores=["core3.veccore0"])
+        check("summary honours the filter",
+              filtered["records"] == 1 and filtered["core_filter"],
+              str(filtered.get("core_filter")))
+        check("filtered report says so",
+              "Filtered to cores" in PW.render_markdown(filtered))
+
         # --- verify() must distinguish "wrong" from "cannot check" ----------
         check("verify with no trace.json is INCONCLUSIVE",
               PW.verify(root)["verdict"] == "INCONCLUSIVE",
