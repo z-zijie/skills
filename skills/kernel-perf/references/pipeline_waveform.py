@@ -135,13 +135,127 @@ class Record:
     core_kind: str            # "aiv" | "aic"
     core_id: int
     subcore_id: int
+    # Set only for records built from a parsed PipeTrace, where the timeline is
+    # already resolved and there is no payload to decode.
+    prebuilt: Optional[List["Interval"]] = None
+    # The collector's own lane name, kept verbatim for trace-derived records so
+    # a report shows what the vendor emitted rather than a re-derived guess.
+    label: Optional[str] = None
 
     @property
     def pid(self) -> str:
         """The name the vendor's trace.json uses for this core."""
+        if self.label:
+            return self.label
         if self.core_kind == "aic":
             return f"core{self.core_id}.cubecore"
         return f"core{self.core_id}.veccore{self.subcore_id}"
+
+
+# Two independent collection routes produce a pipeline view. They are kept
+# distinct everywhere because they are not interchangeable:
+#
+#   "raw"     msprof op --aic-metrics=PipeTimeline -> dump/timeline.bin.0
+#             an unparsed per-cycle stream; this tool decodes it, so it owns the
+#             semantics and can pool every sampling window.
+#   "trace"   npu-compute -> .npu-rep -> PipeTrace.json
+#             already parsed by the vendor, one flat Chrome-trace event list.
+#             Coverage is whatever that collector retained, and it reports its
+#             own drops ("skipped N incomplete intervals").
+#
+# A trace-derived report must never read as if it came from the raw stream: the
+# two have different coverage and different provenance.
+ROUTE_RAW = "raw"
+ROUTE_TRACE = "trace"
+
+
+def load_pipe_trace(path: Path) -> Optional[Dict[str, object]]:
+    """Parse a vendor ``PipeTrace.json`` produced by the ``npu-compute`` route.
+
+    Returns ``None`` when the file is not that shape, so callers can fall back
+    to the raw-stream search instead of failing.
+    """
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    events = data.get("traceEvents")
+    if not isinstance(events, list) or not events:
+        return None
+    if not any(e.get("ph") == "X" for e in events if isinstance(e, dict)):
+        return None
+    return data
+
+
+def records_from_pipe_trace(trace: Dict[str, object], freq_mhz: float
+                            ) -> List[Record]:
+    """Convert parsed pipe-trace events into the same Record/Group model.
+
+    The trace carries absolute microseconds on one shared axis. Each event is
+    turned back into an ``Interval`` so every statistic and verdict in this
+    module works unchanged; nothing downstream needs to know which route
+    produced the data.
+    """
+    by_pid: Dict[str, List[Tuple[str, int, int]]] = {}
+    for event in trace.get("traceEvents") or []:
+        if not isinstance(event, dict) or event.get("ph") != "X":
+            continue
+        name = str(event.get("name") or "")
+        if name not in PIPE_LEVEL_NAMES:
+            continue
+        try:
+            start = round(float(event["ts"]) * freq_mhz)
+            end = start + round(float(event["dur"]) * freq_mhz)
+        except (KeyError, TypeError, ValueError):
+            continue
+        by_pid.setdefault(str(event.get("pid")), []).append((name, start, end))
+
+    records: List[Record] = []
+    for index, (pid, spans) in enumerate(sorted(by_pid.items())):
+        # "group3.veccore1" -> core_id 3, subcore 1. The vendor groups are not
+        # physical core ids, but carrying the number through keeps per-core
+        # tables readable and selection by number/kind working.
+        # The vendor numbers lanes by sampling *group*, not by physical core.
+        # Keep its label so the report matches what the collector emitted, and
+        # derive the numeric id only for selection.
+        label = pid.rsplit(".", 1)[0]
+        subcore = 1 if pid.endswith("veccore1") else 0
+        digits = "".join(ch for ch in label if ch.isdigit())
+        core_id = int(digits) if digits else index
+        kind = "aic" if "cubecore" in pid else "aiv"
+
+        # Merge per-pipe spans into a single state timeline by sweeping the
+        # boundaries: every span start/end becomes a state change.
+        edges = sorted({p for _, a, b in spans for p in (a, b)})
+        intervals: List[Interval] = []
+        for left, right in zip(edges, edges[1:]):
+            if right <= left:
+                continue
+            active = tuple(sorted({
+                name for name, a, b in spans if a <= left and right <= b
+            }))
+            if not active:
+                continue
+            mask = 0
+            table = AIC_PIPES if kind == "aic" else AIV_PIPES
+            for bit, name in table.items():
+                if name in active:
+                    mask |= bit
+            intervals.append(Interval(left, right, mask, active))
+        if intervals:
+            records.append(Record(
+                index=index,
+                record_id=(2 if kind == "aiv" else 0) << 16 | (core_id & 0xFFFF),
+                payload=[],
+                core_kind=kind,
+                core_id=core_id,
+                subcore_id=subcore,
+                prebuilt=intervals,
+                label=pid,
+            ))
+    return records
 
 
 def read_records(path: Path) -> List[Record]:
@@ -243,6 +357,10 @@ def decode_groups(record: Record) -> List[Group]:
     A ``0x0dxx`` counter block ends the current group, and the tokens after it
     start a fresh timeline from cycle 0.
     """
+    if record.prebuilt:
+        # A parsed PipeTrace arrives as one already-resolved timeline.
+        return [Group(index=0, intervals=list(record.prebuilt))]
+
     groups: List[Group] = []
     group = Group(index=0)
     clock = 0
@@ -527,17 +645,39 @@ def summarize(capture: Path, freq_mhz: float,
     ``cores`` restricts the analysis to the named cores. The stream always
     contains every sampled core, so this is a view filter, not a collection
     setting: the same capture answers "what did core 4 do" without re-running.
+
+    Two routes feed this function. A raw ``dump/timeline.bin.0`` is decoded
+    here; a parsed ``PipeTrace.json`` from the ``npu-compute`` route is converted
+    back into the same model. The result records which route it used so a report
+    can never present one as the other -- they differ in coverage and in who
+    decided what a number means.
     """
     if timeline is None:
         timeline = locate_timeline(capture)
+
+    route = ROUTE_RAW
+    pipe_trace = None
+    pipe_trace_path: Optional[Path] = None
     if timeline is None:
-        raise FileNotFoundError(
-            f"no dump/timeline.bin.0 under {capture}; collect with "
-            "msopprof --aic-metrics=PipeTimeline"
-        )
+        # No raw stream: fall back to the npu-compute route.
+        pipe_trace_path = locate_pipe_trace(capture)
+        pipe_trace = (load_pipe_trace(pipe_trace_path)
+                      if pipe_trace_path is not None else None)
+        if pipe_trace is None:
+            raise FileNotFoundError(
+                f"no dump/timeline.bin.0 and no PipeTrace.json under {capture}; "
+                "collect with `msprof op --aic-metrics=PipeTimeline` or "
+                "`npu-compute --section Pipeline` + `npu-compute -i`"
+            )
+        route = ROUTE_TRACE
     if meta is None:
         meta = read_kernel_meta(capture)
-    records = select_records(read_records(timeline), cores)
+    if route == ROUTE_RAW:
+        records = select_records(read_records(timeline), cores)
+    else:
+        records = select_records(
+            records_from_pipe_trace(pipe_trace, freq_mhz), cores
+        )
     waveforms = [
         CoreWaveform(rec, decode_groups(rec), freq_mhz) for rec in records
     ]
@@ -612,6 +752,8 @@ def summarize(capture: Path, freq_mhz: float,
         "timeline": str(timeline),
         "freq_mhz": freq_mhz,
         "records": len(records),
+        "route": route,
+        "route_source": str(timeline) if route == ROUTE_RAW else str(pipe_trace_path),
         "core_filter": list(cores) if cores else [],
         "per_core": per_core,
         "aggregate": aggregate,
@@ -621,6 +763,26 @@ def summarize(capture: Path, freq_mhz: float,
 # ---------------------------------------------------------------------------
 # capture discovery
 # ---------------------------------------------------------------------------
+
+def locate_pipe_trace(capture: Path) -> Optional[Path]:
+    """Find the vendor's parsed ``PipeTrace.json`` from the npu-compute route.
+
+    The file lands either beside the ``.npu-rep`` or under an import directory
+    (``unpack/npu-compute-import-*/PipeTrace.json``), so both are searched.
+    """
+    if capture.is_file() and capture.name == "PipeTrace.json":
+        return capture
+    direct = capture / "PipeTrace.json"
+    if direct.is_file():
+        return direct
+    found = [p for p in capture.rglob("PipeTrace.json")
+             if p.is_file() and "npu-compute-import" in str(p)]
+    if not found:
+        found = [p for p in capture.rglob("PipeTrace.json") if p.is_file()]
+    if not found:
+        return None
+    return max(found, key=lambda p: p.stat().st_mtime)
+
 
 def locate_timeline(capture: Path) -> Optional[Path]:
     """Find ``timeline.bin.0`` inside a capture or a bare directory.
@@ -883,10 +1045,24 @@ def render_markdown(result: Dict[str, object], meta: Optional[Dict[str, str]] = 
     agg = result["aggregate"]
     freq = result["freq_mhz"]
 
-    add("# Pipeline waveform (raw `timeline.bin.0`)")
+    route = result.get("route") or ROUTE_RAW
+    add("# Pipeline waveform (raw `timeline.bin.0`)"
+        if route == ROUTE_RAW else
+        "# Pipeline waveform (`npu-compute` PipeTrace)")
     add("")
     add(f"- Capture: `{result['capture']}`")
-    add(f"- Raw stream: `{result['timeline']}`")
+    if route == ROUTE_TRACE:
+        add(f"- **Route: `npu-compute` PipeTrace** — `{result.get('route_source')}`")
+        add("")
+        add("> This report was built from a *parsed* trace, not from the raw "
+            "per-cycle stream. Segmentation, sampling coverage and any dropped "
+            "intervals were decided by the collector, not by this tool, so the "
+            "figures describe what it retained. Re-collect with "
+            "`msprof op --aic-metrics=PipeTimeline` when raw-stream semantics "
+            "matter.")
+        add("")
+    else:
+        add(f"- Route: raw stream — `{result['timeline']}`")
     if result.get("core_filter"):
         add(f"- **Filtered to cores: {', '.join(result['core_filter'])}** "
             "(other cores are in the stream but excluded from these figures)")
@@ -903,6 +1079,63 @@ def render_markdown(result: Dict[str, object], meta: Optional[Dict[str, str]] = 
     if not agg:
         add("> No timed intervals in this capture. `timeline.bin.0` is written by "
             "`--aic-metrics=PipeTimeline`; check that the collection used it.")
+        return "\n".join(lines) + "\n"
+
+    if route == ROUTE_TRACE:
+        # The parsed trace has no sampling windows and no kernel duration, so
+        # the raw route's coverage machinery does not apply. Reporting it here
+        # would invent a coverage figure the vendor never measured.
+        add("## 1. Pipe occupancy")
+        add("")
+        add("Each lane's own busy share, averaged across the traced lanes. The "
+            "vendor trace does not expose the sampling windows the raw route "
+            "carries, so the spread column is the between-lane spread, not "
+            "run-to-run variation.")
+        add("")
+        add("| Pipe | Mean | Spread (sd) | Lanes |")
+        add("|---|---:|---:|---:|")
+        for name, pct in sorted(agg["pipes_pct"].items(), key=lambda kv: -kv[1]):
+            lanes = sum(1 for c in result["per_core"]
+                        if name in (c.get("pipes") or {}))
+            add(f"| {name} | {pct:.1f}% | {agg['pipes_pct_sd'].get(name, 0.0):.1f} "
+                f"| {lanes} |")
+        add("")
+        add("Pipes run in parallel, so these do not sum to 100%.")
+        add("")
+        add("## 2. Idle and bubbles")
+        add("")
+        add(f"Across **{agg['cores_active']} lane group"
+            f"{'' if agg['cores_active'] == 1 else 's'}**:")
+        add("")
+        add(f"- Mean idle (no pipe busy): **{agg['mean_idle_pct']:.1f}%** "
+            "of traced cycles")
+        add("")
+        add("## 3. Per-lane detail")
+        add("")
+        add("| Lane | Span (us) | Idle | Busiest pipe |")
+        add("|---|---:|---:|---|")
+        for core in result["per_core"]:
+            if not core.get("windows"):
+                continue
+            pipes = core.get("pipes") or {}
+            top = max(pipes.items(), key=lambda kv: kv[1]["pct"]) if pipes else None
+            busiest = f"{top[0]} {top[1]['pct']:.0f}%" if top else "-"
+            add(f"| `{core['pid']}` | {core['span_us']:.3f} | "
+                f"{core['idle_pct']:.1f}% | {busiest} |")
+        add("")
+        overlap_lines = _render_overlap(result)
+        if overlap_lines:
+            lines.extend(overlap_lines)
+        add("## " + str(4 + (1 if overlap_lines else 0)) + ". How to read this")
+        add("")
+        add("- Times come from the vendor's parsed trace, in microseconds; this "
+            "tool did not re-derive them.")
+        add("- **No coverage figure is given**, because the collector does not "
+            "report how much of the kernel it sampled. Re-collect with "
+            "`msprof op --aic-metrics=PipeTimeline` if you need that.")
+        add("- The same serial/overlapped verdict is computed, but from the "
+            "vendor's segmentation rather than from decoded windows.")
+        add("")
         return "\n".join(lines) + "\n"
 
     # Coverage first: every percentage below is a statement about the sampled
@@ -1052,10 +1285,9 @@ def _render_overlap(result: Dict[str, object]) -> List[str]:
     # `capture` silently produced no section whenever the caller passed a
     # capture whose ``timeline`` lived outside it (a multi-pass layout), and a
     # missing verdict is indistinguishable from "no overlap to report".
-    timeline = _resolve_stream(result)
-    if timeline is None:
+    records = _records_for(result)
+    if not records:
         return lines
-    records = read_records(timeline)
     freq = result.get("freq_mhz") or 0.0
 
     pairs = [("MTE2", "VECTOR"), ("MTE2", "CUBE"), ("MTE1", "CUBE")]
@@ -1094,7 +1326,8 @@ def _render_overlap(result: Dict[str, object]) -> List[str]:
         add("## 4. Serial or overlapped: %s vs %s" % (left, right))
         add("")
         if both == 0:
-            add(f"**Never overlap** across {seen} windows. `{left}` and `{right}` "
+            add(f"**Never overlap** across {seen} lane group"
+                f"{'' if seen == 1 else 's'}. `{left}` and `{right}` "
                 f"take strict turns -- {left} {only_left/freq if freq else 0:.3f} us, "
                 f"{right} {only_right/freq if freq else 0:.3f} us, shared 0.")
             add("")
@@ -1128,14 +1361,36 @@ def _render_overlap(result: Dict[str, object]) -> List[str]:
     return lines
 
 
-def _resolve_stream(result: Dict[str, object]) -> Optional[Path]:
-    """The stream this result was decoded from, preferring the recorded path."""
-    recorded = result.get("timeline")
+def _resolve_route_source(result: Dict[str, object]) -> Tuple[str, Optional[Path]]:
+    """Which route produced this result, and the file it came from.
+
+    The overlap verdict and the Chrome writer both need to re-read the source,
+    and on the trace route that source is a ``PipeTrace.json`` rather than a
+    raw stream -- so they must ask for the route instead of assuming one.
+    """
+    route = result.get("route") or ROUTE_RAW
+    recorded = result.get("route_source") or result.get("timeline")
     if recorded:
         candidate = Path(str(recorded))
         if candidate.is_file():
-            return candidate
-    return locate_timeline(Path(str(result["capture"])))
+            return route, candidate
+    capture = Path(str(result["capture"]))
+    if route == ROUTE_TRACE:
+        return route, locate_pipe_trace(capture)
+    return route, locate_timeline(capture)
+
+
+def _records_for(result: Dict[str, object]) -> List[Record]:
+    """Re-read the records behind a result, whichever route produced it."""
+    route, source = _resolve_route_source(result)
+    if source is None:
+        return []
+    if route == ROUTE_TRACE:
+        trace = load_pipe_trace(source)
+        if trace is None:
+            return []
+        return records_from_pipe_trace(trace, float(result.get("freq_mhz") or 1650.0))
+    return read_records(source)
 
 
 def write_chrome(result: Dict[str, object], path: Path) -> None:
@@ -1155,8 +1410,7 @@ def write_chrome(result: Dict[str, object], path: Path) -> None:
             })
 
     # Re-read the timelines: the summary dropped the intervals themselves.
-    timeline = _resolve_stream(result)
-    records = read_records(timeline) if timeline else []
+    records = _records_for(result)
     wanted = {c["pid"] for c in result["per_core"] if c.get("windows")}
     for record in records:
         if record.pid not in wanted:

@@ -10,6 +10,40 @@ artefact the vendor does not publish a spec for: the per-cycle pipe stream that
 the profiler dumps as `dump/timeline.bin.0`. `scripts/pipeline_waveform.py`
 decodes it.
 
+## Two collection routes
+
+| | **raw stream** | **`npu-compute` PipeTrace** |
+|---|---|---|
+| how | `msprof op --aic-metrics=PipeTimeline` | `npu-compute --section Pipeline` then `npu-compute -i` |
+| artefact | `dump/timeline.bin.0`, 25 MB unparsed | `PipeTrace.json`, ~15 KB already parsed |
+| who segments | this tool decodes the token stream | the vendor collector |
+| sampling windows | exposed, all pooled | not exposed |
+| coverage | computable per core | **not reported** |
+| extra caveats | none from the vendor | collector states its own drops |
+
+`kernel_perf.py` and `pipeline_waveform.py` accept either. **A report always
+says which route it used**, and the two are never mixed: a trace-derived report
+states that segmentation and coverage were decided by the collector and prints
+no coverage figure at all, because inventing one would be worse than omitting it.
+When both artefacts exist, the raw stream wins.
+
+### Collecting the parsed route
+
+```bash
+cd <sample dir>
+npu-compute -o /tmp/trace ./your_app          # 1) writes report_*.npu-rep
+npu-compute -i /tmp/trace/report_*.npu-rep -o /tmp/trace/unpack   # 2) unpacks PipeTrace.json
+```
+
+`Pipeline` is in the default `basic` set, so `--section` is optional; adding
+`--section Pipeline` collects just that and is faster. Both steps are needed
+because `npu-compute` packs everything into one `.npu-rep` and only emits
+CSV/JSON on import.
+
+> `npu-compute` has no `PipeTimeline` section — it cannot produce the raw stream
+> at all, and it hangs indefinitely if the device is busy with another profiler.
+> See `npu-compute.md`.
+
 ## Collect
 
 ```bash

@@ -122,6 +122,12 @@ at 24.1% where the figure across all windows is 40.2%.
 > more than the kernel's duration the report says coverage is not computable
 > instead of printing a number above 100%.
 
+There are **two collection routes** and the report always says which one it used:
+the raw stream above, and a parsed `PipeTrace.json` from `npu-compute` (collect,
+then `-i` to unpack). The parsed route needs no decoding but the vendor decides
+segmentation and does not report coverage, so its report states that and prints
+no coverage figure. The raw stream wins when both exist.
+
 The container format, timing convention and pipe bit assignment are documented in
 `references/pipeline-waveform.md`, including the one non-obvious rule -- a token's
 mask pairs with the *next* token's duration.

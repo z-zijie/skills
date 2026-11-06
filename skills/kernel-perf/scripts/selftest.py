@@ -799,6 +799,47 @@ def test_pipeline_waveform() -> None:
         check("overlap verdict is rendered", "Serial or overlapped" in rendered,
               "section missing")
 
+        # --- the npu-compute PipeTrace route is a distinct route -----------
+        import json as _json
+        # Remove the raw stream so the fallback has to be used.
+        saved = (root / "dump/timeline.bin.0").read_bytes()
+        (root / "dump/timeline.bin.0").unlink()
+        trace_dir = root / "npu-compute-import-1"
+        trace_dir.mkdir()
+        (trace_dir / "PipeTrace.json").write_text(_json.dumps({
+            "displayTimeUnit": "ns",
+            "traceEvents": [
+                {"ph": "X", "name": "MTE2", "pid": "group0.veccore0",
+                 "ts": 10 / 1000.0, "dur": 100 / 1000.0},
+                {"ph": "X", "name": "VECTOR", "pid": "group0.veccore0",
+                 "ts": 110 / 1000.0, "dur": 50 / 1000.0},
+            ],
+        }))
+        located = PW.locate_pipe_trace(root)
+        check("PipeTrace.json is located", located is not None, str(located))
+        trace_result = PW.summarize(root, 1000.0)
+        check("trace route is reported as such",
+              trace_result.get("route") == PW.ROUTE_TRACE,
+              str(trace_result.get("route")))
+        check("vendor lane names are preserved",
+              trace_result["per_core"][0]["pid"] == "group0.veccore0",
+              str(trace_result["per_core"][0]["pid"]))
+        trace_md = PW.render_markdown(trace_result)
+        check("trace report says it is a parsed trace",
+              "npu-compute" in trace_md and "parsed" in trace_md)
+        check("trace report does not claim raw provenance",
+              "raw `timeline.bin.0`" not in trace_md.splitlines()[0],
+              trace_md.splitlines()[0])
+        check("trace report invents no coverage figure",
+              "Coverage" not in trace_md)
+        check("trace report still gives the overlap verdict",
+              "Serial or overlapped" in trace_md)
+
+        # Restore the raw stream: it must win when both are present.
+        (root / "dump/timeline.bin.0").write_bytes(saved)
+        check("raw stream takes precedence over a parsed trace",
+              PW.summarize(root, 1000.0).get("route") == PW.ROUTE_RAW)
+
         # --- core selection is a view filter, not a collection setting ------
         check("no filter keeps every record",
               len(PW.select_records(records)) == 1)
