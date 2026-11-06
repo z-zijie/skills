@@ -6,7 +6,7 @@ authoritative somewhere else, and the pointers say where.
 ## Where things live
 
 ```
-RSI/
+skills/RSI/
 ├── evaluator/          frozen Layer 0 — call its CLI, never read or edit its source
 ├── tooling/rsi/        shared code: contracts, units, statistics, signatures, ledger
 ├── schemas/            JSON Schemas; frozen contracts between skills
