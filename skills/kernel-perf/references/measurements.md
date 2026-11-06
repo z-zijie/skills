@@ -308,11 +308,14 @@ success.`, and a `visualize_data.bin` 10 776-10 808 bytes instead of 14 076-14 3
 They carry no `0x02` (trace) record and no stream, so nothing in the capture
 records that anything went wrong.
 
-The retry itself is **not** demonstrated by this data. A separate probe of two
-further identical runs produced a stream both times, but at a ~70% base rate two
-successes say nothing about whether re-running recovers a *specific* failure --
-that would need a run that failed and then succeeded, which did not occur in the
-probe. So `--with-timeline` retries (`--waveform-retries`, default 2) as a cheap
+The retry itself is **not** demonstrated by this data. Eight further runs with
+the retry path enabled (`--metrics PipeTimeline`, `--warm-up=1`, two isolated
+probes and then six in a loop) all produced a stream on the first attempt, so the
+retry never fired. At a ~70% base rate that is the expected outcome and says
+nothing about whether re-running recovers a *specific* failure -- that would need
+a run that failed and then succeeded, which never occurred.
+
+So `--with-timeline` retries (`--waveform-retries`, default 2) as a cheap
 mitigation with an honest cost bound, not as a verified repair, and when the
 budget is exhausted section 15 says the stream was not collected instead of
 omitting the section. This is the one place where "no waveform" must never be
