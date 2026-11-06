@@ -63,6 +63,17 @@ except ImportError:  # pragma: no cover
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+try:
+    # The raw-waveform decoder lives in references/ (it is a standalone tool
+    # there, so it can be run directly against a capture); import it by path.
+    import sys as _sys
+    _refs = Path(__file__).resolve().parent.parent / "references"
+    if str(_refs) not in _sys.path:
+        _sys.path.insert(0, str(_refs))
+    import pipeline_waveform as PW
+except ImportError:  # pragma: no cover
+    PW = None
+
 VERSION = "1.0.0"
 
 # Metric groups we always request. Each is an independent msopprof collection
@@ -397,6 +408,8 @@ class Capture:
     op_detail: List[Dict[str, Any]] = field(default_factory=list)
     timeline: Optional[Dict[str, Any]] = None
     trace_path: Optional[Path] = None
+    waveform: Optional[Dict[str, Any]] = None
+    waveform_missing: str = ""
 
     def per_core(self, table: str) -> List[Dict[str, Any]]:
         """Rows of one CSV table with numeric fields parsed."""
@@ -557,6 +570,178 @@ def derive_bw_peaks(rows: List[Dict[str, str]]) -> Dict[str, List[float]]:
 # capture loading
 # ---------------------------------------------------------------------------
 
+def load_waveform(root: Path, extra_roots: Iterable[Path] = (),
+                  cores: Optional[Iterable[str]] = None
+                  ) -> Optional[Dict[str, Any]]:
+    """Decode the raw per-cycle pipe stream, if this capture has one.
+
+    ``--aic-metrics=PipeTimeline`` is what writes ``dump/timeline.bin.0``: the
+    unparsed record of which pipe was busy on which cycle. It is the only
+    artefact that can answer *when* -- whether the memory and compute pipes
+    overlapped or took turns -- because the CSV path only ever reports sums.
+    Captures collected without PipeTimeline simply do not have it, which is not
+    an error; the report then omits the section.
+
+    A multi-pass collection puts PipeTimeline in its own pass, so the stream
+    lives in a sibling ``extra/<pass>/`` directory rather than under the core
+    capture. Those are searched too, newest first, so the caller does not have
+    to know which pass wrote it.
+    """
+    if PW is None:
+        return None
+    candidates: List[Path] = []
+    found = PW.locate_timeline(root)
+    if found is not None:
+        candidates.append(found)
+    for extra in extra_roots:
+        if not extra.is_dir():
+            continue
+        # The passes are symlinks into the collection directory, and the stream
+        # sits under a device/core subtree, so neither `glob("*")` alone nor a
+        # fixed-depth pattern finds it: resolve the `extra` prefix by hand and
+        # search the rest recursively.
+        for child in sorted(extra.iterdir()):
+            try:
+                base = child.resolve()
+            except OSError:
+                continue
+            if not base.is_dir():
+                continue
+            candidates.extend(sorted(base.rglob("timeline.bin.0")))
+    if not candidates:
+        return None
+    timeline = max(candidates, key=lambda p: p.stat().st_mtime)
+    freq = PW.read_freq_mhz(root)
+    result = PW.summarize(root, freq, timeline=timeline,
+                          cores=list(cores) if cores else None)
+    if not result.get("aggregate"):
+        return None
+    return result
+
+
+def _explain_missing_waveform(root: Path,
+                              extra_roots: Iterable[Path] = ()) -> str:
+    """Why this capture has no waveform section.
+
+    A missing section has three very different causes and they must not read
+    alike: PipeTimeline was never requested (nothing to say), it was requested
+    but the collection intermittently dropped the stream (re-run and it is
+    usually back), or a stream exists but decoded to nothing (a real defect in
+    the capture). The message is built from the artefacts rather than from a
+    flag, so `analyze` gives the same answer as the run that produced it.
+    """
+    streams = []
+    try:
+        streams.extend(p for p in root.rglob("timeline.bin.0") if p.is_file())
+    except OSError:
+        pass
+    for extra in extra_roots:
+        if not extra.is_dir():
+            continue
+        for child in sorted(extra.iterdir()):
+            try:
+                base = child.resolve()
+            except OSError:
+                continue
+            if base.is_dir():
+                try:
+                    streams.extend(p for p in base.rglob("timeline.bin.0")
+                                   if p.is_file())
+                except OSError:
+                    continue
+    if streams:
+        return ("A raw stream was found at `%s` but decoded to no samples; the "
+                "capture is incomplete. Re-collect the PipeTimeline pass."
+                % streams[0])
+    traces = [p for p in root.rglob("PipeTrace.json") if p.is_file()]
+    if traces:
+        # The npu-compute route IS supported, so reaching this branch means the
+        # parsed trace was present but produced no samples -- a broken or
+        # truncated export, not a missing feature.
+        return ("The vendor's parsed `PipeTrace.json` at `%s` decoded to no "
+                "samples; the export is empty or truncated. Re-export with "
+                "`npu-compute` or collect the raw stream instead." % traces[0])
+    # Nothing below this point is a failure: a capture collected without
+    # PipeTimeline simply has no waveform, and the report should stay quiet
+    # about a layer nobody asked for. Only say "missing" when there is evidence
+    # that a PipeTimeline pass actually ran.
+    marker = _read_waveform_marker(root)
+    if marker is None and not _pipetimeline_was_requested(root):
+        return ""
+    attempted = ""
+    if marker and marker.get("attempts"):
+        attempted = (" The collector re-ran it %d time%s and never got a stream."
+                     % (marker["attempts"],
+                        "" if marker["attempts"] == 1 else "s"))
+    return ("No `dump/timeline.bin.0` in this capture, although a PipeTimeline "
+            "pass ran.%s `msprof op` intermittently exits successfully while "
+            "writing no raw stream (measured: 3 of 10 identical KDA collections "
+            "came back this way). Re-run with `--with-timeline`, which retries."
+            % attempted)
+
+
+def _read_waveform_marker(root: Path) -> Optional[Dict[str, Any]]:
+    """The note `_mark_waveform_requested` left, if this capture has one.
+
+    In a multi-pass collection the marker is written into the *PipeTimeline*
+    pass, while the analyzed root is the core pass (``OPPROF_merged``). So the
+    pass directories have to be searched too -- otherwise the attempt count is
+    silently lost in exactly the layout the collector normally produces.
+    """
+    direct = (root, root.parent, root.parent.parent)
+    candidates: List[Path] = [c / "waveform_requested.json" for c in direct]
+    for base in (root.parent, root.parent.parent):
+        try:
+            if not base.is_dir():
+                continue
+            for pattern in ("pass*/OPPROF_*/waveform_requested.json",
+                            "pass*/waveform_requested.json"):
+                candidates.extend(sorted(base.glob(pattern)))
+            for child in sorted(base.iterdir()):
+                if child.is_dir() and "pipetimeline" in child.name.lower():
+                    candidates.extend(sorted(
+                        child.glob("OPPROF_*/waveform_requested.json")))
+        except OSError:
+            continue
+    for marker in candidates:
+        try:
+            if marker.is_file():
+                return json.loads(marker.read_text(errors="replace"))
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _pipetimeline_was_requested(root: Path) -> bool:
+    """Did a PipeTimeline collection run for this capture?
+
+    ``run_multipass`` names the pass directory after its metric, so the
+    directory name is the record of intent. A single-pass collection keeps its
+    log beside the capture; that is the fallback.
+    """
+    try:
+        for parent in (root.parent, root.parent.parent):
+            if not parent.is_dir():
+                continue
+            for child in parent.iterdir():
+                if child.is_dir() and "pipetimeline" in child.name.lower():
+                    return True
+    except OSError:
+        pass
+    try:
+        for log_dir in (root.parent, root.parent.parent):
+            for name in ("collect.log", "collect_*.log"):
+                for log_path in log_dir.glob(name):
+                    try:
+                        if "PipeTimeline" in log_path.read_text(errors="replace"):
+                            return True
+                    except OSError:
+                        continue
+    except OSError:
+        pass
+    return False
+
+
 def find_capture_root(path: Path) -> Optional[Path]:
     """Given a dir, find the OPPROF_* (or PROF_*) capture inside it."""
     if not path.exists():
@@ -702,6 +887,17 @@ def load_capture(path: Path, home: Optional[Path] = None) -> Capture:
             capture.timeline = json.loads(trace.read_text(errors="replace"))
         except (OSError, ValueError):
             capture.timeline = None
+
+    # The raw per-cycle pipe stream (dump/timeline.bin.0). Optional: only a
+    # PipeTimeline collection writes it, and the decoder is an enrichment --
+    # a capture without it still produces a complete CSV-based report.
+    if PW is not None:
+        try:
+            capture.waveform = load_waveform(root, extra_candidates)
+        except (OSError, ValueError):
+            capture.waveform = None
+        if capture.waveform is None:
+            capture.waveform_missing = _explain_missing_waveform(root, extra_candidates)
 
     capture.platform = load_platform_for_soc(capture.soc, home)
     if not capture.soc and capture.platform is not None:
@@ -1165,6 +1361,8 @@ def analyze(capture: Capture) -> Dict[str, Any]:
     }
     result["per_core"] = build_per_core(capture)
     result["timeline"] = summarize_timeline(capture)
+    result["waveform"] = capture.waveform
+    result["waveform_missing"] = capture.waveform_missing
     result["subblocks"] = summarize_subblocks(capture)
     result["op_detail"] = summarize_op_detail(capture)
 
@@ -1377,6 +1575,48 @@ def summarize_timeline(capture: Capture) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # report rendering
 # ---------------------------------------------------------------------------
+
+def render_waveform(waveform: Dict[str, Any], number: int) -> List[str]:
+    """Report section for the raw pipeline waveform.
+
+    The heavy lifting lives in ``references/pipeline_waveform.py``: it owns the
+    format, the statistics and the wording, so there is exactly one place that
+    decides what a number means. This wrapper only re-nests the headings, because
+    the decoder numbers its sections from 1 for standalone use while this report
+    needs them under section ``number``.
+    """
+    if PW is None:
+        return []
+    try:
+        # The stored result names the stream it was decoded from. Re-derive the
+        # capture-level sections from that same stream so they cannot silently
+        # go missing when the capture directory has moved.
+        body = PW.render_markdown(waveform, None)
+    except Exception:  # noqa: BLE001 - a broken section must not kill the report
+        return [
+            f"## {number}. Pipeline waveform",
+            "",
+            "> The raw waveform was collected but could not be rendered. "
+            "`metrics.json` still carries the decoded values.",
+            "",
+        ]
+
+    out: List[str] = [f"## {number}. Pipeline waveform (raw per-cycle stream)"]
+    seen_title = False
+    for line in body.splitlines():
+        if line.startswith("# "):
+            # The decoder's own document title becomes the section heading.
+            seen_title = True
+            continue
+        if line.startswith("## "):
+            head, _, tail = line[3:].partition(". ")
+            if head.isdigit() and tail:
+                # "## 2. Idle" under section 15 -> "### 15.2 Idle"
+                out.append(f"### {number}.{head} {tail}")
+                continue
+        out.append(line)
+    return out
+
 
 def render_markdown(result: Dict[str, Any]) -> str:
     kernel = result["kernel"]
@@ -1696,9 +1936,22 @@ def render_markdown(result: Dict[str, Any]) -> str:
                 f"{_fmt(row['throughput'])} | {_fmt(row['l2_hit_rate_pct'], '%')} |")
         add("")
 
+    waveform = result.get("waveform")
+    if waveform and waveform.get("aggregate"):
+        lines.extend(render_waveform(waveform, 15))
+    elif result.get("waveform_missing"):
+        # The section is absent because collection failed, not because nobody
+        # asked for it. Saying so is the difference between a report that is
+        # missing a layer and one that quietly implies the layer was checked and
+        # found empty.
+        add("## 15. Pipeline waveform (raw per-cycle stream)")
+        add("")
+        add(f"> **Not collected.** {result['waveform_missing']}")
+        add("")
+
     timeline = result.get("timeline")
     if timeline:
-        add("## 15. Timeline events")
+        add("## 16. Timeline events (accumulated, legacy view)")
         add("")
         add(f"- {timeline['event_count']} events from `{timeline['source']}`")
         add("")
@@ -1736,13 +1989,101 @@ def run_msopprof(home: Path, app: List[str], out_dir: Path,
                  metrics: List[str], warmup: int, launch_count: int,
                  kernel: Optional[str], replay_mode: str,
                  timeout: int,
-                 instr_pipes: Optional[str] = None) -> Tuple[int, str, Optional[Path]]:
-    """Run one msopprof collection. Returns (rc, log, capture_dir)."""
+                 instr_pipes: Optional[str] = None,
+                 waveform_retries: int = 0) -> Tuple[int, str, Optional[Path]]:
+    """Run one profiling collection. Returns (rc, log, capture_dir).
+
+    ``PipeTimeline`` is invoked through ``msprof op`` rather than by calling the
+    ``msopprof`` binary directly. Both accept identical flags and both write an
+    ``OPPROF_*`` directory with ``trace.json``, but only the ``msprof op``
+    wrapper stages the raw per-cycle stream into ``device0/.../dump/timeline.bin.0``
+    -- calling ``msopprof`` directly leaves that file out entirely (measured:
+    a direct call produced 11 files, all parsed, and no raw stream). Since the
+    raw stream is the whole point of the waveform section, that pass has to go
+    through the wrapper.
+
+    A PipeTimeline pass is confirmed, not assumed: ``msprof op`` can exit 0 and
+    write a complete-looking capture whose ``dump/`` holds every parsed artefact
+    but no ``timeline.bin.0``. Measured over 10 consecutive identical KDA
+    collections, 3 came back that way -- rc=0, ``OpBasicInfo.csv`` present,
+    ``[INFO] Profiling running finished. All task success.`` in the log, and no
+    stream -- so the failure is silent and the report would otherwise show no
+    waveform section at all, which reads exactly like "the user did not ask for
+    one". ``waveform_retries`` re-runs the same command until the stream exists;
+    each retry writes a new ``OPPROF_*`` beside the previous one, and the newest
+    wins. The default is 2 because a retry is cheap next to a lost capture; it
+    is NOT backed by evidence that a retry recovers a specific failure (see
+    `references/measurements.md`, "Collection stability").
+    """
+    attempt = 0
+    logs: List[str] = []
+    while True:
+        rc, log, root = _run_msopprof_once(
+            home=home, app=app, out_dir=out_dir, metrics=metrics,
+            warmup=warmup, launch_count=launch_count, kernel=kernel,
+            replay_mode=replay_mode, timeout=timeout,
+            instr_pipes=instr_pipes,
+        )
+        logs.append(log)
+        wants_stream = "PipeTimeline" in metrics
+        if (not wants_stream or root is None
+                or PW is None or PW.locate_timeline(root) is not None):
+            break
+        if attempt >= waveform_retries:
+            logs.append(
+                f"[harness] the PipeTimeline pass produced no "
+                f"dump/timeline.bin.0 after {attempt + 1} attempt(s); "
+                f"giving up on the raw stream\n"
+            )
+            break
+        attempt += 1
+        print(f"[warn] this PipeTimeline collection wrote no raw stream "
+              f"(a known intermittent failure of `msprof op`); "
+              f"re-collecting, attempt {attempt + 1}...", file=sys.stderr)
+        logs.append(f"[harness] no raw stream in {root}; re-collecting\n")
+    if "PipeTimeline" in metrics:
+        # Record the intent on the capture itself. Without it, a later
+        # `analyze` cannot tell "we asked for a waveform and the collector
+        # dropped it" from "nobody asked", because the vendor's log names only
+        # the CSV metric it saved and never mentions PipeTimeline.
+        _mark_waveform_requested(root if root is not None else out_dir,
+                                 attempts=attempt + 1,
+                                 recovered=PW is not None and root is not None
+                                 and PW.locate_timeline(root) is not None)
+    return rc, "".join(logs), root
+
+
+def _mark_waveform_requested(root: Path, attempts: int,
+                             recovered: bool) -> None:
+    """Leave a note in the capture saying a PipeTimeline pass ran."""
+    try:
+        (root / "waveform_requested.json").write_text(json.dumps({
+            "metric": "PipeTimeline",
+            "attempts": attempts,
+            "stream_written": bool(recovered),
+        }, indent=2))
+    except OSError:
+        # Best-effort: without the marker the report stays quiet about a
+        # missing stream, which is the pre-existing behaviour.
+        pass
+
+
+def _run_msopprof_once(home: Path, app: List[str], out_dir: Path,
+                       metrics: List[str], warmup: int, launch_count: int,
+                       kernel: Optional[str], replay_mode: str,
+                       timeout: int,
+                       instr_pipes: Optional[str] = None
+                       ) -> Tuple[int, str, Optional[Path]]:
+    """One msopprof/msprof invocation, without any retry logic."""
     env = cann_env(home)
-    binary = home / "tools" / "msopprof" / "bin" / "msopprof"
     out_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        str(binary),
+    if "PipeTimeline" in metrics:
+        binary = home / "bin" / "msprof"
+        prefix = [str(binary), "op"]
+    else:
+        binary = home / "tools" / "msopprof" / "bin" / "msopprof"
+        prefix = [str(binary)]
+    cmd = prefix + [
         f"--warm-up={warmup}",
         f"--launch-count={launch_count}",
         f"--replay-mode={replay_mode}",
@@ -1894,6 +2235,7 @@ def run_multipass(home: Path, app: List[str], capture_dir: Path,
             kernel=args.kernel, replay_mode=args.replay_mode,
             timeout=args.timeout,
             instr_pipes=getattr(args, "instr_pipes", None),
+            waveform_retries=getattr(args, "waveform_retries", 0),
         )
         logs.append(f"=== pass{index} {metrics} rc={rc} ===\n{log}")
         if "PipeUtilization" in metrics and root is not None and core_root is None:
@@ -1958,7 +2300,11 @@ def command_profile(args: argparse.Namespace) -> int:
         capture_dir = out_dir / "capture"
         metrics = list(DEFAULT_METRICS)
         if args.with_timeline:
-            metrics.append("BasicInfo")
+            # BasicInfo carries the identity fields; PipeTimeline is what writes
+            # the raw per-cycle stream the waveform section decodes. Neither can
+            # share a pass with the core CSV groups, so plan_passes puts them in
+            # their own and run_multipass merges the results.
+            metrics.extend(["BasicInfo", "PipeTimeline"])
         if args.metrics:
             metrics = [m.strip() for m in args.metrics.split(",") if m.strip()]
         if getattr(args, "with_instructions", False) and "InstrTimeline" not in metrics:
@@ -1974,6 +2320,7 @@ def command_profile(args: argparse.Namespace) -> int:
                 warmup=args.warmup, launch_count=args.launch_count,
                 kernel=args.kernel, replay_mode=args.replay_mode,
                 timeout=args.timeout,
+                waveform_retries=getattr(args, "waveform_retries", 0),
             )
         else:
             print(f"[info] {len(passes)} passes required (these metric sets cannot be merged) -> {capture_dir}",
@@ -2014,6 +2361,7 @@ def command_profile(args: argparse.Namespace) -> int:
         capture_path = out_dir
     capture = load_capture(capture_path, home)
     result = analyze(capture)
+    _apply_waveform_filter(result, getattr(args, "waveform_core", None))
 
     metrics_path = out_dir / "metrics.json"
     metrics_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
@@ -2029,11 +2377,39 @@ def command_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_waveform_filter(result: Dict[str, Any],
+                           cores: Optional[List[str]]) -> None:
+    """Re-decode the waveform section restricted to the requested cores.
+
+    Filtering has to happen at decode time because the statistics are pooled
+    over windows; trimming the finished per-core list would leave the aggregate
+    still describing every core.
+    """
+    if not cores or PW is None or not result.get("waveform"):
+        return
+    capture = Path(str(result["waveform"].get("capture", "")))
+    timeline = result["waveform"].get("timeline")
+    if not capture.exists():
+        return
+    try:
+        filtered = PW.summarize(
+            capture,
+            result["waveform"].get("freq_mhz") or PW.read_freq_mhz(capture),
+            timeline=Path(str(timeline)) if timeline else None,
+            cores=list(cores),
+        )
+    except (OSError, ValueError):
+        return
+    if filtered.get("records"):
+        result["waveform"] = filtered
+
+
 def command_analyze(args: argparse.Namespace) -> int:
     home = find_cann_home()
     out_dir = Path(args.out).resolve()
     capture = load_capture(out_dir, home)
     result = analyze(capture)
+    _apply_waveform_filter(result, getattr(args, "waveform_core", None))
     (out_dir / "metrics.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
     report = render_markdown(result)
     (out_dir / "report.md").write_text(report)
@@ -2116,7 +2492,19 @@ def build_parser() -> argparse.ArgumentParser:
     profile.add_argument("--metrics", default=None,
                          help="comma-separated msopprof metric sets (overrides the defaults)")
     profile.add_argument("--with-timeline", action="store_true",
-                         help="also collect BasicInfo (needed for the pipeline timeline)")
+                         help="also collect BasicInfo and PipeTimeline: adds the block "
+                              "timeline and the raw per-cycle pipeline waveform section")
+    profile.add_argument("--waveform-retries", type=int, default=2,
+                         metavar="N",
+                         help="how many times to re-collect a PipeTimeline pass "
+                              "that exits 0 but writes no raw stream (default 2; "
+                              "the failure is intermittent and re-running "
+                              "usually recovers it)")
+    profile.add_argument("--waveform-core", action="append", default=None,
+                         metavar="CORE",
+                         help="restrict the waveform section to one core "
+                              "('core4.veccore0', '4', or 'aic'). The capture still "
+                              "records every sampled core; this only filters the view.")
     profile.add_argument("--with-instructions", action="store_true",
                          help="add a separate InstrTimeline pass for instruction-level cost "
                               "(slow: tens to hundreds of MB of intermediates, usually 1-4 minutes)")
@@ -2134,6 +2522,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze_cmd = sub.add_parser("analyze", help="re-analyse an existing capture")
     analyze_cmd.add_argument("--out", required=True)
+    analyze_cmd.add_argument("--waveform-core", action="append", default=None,
+                             metavar="CORE",
+                             help="restrict the waveform section to one core")
     analyze_cmd.add_argument("--json", action="store_true")
     analyze_cmd.set_defaults(func=command_analyze)
 

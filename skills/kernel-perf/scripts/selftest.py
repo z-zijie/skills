@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 import struct
 import sys
 import tempfile
@@ -673,6 +674,365 @@ def test_pc_cycle_stalls() -> None:
     check("render explains the diagnosis", "icache" in text)
 
 
+def test_pipeline_waveform() -> None:
+    """The raw-stream decoder, against a synthesised capture.
+
+    The container and token semantics are pinned here so a refactor cannot
+    silently change them: the fixture writes a known timeline, and the decoded
+    intervals must come back identical.
+    """
+    print("\n[Pipeline waveform decoder]")
+    if KP.PW is None:
+        check("pipeline_waveform.py importable", False, "import failed")
+        return
+    PW = KP.PW
+
+    root = Path(tempfile.mkdtemp(prefix="kp-waveform-"))
+    try:
+        # --- container round-trip -------------------------------------------
+        # Build one AIV record: SCALAR 100 cycles, then MTE2 50, then idle 30.
+        # The encoding pairs a mask with the NEXT token's duration, so the
+        # tokens are: mask, dur-of-previous, mask, dur-of-previous, ...
+        # A token's mask is paired with the NEXT token's duration, so the
+        # sequence below encodes: SCALAR [10,110), MTE2 [110,160), VECTOR
+        # [160,190). MTE2 and VECTOR are both present, which is what the
+        # serial-vs-overlapped verdict needs in order to say anything.
+        payload: List[int] = [
+            (0xE000 << 16) | 0x1234,        # header
+            (0xF001 << 16) | 10,            # lead-in 10 cycles, mask SCALAR
+            (0xF010 << 16) | 100,           # SCALAR held for 100
+            (0xF002 << 16) | 50,            # MTE2 held for 50
+            (0xF000 << 16) | 30,            # VECTOR held for 30
+            (0x0D88 << 16) | 7,             # counter, ends the group
+        ]
+        stride = PW.STRIDE_WORDS
+        words = [0] * (stride * 2)
+        words[0] = 0x00010003               # veccore0, core 3
+        words[1] = len(payload) * 4
+        for index, word in enumerate(payload):
+            words[2 + index] = word
+
+        dump = root / "dump"
+        dump.mkdir(parents=True)
+        timeline = dump / "timeline.bin.0"
+        timeline.write_bytes(struct.pack(f"<{len(words)}I", *words))
+        (dump / "op_basic_info.txt").write_text(
+            "Op Name=demo\nBlock Dim=1\nCurrent Freq=1000\nRated Freq=1000\n"
+        )
+
+        records = PW.read_records(timeline)
+        check("one record decoded", len(records) == 1, str(len(records)))
+        if len(records) == 1:
+            record = records[0]
+            check("record is AIV veccore0 of core 3",
+                  record.core_kind == "aiv" and record.core_id == 3
+                  and record.subcore_id == 0,
+                  f"{record.core_kind}/{record.core_id}/{record.subcore_id}")
+            groups = PW.decode_groups(record)
+            check("one sampling group", len(groups) == 1, str(len(groups)))
+            if groups:
+                intervals = groups[0].intervals
+                # The clock starts at 10 (the lead-in), so states are
+                # [10,110) SCALAR, [110,160) MTE2, [160,190) idle.
+                check("three intervals", len(intervals) == 3, str(len(intervals)))
+                expected = [(10, 110, "SCALAR"), (110, 160, "MTE2"), (160, 190, "VECTOR")]
+                got = [
+                    (iv.start, iv.end, iv.pipes[0] if iv.pipes else None)
+                    for iv in intervals
+                ]
+                check("intervals match the encoded timeline", got == expected, str(got))
+                check("lead-in advances the clock",
+                      intervals[0].start == 10, str(intervals[0].start))
+                check("end cycle is the summed durations",
+                      groups[0].end_cycle == 190, str(groups[0].end_cycle))
+                busy = PW.busy_by_pipe(groups[0])
+                check("busy cycles per pipe",
+                      busy.get("SCALAR") == 100 and busy.get("MTE2") == 50
+                      and busy.get("VECTOR") == 30, str(busy))
+                check("no idle interval when every cycle is busy",
+                      len(PW.bubbles(groups[0])) == 0)
+
+        # --- freq fallback ---------------------------------------------------
+        check("clock read from capture metadata",
+              PW.read_freq_mhz(root) == 1000.0, str(PW.read_freq_mhz(root)))
+
+        # --- summary ---------------------------------------------------------
+        result = PW.summarize(root, 1000.0)
+        check("summary reports the record", result["records"] == 1)
+        check("summary has an aggregate", bool(result["aggregate"]))
+        core = result["per_core"][0]
+        check("span converts at the capture clock",
+              abs(core["span_us"] - 0.190) < 1e-6, str(core["span_us"]))
+        check("idle share is zero when fully busy",
+              abs(core["idle_pct"]) < 0.01, str(core["idle_pct"]))
+        check("windows counted", core["windows"] == 1, str(core.get("windows")))
+        check("pipe share and spread present",
+              "SCALAR" in core["pipes"] and "pct_sd" in core["pipes"]["SCALAR"],
+              str(core["pipes"].get("SCALAR")))
+        check("aggregate exposes pipe shares",
+              "SCALAR" in result["aggregate"]["pipes_pct"],
+              str(result["aggregate"].get("pipes_pct")))
+
+        # --- missing raw stream is not an error ------------------------------
+        empty = root / "empty"
+        empty.mkdir()
+        check("locate_timeline returns None when absent",
+              KP.PW.locate_timeline(empty) is None)
+        check("load_waveform returns None when absent",
+              KP.load_waveform(empty) is None)
+
+        # --- unverified bits are reported, not named -------------------------
+        pieces, unnamed = PW.pipe_mask_names(0x04, "aiv")
+        check("unverified AIV bit is unnamed", unnamed == 0x04 and not pieces,
+              f"{pieces}/{unnamed:#x}")
+        pieces, unnamed = PW.pipe_mask_names(0x04, "aic")
+        check("same bit is CUBE on AIC", pieces == ("CUBE",) and unnamed == 0,
+              f"{pieces}/{unnamed:#x}")
+
+        # --- the overlap verdict must survive a relocated capture ----------
+        # Regression: re-deriving the stream path from the capture directory
+        # silently dropped this section whenever the stream lived elsewhere,
+        # and a missing verdict reads exactly like "nothing to report".
+        (root / "trace.json").unlink(missing_ok=True)
+        summary = PW.summarize(root, 1000.0)
+        rendered = PW.render_markdown(summary)
+        check("overlap verdict is rendered", "Serial or overlapped" in rendered,
+              "section missing")
+
+        # --- the npu-compute PipeTrace route is a distinct route -----------
+        import json as _json
+        # Remove the raw stream so the fallback has to be used.
+        saved = (root / "dump/timeline.bin.0").read_bytes()
+        (root / "dump/timeline.bin.0").unlink()
+        trace_dir = root / "npu-compute-import-1"
+        trace_dir.mkdir()
+        (trace_dir / "PipeTrace.json").write_text(_json.dumps({
+            "displayTimeUnit": "ns",
+            "traceEvents": [
+                {"ph": "X", "name": "MTE2", "pid": "group0.veccore0",
+                 "ts": 10 / 1000.0, "dur": 100 / 1000.0},
+                {"ph": "X", "name": "VECTOR", "pid": "group0.veccore0",
+                 "ts": 110 / 1000.0, "dur": 50 / 1000.0},
+            ],
+        }))
+        located = PW.locate_pipe_trace(root)
+        check("PipeTrace.json is located", located is not None, str(located))
+        trace_result = PW.summarize(root, 1000.0)
+        check("trace route is reported as such",
+              trace_result.get("route") == PW.ROUTE_TRACE,
+              str(trace_result.get("route")))
+        check("vendor lane names are preserved",
+              trace_result["per_core"][0]["pid"] == "group0.veccore0",
+              str(trace_result["per_core"][0]["pid"]))
+        trace_md = PW.render_markdown(trace_result)
+        check("trace report says it is a parsed trace",
+              "npu-compute" in trace_md and "parsed" in trace_md)
+        check("trace report does not claim raw provenance",
+              "raw `timeline.bin.0`" not in trace_md.splitlines()[0],
+              trace_md.splitlines()[0])
+        check("trace report invents no coverage figure",
+              "Coverage" not in trace_md)
+        check("trace report still gives the overlap verdict",
+              "Serial or overlapped" in trace_md)
+
+        # Restore the raw stream: it must win when both are present.
+        (root / "dump/timeline.bin.0").write_bytes(saved)
+        check("raw stream takes precedence over a parsed trace",
+              PW.summarize(root, 1000.0).get("route") == PW.ROUTE_RAW)
+
+        # --- core selection is a view filter, not a collection setting ------
+        check("no filter keeps every record",
+              len(PW.select_records(records)) == 1)
+        check("exact pid filters to that core",
+              [r.pid for r in PW.select_records(records, ["core3.veccore0"])]
+              == ["core3.veccore0"])
+        check("bare core number filters",
+              [r.core_id for r in PW.select_records(records, ["3"])] == [3])
+        check("unknown core filters everything out",
+              PW.select_records(records, ["core9.veccore9"]) == [])
+        filtered = PW.summarize(root, 1000.0, cores=["core3.veccore0"])
+        check("summary honours the filter",
+              filtered["records"] == 1 and filtered["core_filter"],
+              str(filtered.get("core_filter")))
+        check("filtered report says so",
+              "Filtered to cores" in PW.render_markdown(filtered))
+
+        # --- verify() must distinguish "wrong" from "cannot check" ----------
+        check("verify with no trace.json is INCONCLUSIVE",
+              PW.verify(root)["verdict"] == "INCONCLUSIVE",
+              str(PW.verify(root).get("verdict")))
+
+        # A pipe-level vendor trace that disagrees must be NOT VERIFIED.
+        import json as _json
+        (root / "trace.json").write_text(_json.dumps({"traceEvents": [
+            {"ph": "X", "name": "MTE2", "pid": "core3.veccore0",
+             "ts": 10 / 1000.0, "dur": 100 / 1000.0},
+        ]}))
+        check("disagreeing pipe trace is NOT VERIFIED",
+              PW.verify(root)["verdict"] == "NOT VERIFIED",
+              str(PW.verify(root).get("verdict")))
+
+        # An instruction-level trace must not be reported as a failure.
+        (root / "trace.json").write_text(_json.dumps({"traceEvents": [
+            {"ph": "X", "name": "GET_BUF", "pid": "core3.veccore0",
+             "ts": 1.0, "dur": 1.0},
+        ]}))
+        check("instruction trace is INCONCLUSIVE, not NOT VERIFIED",
+              PW.verify(root)["verdict"] == "INCONCLUSIVE",
+              str(PW.verify(root).get("verdict")))
+
+        # And the matching pipe trace must verify.
+        (root / "trace.json").write_text(_json.dumps({"traceEvents": [
+            {"ph": "X", "name": "SCALAR", "pid": "core3.veccore0",
+             "ts": 10 / 1000.0, "dur": 100 / 1000.0},
+            {"ph": "X", "name": "MTE2", "pid": "core3.veccore0",
+             "ts": 110 / 1000.0, "dur": 50 / 1000.0},
+            {"ph": "X", "name": "VECTOR", "pid": "core3.veccore0",
+             "ts": 160 / 1000.0, "dur": 30 / 1000.0},
+        ]}))
+        check("matching pipe trace is VERIFIED",
+              PW.verify(root)["verdict"] == "VERIFIED",
+              str(PW.verify(root).get("verdict")))
+        # --- an intermittently dropped stream is reported, not hidden ------
+        # Regression: `msprof op` exits 0 and writes a complete-looking capture
+        # with every parsed artefact and no raw stream (3 of 10 consecutive KDA
+        # collections came back that way). Before this, the waveform section
+        # simply vanished, which reads exactly like "no waveform was requested".
+        stream = root / "dump/timeline.bin.0"
+        keep = stream.read_bytes()
+        stream.unlink()
+        requested = Path(tempfile.mkdtemp(prefix="kp-waveform-miss-"))
+        try:
+            (requested / "pass1_pipetimeline").mkdir()
+            (requested / "pass1_pipetimeline" / "OPPROF_x").mkdir()
+            cap = requested / "pass1_pipetimeline" / "OPPROF_x"
+            reason = KP._explain_missing_waveform(cap)
+            check("a dropped stream is explained", "timeline.bin.0" in reason,
+                  reason)
+            check("the explanation names the retry",
+                  "re-run" in reason.lower() or "re-collect" in reason.lower(),
+                  reason)
+            check("the explanation cites the measured rate",
+                  "10" in reason, reason)
+
+            # A bare `msprof op` capture records no intent anywhere the
+            # profiler writes, so the collector marks it explicitly. Without
+            # that marker a real 3-in-10 failure read as "nobody asked".
+            import json as _json2
+            (cap / "waveform_requested.json").write_text(_json2.dumps({
+                "metric": "PipeTimeline", "attempts": 3, "stream_written": False,
+            }))
+            marked = KP._explain_missing_waveform(cap)
+            check("an explicitly requested stream is explained even with no "
+                  "log", "timeline.bin.0" in marked, marked)
+            check("the marker's attempt count is reported",
+                  "3 times" in marked, marked)
+
+            # The marker is written into the *PipeTimeline* pass, but analysis
+            # runs on the core pass (OPPROF_merged). Regression: reading only
+            # the analyzed root and its parents lost the count in exactly the
+            # layout the collector normally produces.
+            mp = Path(tempfile.mkdtemp(prefix="kp-waveform-mp-"))
+            try:
+                mp_cap = mp / "capture"
+                mp_core = mp_cap / "pass0_core" / "OPPROF_core"
+                mp_tl = mp_cap / "pass1_pipetimeline" / "OPPROF_tl"
+                mp_core.mkdir(parents=True)
+                mp_tl.mkdir(parents=True)
+                (mp_core / "OpBasicInfo.csv").write_text("Op Name=x\n")
+                (mp_cap / "OPPROF_merged").symlink_to(mp_core.resolve())
+                KP._mark_waveform_requested(mp_tl, attempts=2, recovered=False)
+                mp_reason = KP._explain_missing_waveform(mp_core)
+                check("a marker in the PipeTimeline pass is found",
+                      "2 times" in mp_reason, mp_reason)
+            finally:
+                shutil.rmtree(mp, ignore_errors=True)
+            # Not requested at all: silence, because the report must not nag
+            # about a layer nobody asked for.
+            quiet = Path(tempfile.mkdtemp(prefix="kp-waveform-quiet-"))
+            try:
+                (quiet / "OPPROF_y").mkdir()
+                check("an unrequested stream stays silent",
+                      KP._explain_missing_waveform(quiet / "OPPROF_y") == "",
+                      KP._explain_missing_waveform(quiet / "OPPROF_y"))
+            finally:
+                shutil.rmtree(quiet, ignore_errors=True)
+        finally:
+            shutil.rmtree(requested, ignore_errors=True)
+        stream.write_bytes(keep)
+        check("the stream is back after restore", PW.locate_timeline(root) is not None)
+
+        # --- the retry loop re-collects until the stream appears -----------
+        attempts = {"n": 0}
+        real_once = KP._run_msopprof_once
+        real_locate = PW.locate_timeline
+        try:
+            def fake_once(**kwargs):
+                attempts["n"] += 1
+                out = Path(kwargs["out_dir"])
+                cap = out / f"OPPROF_{attempts['n']}"
+                (cap / "dump").mkdir(parents=True, exist_ok=True)
+                (cap / "OpBasicInfo.csv").write_text("Op Name=x\n")
+                if attempts["n"] >= 3:
+                    (cap / "dump" / "timeline.bin.0").write_bytes(b"\x00" * 16)
+                return 0, "fake", cap
+
+            KP._run_msopprof_once = fake_once  # type: ignore[assignment]
+            retry_out = Path(tempfile.mkdtemp(prefix="kp-waveform-retry-"))
+            try:
+                rc, log, got = KP.run_msopprof(
+                    home=Path("/nonexistent"), app=["true"], out_dir=retry_out,
+                    metrics=["PipeTimeline"], warmup=0, launch_count=1,
+                    kernel=None, replay_mode="kernel", timeout=10,
+                    waveform_retries=2,
+                )
+                check("retry re-collects until the stream appears",
+                      attempts["n"] == 3, str(attempts["n"]))
+                check("retry returns the successful capture",
+                      got is not None and real_locate(got) is not None,
+                      str(got))
+                check("retry records why it re-ran", "re-collecting" in log, log[-120:])
+            finally:
+                KP._run_msopprof_once = real_once  # type: ignore[assignment]
+                shutil.rmtree(retry_out, ignore_errors=True)
+
+            # Exhausting the budget must stop, not loop for ever, and must say
+            # so instead of returning a capture that looks fine.
+            attempts["n"] = 0
+            try:
+                def always_empty(**kwargs):
+                    attempts["n"] += 1
+                    cap = Path(kwargs["out_dir"]) / f"OPPROF_{attempts['n']}"
+                    (cap / "dump").mkdir(parents=True, exist_ok=True)
+                    (cap / "OpBasicInfo.csv").write_text("Op Name=x\n")
+                    return 0, "fake", cap
+
+                KP._run_msopprof_once = always_empty  # type: ignore[assignment]
+                budget_out = Path(tempfile.mkdtemp(prefix="kp-waveform-budget-"))
+                try:
+                    rc, log, got = KP.run_msopprof(
+                        home=Path("/nonexistent"), app=["true"], out_dir=budget_out,
+                        metrics=["PipeTimeline"], warmup=0, launch_count=1,
+                        kernel=None, replay_mode="kernel", timeout=10,
+                        waveform_retries=2,
+                    )
+                    check("an exhausted budget stops at 1+N attempts",
+                          attempts["n"] == 3, str(attempts["n"]))
+                    check("an exhausted budget admits the failure",
+                          "giving up on the raw stream" in log, log[-160:])
+                    check("an exhausted budget still returns the capture",
+                          got is not None, str(got))
+                finally:
+                    KP._run_msopprof_once = real_once  # type: ignore[assignment]
+                    shutil.rmtree(budget_out, ignore_errors=True)
+            finally:
+                KP._run_msopprof_once = real_once  # type: ignore[assignment]
+        finally:
+            KP._run_msopprof_once = real_once  # type: ignore[assignment]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_cli_contracts() -> None:
     print("\n[CLI contracts]")
     import subprocess
@@ -716,6 +1076,7 @@ def main() -> int:
     test_stability_threshold()
     test_stability_harness()
     test_multipass_planning()
+    test_pipeline_waveform()
     test_cli_contracts()
     print()
     if FAILURES:

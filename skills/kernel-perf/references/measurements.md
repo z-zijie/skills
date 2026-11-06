@@ -269,3 +269,133 @@ stalls = 0, total_stall_us = 0.0, stall_pct = 0.0
 **That is the honest result**: the kernel is short with a small code footprint, so it has no icache misses. The tool reports zero rather than manufacturing a finding. The detector's own correctness is covered by a synthetic trace (same PC, 0.4 us gap) yielding one residence covering 80% of the span, in `selftest.py`.
 
 The threshold is an absolute 0.05 us rather than a multiple of event duration: instrumented `dur` values are on the order of nanoseconds, so a ratio test would classify every adjacent pair as a residence.
+
+## Raw pipeline waveform (2026-11-06)
+
+`msprof op --aic-metrics=PipeTimeline` writes `dump/timeline.bin.0` alongside
+`trace.json`. The decoder in `references/pipeline_waveform.py` reads the raw
+stream; `--verify` checks it against the vendor's own `trace.json` for the run.
+
+Five captures, CANN 9.3.0, Ascend950PR_9579, 1650 MHz. The last row is a fresh
+collection made by `kernel_perf.py profile --with-timeline`, so it exercises the
+collector as well as the decoder:
+
+| Capture | Kernel | Records | Verify checks | Result |
+|---|---|---:|---:|---|
+| vector_add | `add_kernel`, 56 blocks, AIV | 12 | 48 | pass |
+| vector_add (2nd) | `add_kernel`, 56 blocks, AIV | 4 | 16 | pass |
+| matmul 1024 | `MatmulKernel`, 28 blocks, AIC | 6 | 20 | pass |
+| matmul 128 | `MatmulKernel`, 28 blocks, AIC | 6 | 10 | pass |
+| end-to-end | `add_kernel` via the collector | 12 | 48 | pass |
+
+142/142 exact interval matches. The container is a fixed 524290-word stride, and
+the raw file is 25 MB for a 4 us kernel -- almost all of it zero padding, which
+is worth knowing before keeping captures around.
+
+### Collection stability: 3 of 10 identical captures lost the stream
+
+Ten consecutive identical KDA collections (`kimi_delta_attn_lite_prepare_k`,
+1C2V, `msprof op --aic-metrics=PipeTimeline,PipeUtilization --warm-up=2`):
+
+| Outcome | Count |
+|---|---:|
+| raw stream present, decoded to samples | 7 |
+| **exit 0, `OpBasicInfo.csv` written, no `timeline.bin.0`** | **3** |
+
+The three failures are silent: rc=0, `[INFO] Profiling running finished. All
+task success.`, `[INFO] Save profiling data with metric [PipeUtilization]
+success.`, and a `visualize_data.bin` 10 776-10 808 bytes instead of 14 076-14 384.
+They carry no `0x02` (trace) record and no stream, so nothing in the capture
+records that anything went wrong.
+
+The retry itself is **not** demonstrated by this data. Eight further runs with
+the retry path enabled (`--metrics PipeTimeline`, `--warm-up=1`, two isolated
+probes and then six in a loop) all produced a stream on the first attempt, so the
+retry never fired. At a ~70% base rate that is the expected outcome and says
+nothing about whether re-running recovers a *specific* failure -- that would need
+a run that failed and then succeeded, which never occurred.
+
+So `--with-timeline` retries (`--waveform-retries`, default 2) as a cheap
+mitigation with an honest cost bound, not as a verified repair, and when the
+budget is exhausted section 15 says the stream was not collected instead of
+omitting the section. This is the one place where "no waveform" must never be
+left to read like "no waveform requested".
+
+### KDA stability across the 7 complete captures
+
+`kimi_delta_attn_lite_prepare_k`, 1C2V mix kernel, 1650 MHz. Every run sampled
+the same shape: 3 cores, 5 windows. Shares are the mean of per-core means.
+
+| Pipe | Mean % | SD | CV | Min | Max |
+|---|---:|---:|---:|---:|---:|
+| VECTOR | 60.84 | 0.71 | 1.2% | 59.75 | 61.63 |
+| SCALAR | 17.74 | 0.67 | 3.8% | 17.19 | 18.71 |
+| MTE3 | 15.97 | 0.41 | 2.6% | 15.13 | 16.31 |
+| CUBE | 5.52 | 0.09 | 1.6% | 5.35 | 5.59 |
+| FIXP | 4.22 | 0.07 | 1.6% | 4.16 | 4.35 |
+| MTE2 | 3.14 | 0.10 | 3.3% | 3.05 | 3.33 |
+| MTE1 | 2.27 | 0.04 | 1.6% | 2.20 | 2.30 |
+
+The **serial-vs-overlapped verdict for MTE2 vs VECTOR was "Never overlap" in all
+7 captures** -- identical to the character, not merely close. So the percentages
+move by a few percent between runs while the qualitative conclusion does not:
+repeat a capture for the shares, but a single capture is enough to trust the
+ordering verdict.
+
+### vector_add, first sampling group
+
+| Pipe | Share | Idle (mean) | Worst core idle |
+|---|---:|---:|---:|
+| SCALAR | 34.9% | 2.04% | 11.62% (`core4.veccore1`) |
+| MTE2 | 30.9% | | |
+| MTE3 | 11.6% | | |
+| VECTOR | 7.4% | | |
+
+SCALAR is 4.7x VECTOR. This matches the CSV-based collection 1 (scalar 23.9% vs
+vec 8.3%) in shape, though the waveform numbers are per-core samples and the CSV
+numbers are block averages -- the two are not expected to agree digit for digit.
+
+### MatmulKernel (cube), first sampling group
+
+| Pipe | Share |
+|---|---:|
+| CUBE | 47.8% |
+| MTE2 | 39.5% |
+| MTE1 | 11.8% |
+| SCALAR | 5.7% |
+| FIXP | 3.4% |
+
+CUBE and MTE2 overlap across the whole body: a healthy double-buffered matmul.
+
+### The vendor's two outputs disagree on cube kernels
+
+For the same `MatmulKernel` launch, `trace.json` and `PipeUtilization.csv`
+report different AIC cycle counts (three of five pipes off by more than the
+CSV's rounding):
+
+| Pipe | `trace.json` | `PipeUtilization.csv` x 1650 |
+|---|---:|---:|
+| CUBE | 646 | 512 |
+| FIXP | 441 | 633 |
+| MTE2 | 842 | 1307 |
+| SCALAR | 971 | 683 |
+| MTE1 | 283 | 284 |
+
+Only block 0 of that CSV carries non-zero AIC time; the other 27 blocks report
+zero. The decoder is validated against `trace.json`, because that file is
+decoded from the same sampled records as the raw stream. Cube-side cycle counts
+from the CSV are not a usable cross-check.
+
+### The raw stream needs `msprof op`, not the bare `msopprof`
+
+Same binary, same kernel, same `--aic-metrics=PipeTimeline`:
+
+| Entry point | Files written | `dump/timeline.bin.0` |
+|---|---:|---|
+| `tools/msopprof/bin/msopprof ...` | 11 | **absent** |
+| `msprof op ...` | 12 | 25,165,920 B |
+
+The direct binary accepts every flag and returns 0, and its `trace.json` is
+complete enough to look like a successful pipeline collection -- the omission is
+silent. `kernel_perf.py` therefore runs its `PipeTimeline` pass through
+`msprof op`.
