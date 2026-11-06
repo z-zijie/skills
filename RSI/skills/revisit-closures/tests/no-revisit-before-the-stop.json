@@ -1,0 +1,45 @@
+{
+  "name": "nothing reopens when the campaign is not stopping and has too few open closures",
+  "note": "one provisional closure is below the threshold and no stop is proposed, so a revisit is not due and the campaign proceeds",
+  "script": "scripts/revisit_closures.py",
+  "input": {
+    "op": "vec_add",
+    "proposed_action": "continue",
+    "stalled_rounds": 1,
+    "min_open_closures": 2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "hypothesis": {
+          "direction": "wide-loads",
+          "transformation": "widen the loads to the aligned width",
+          "predictions": {"speedup": {"expect": 1.12, "low": 1.05, "high": 1.18}}
+        }
+      }
+    ],
+    "verdicts": {
+      "exp-0001": {
+        "hypothesis_id": "H-0001",
+        "verdict": "refuted",
+        "checks": [
+          {"id": "A1", "group": "A", "conclusion": "pass", "evidence": "the load width changed in the hot loop"},
+          {"id": "B1", "group": "B", "conclusion": "pass", "evidence": "the disassembly shows the wider load"},
+          {"id": "C1", "group": "C", "conclusion": "fail", "evidence": "instruction_count did not fall"}
+        ]
+      }
+    }
+  },
+  "expected": {
+    "triggered": false,
+    "triggers": [],
+    "decision": "not_triggered",
+    "counts": {"implementation": 0, "measurement": 0, "premise": 1, "unclassified": 0},
+    "reopens": [],
+    "note": "no revisit is due: the campaign is not stopping and the closure count is below threshold"
+  },
+  "source": "a campaign that is still gaining must not be interrupted by its own history; the revisit is owed at the stop, not before it"
+}

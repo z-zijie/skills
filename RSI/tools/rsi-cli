@@ -15,6 +15,7 @@ the script it wraps is still the real interface.
     rsi-cli record --op X --result R.json    append one experiment
     rsi-cli campaign --op X [--budget N]     drive the campaign state machine
     rsi-cli report --op X                    campaign report
+    rsi-cli closures --op X                  which written-off directions must reopen
     rsi-cli replay --proposal P.yaml         replay judge on a scaffold change
     rsi-cli kb-audit                         knowledge-base health
 """
@@ -30,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tooling"))
 sys.path.insert(0, str(ROOT))
 
-from rsi import hardware, knowledge, ledger, metrics, paths, signature as signature_mod, spec as spec_mod, yamlite  # noqa: E402
+from rsi import closures, hardware, knowledge, ledger, metrics, paths, signature as signature_mod, spec as spec_mod, yamlite  # noqa: E402
 
 
 def _fail(message: str) -> int:
@@ -190,6 +191,40 @@ def cmd_report(args: argparse.Namespace) -> int:
                         if entry.get("verdict") == "refuted" and entry.get("significant")],
         "mean_prediction_error": _mean([entry.get("prediction_error") for entry in entries
                                         if entry.get("prediction_error") is not None]),
+    }
+    if args.out:
+        Path(args.out).write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_closures(args: argparse.Namespace) -> int:
+    """The closures one operator carries, and which of them have to reopen.
+
+    A campaign's "no open route" is a claim about its refutations, so the claim is checkable
+    without a device: the classifications come from the archived verdicts and the closure records,
+    not from the verdict words.
+    """
+    entries = ledger.entries_for_op(args.op)
+    if not entries:
+        return _fail(f"no ledger entries for {args.op}")
+    verdicts = {}
+    for exp_id in (entry.get("exp_id") for entry in entries):
+        path = paths.artifacts_dir() / str(exp_id) / "verdict.json"
+        if path.is_file():
+            try:
+                verdicts[str(exp_id)] = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+    summary = closures.summarise(entries, verdicts)
+    payload = {
+        "op": args.op,
+        "entries": len(entries),
+        "decision": ("exhausted" if not summary["open"] else "unresolved"),
+        "closures": summary["closures"],
+        "counts": summary["counts"],
+        "open": [row["direction"] for row in summary["open"]],
+        "retirable": [row["direction"] for row in summary["retirable"]],
     }
     if args.out:
         Path(args.out).write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -496,6 +531,11 @@ def build_parser() -> argparse.ArgumentParser:
     replay_cmd = sub.add_parser("replay", help="replay judge for a scaffold change")
     replay_cmd.add_argument("--proposal", required=True)
     replay_cmd.set_defaults(func=cmd_replay)
+
+    closures_cmd = sub.add_parser("closures", help="the closures one operator carries")
+    closures_cmd.add_argument("--op", required=True)
+    closures_cmd.add_argument("--out")
+    closures_cmd.set_defaults(func=cmd_closures)
 
     kb_audit = sub.add_parser("kb-audit", help="knowledge-base health")
     kb_audit.set_defaults(func=cmd_kb_audit)

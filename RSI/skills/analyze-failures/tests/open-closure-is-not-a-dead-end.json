@@ -1,0 +1,82 @@
+{
+  "name": "a refutation whose mechanism never landed is an open closure, not a dead end",
+  "note": "two refutations of one direction, both with a failing group B check: nothing may be retired and the cluster says the direction has to reopen first",
+  "script": "scripts/cluster.py",
+  "input": {
+    "op": "mla_prolog",
+    "prediction_error_hole": 0.2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "mla_prolog",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "prediction_error": 0.05,
+        "hypothesis": {
+          "direction": "rope-tile-deinterleave",
+          "transformation": "de-interleave the tile so the rotation runs on contiguous panes",
+          "signature_tags": ["vector-bound"]
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "mla_prolog",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "prediction_error": 0.05,
+        "hypothesis": {
+          "direction": "rope-tile-deinterleave",
+          "transformation": "de-interleave the tile with the row gate at 8192",
+          "signature_tags": ["vector-bound"]
+        }
+      }
+    ],
+    "verdicts": {
+      "exp-0001": {
+        "hypothesis_id": "H-0001",
+        "verdict": "refuted",
+        "checks": [
+          {"id": "A1", "group": "A", "conclusion": "pass", "evidence": "the rotated path is added"},
+          {"id": "B1", "group": "B", "conclusion": "fail", "evidence": "mismatch 4.18M of 4.19M"},
+          {"id": "C1", "group": "C", "conclusion": "fail", "evidence": "no correct run to compare"}
+        ]
+      },
+      "exp-0002": {
+        "hypothesis_id": "H-0002",
+        "verdict": "refuted",
+        "checks": [
+          {"id": "A1", "group": "A", "conclusion": "pass", "evidence": "the gated call site is added"},
+          {"id": "B1", "group": "B", "conclusion": "unknown", "evidence": "the symbol was not inspected"},
+          {"id": "C1", "group": "C", "conclusion": "fail", "evidence": "no correct run to compare"}
+        ]
+      }
+    }
+  },
+  "expected": {
+    "entries_seen": 2,
+    "top_cluster": "open_closure",
+    "clusters": [
+      {
+        "kind": "open_closure",
+        "count": 2,
+        "experiments": ["exp-0001", "exp-0002"],
+        "transformations": [
+          "de-interleave the tile so the rotation runs on contiguous panes",
+          "de-interleave the tile with the row gate at 8192"
+        ],
+        "tags": ["vector-bound"],
+        "share": 1.0,
+        "summary": "2 refutation(s) that are not evidence about the direction: de-interleave the tile so the rotation runs on contiguous panes, de-interleave the tile with the row gate at 8192"
+      }
+    ],
+    "rates": {
+      "confirmation_rate": 0.0,
+      "dead_end_transformations": [],
+      "not_implemented_rate": 0.0,
+      "open_closure_rate": 1.0
+    }
+  },
+  "source": "the real campaign's H-0011: the direction probed correct at 1.58x after two API-convention fixes, and both earlier attempts were recorded as refutations that retired nothing"
+}

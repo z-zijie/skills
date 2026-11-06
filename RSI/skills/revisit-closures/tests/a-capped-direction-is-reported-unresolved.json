@@ -1,0 +1,76 @@
+{
+  "name": "a direction that used every reopen is capped and reported unresolved rather than refuted",
+  "note": "three experiments on one direction with no recorded check: it has used its reopens, so it goes to capped and the campaign holds",
+  "script": "scripts/revisit_closures.py",
+  "input": {
+    "op": "mla_prolog",
+    "proposed_action": "stop",
+    "stalled_rounds": 5,
+    "max_reopens": 2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "mla_prolog",
+        "verdict": "not_implemented",
+        "hypothesis": {
+          "direction": "capi-cube-pipeline",
+          "transformation": "hand-written C-API cube pipeline",
+          "predictions": {
+            "speedup": {
+              "expect": 1.0,
+              "low": 1.0,
+              "high": 1.0
+            }
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "mla_prolog",
+        "verdict": "not_implemented",
+        "hypothesis": {
+          "direction": "capi-cube-pipeline",
+          "transformation": "C-API cube pipeline with the NZ parameter packed in 64 bits",
+          "predictions": {
+            "speedup": {
+              "expect": 1.0,
+              "low": 1.0,
+              "high": 1.0
+            }
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "mla_prolog",
+        "verdict": "not_implemented",
+        "hypothesis": {
+          "direction": "capi-cube-pipeline",
+          "transformation": "C-API cube pipeline with multi-fractal generalisation",
+          "predictions": {
+            "speedup": {
+              "expect": 1.0,
+              "low": 1.0,
+              "high": 1.0
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "triggered": true,
+    "decision": "hold",
+    "counts": {
+      "implementation": 3,
+      "measurement": 0,
+      "premise": 0,
+      "unclassified": 0
+    },
+    "reopens": [],
+    "capped_directions": [
+      "capi-cube-pipeline"
+    ]
+  },
+  "source": "the real campaign's C-API path: nine launch failures on one error code, then a correct 16x16x16 fractal whose multi-fractal generalisation still mismatches; none of it is evidence that the pipeline cannot pay"
+}

@@ -41,6 +41,8 @@ One object matching `contract/input.schema.json`:
    problems.
 3. When `action` is `change_direction`, read `strategy/checklist.md` section "Changing
    direction" before the next round: the script can see that the streak is flat but not why.
+   A `change_direction` that rests on refuted routes is passed to `revisit-closures` first: a
+   route whose closure is not evidence about the direction is reopened, not replaced.
 4. When `action` is `stop`, read `strategy/checklist.md` section "Stopping well" and hand
    `stop_reason` and `needs_algorithm_rewrite` on unchanged. A campaign that stops far from
    the bound must say so.
@@ -75,3 +77,6 @@ One object matching `contract/input.schema.json`:
   the report has to defend every experiment.
 - When the direction is unclear, prefer re-diagnosis over a new hypothesis. Three flat rounds
   usually mean the bottleneck moved, not that the ideas are bad.
+- "No open route" is a claim about the routes' refutations as much as about their predictions.
+  The orchestrator checks the closures before it reports a stop; a route that never landed, or
+  that was tried at one point of its parameter, is not a closed route.

@@ -4,6 +4,11 @@ Seven workflows cover everything the system does. W2 and W3 are the inner loop, 
 loop, and the other four feed the system: operators, hardware facts, human corrections and
 human conjectures.
 
+One step sits between W2's record and W3's plan decision and is not a workflow of its own: before a
+direction is written off or a campaign stops, `revisit-closures` checks whether the refutations
+behind that decision were evidence about the direction or only about the attempt. See
+[`closures.md`](closures.md).
+
 | ID | Workflow | Trigger | Frequency |
 | --- | --- | --- | --- |
 | W1 | Operator onboarding | A new operator enters the system | Once per operator |
@@ -53,25 +58,28 @@ diagnose → retrieve → hypothesize → implement → evaluate → inspect →
 6. **Verify the mechanism.** `inspect-binary` and a fresh profile go to `verify-mechanism`. A
    `not_implemented` verdict goes back to step 4, at most twice. If it still fails, the
    experiment is recorded as an implementation failure that counts toward no rule.
-7. **Record.** Unseal the timing. `record-experiment` writes it to the ledger with the verdict
-   and the prediction error.
+7. **Record.** Unseal the timing. `record-experiment` writes it to the ledger with the verdict,
+   the prediction error and — for a refutation or a `not_implemented` — its closure record.
 8. **Promote.** If the mechanism is confirmed and the speedup clears the noise threshold, the
    evaluator promotes the candidate to `best/`.
 9. **Fill the gap.** If the prediction error exceeds its threshold, queue a task for
    `design-microbench`.
 
 Only confirmed or refuted experiments reach the ledger as evidence. A correctness failure and a
-`not_implemented` verdict are retries, not evidence.
+`not_implemented` verdict are retries, not evidence, and a refutation is negative evidence about
+its direction only when its closure is admissible and swept.
 
 ## W3 Optimization campaign
 
 1. Each round runs W2 once, starting from `best/`.
-2. After each round `plan-campaign` decides: continue in this direction, change direction,
-   combine two confirmed and independent changes, or stop.
+2. After each round `revisit-closures` runs, then `plan-campaign` decides: continue in this
+   direction, change direction, combine two confirmed and independent changes, or stop. A
+   direction with an open closure is reopened before it is written off.
 3. Start with greedy search plus a small beam of two or three candidate branches.
 4. After three rounds without improvement, re-profile and re-diagnose first, because the
    bottleneck may have moved.
-5. Stop when any one holds:
+5. Stop when any one holds, and a stop that rests on refuted directions passes the closure check
+   first:
    - attainment reaches the target (85 % suggested);
    - five rounds bring no significant gain and no new hypothesis predicts one above the noise
      floor;

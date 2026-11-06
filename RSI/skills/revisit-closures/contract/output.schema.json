@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/revisit-closures/output.schema.json",
+  "title": "revisit-closures output",
+  "description": "The closures a campaign carries, which of them may be written off, and the reopen order. The orchestrator runs the first reopen as the next card; this skill never starts an experiment itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["triggered", "triggers", "decision", "reopens", "closures", "counts", "open", "retirable", "note"],
+  "properties": {
+    "triggered": {"type": "boolean"},
+    "triggers": {"type": "array", "items": {"type": "string"}},
+    "decision": {
+      "type": "string",
+      "enum": ["reopen", "hold", "exhausted", "not_triggered"],
+      "description": "reopen: at least one direction must be retried before anything is written off. hold: closures stay open and every one has used its reopens, so the report must present them as unresolved. exhausted: every closure is admissible, swept and unconditional. not_triggered: no revisit is due."
+    },
+    "reopens": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["direction", "experiment", "experiments", "evidence", "retry", "why_reopen", "first_check", "refutation_would_be", "questions", "reopens_used"],
+        "properties": {
+          "direction": {"type": "string", "minLength": 1},
+          "experiment": {"type": "string", "pattern": "^exp-[0-9]{4,}$", "description": "The closure the reopen answers."},
+          "experiments": {"type": "array", "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"}},
+          "evidence": {"type": "string", "enum": ["implementation", "measurement", "premise", "unclassified"]},
+          "retry": {
+            "type": "string",
+            "enum": ["fix_implementation", "widen_sweep", "bank_and_recheck", "classify_then_retry"],
+            "description": "fix_implementation: make the artefact pass its own check alone. widen_sweep: try a second point of the parameter. bank_and_recheck: keep the confirmed patch and retest when its share of case time allows. classify_then_retry: record the checks the verdict is missing."
+          },
+          "why_reopen": {"type": "string", "minLength": 20},
+          "first_check": {"type": "string", "minLength": 5, "description": "The cheapest thing to settle first, taken from the closure's own reason."},
+          "parameters": {"type": "array", "items": {"type": "string"}},
+          "sweep": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "properties": {
+              "points_tried": {"type": "integer", "minimum": 1},
+              "min_points": {"type": "integer", "minimum": 1}
+            }
+          },
+          "refutation_would_be": {"type": "string", "minLength": 10, "description": "What a valid second refutation has to show, so a third reopen is not owed."},
+          "questions": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "reopens_used": {"type": "integer", "minimum": 0},
+          "priority": {"type": "integer", "minimum": 0},
+          "expected_speedup": {"type": "number", "minimum": 0}
+        }
+      }
+    },
+    "capped": {"type": "array", "items": {"type": "object"}, "description": "Directions that used MAX_REOPENS: no longer reopened, reported as unresolved."},
+    "closures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exp_id", "direction", "verdict", "evidence", "admissible", "retirable", "points_tried", "reason"],
+        "properties": {
+          "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "direction": {"type": "string", "minLength": 1},
+          "verdict": {"type": "string"},
+          "evidence": {"type": "string", "enum": ["implementation", "measurement", "premise", "unclassified"]},
+          "admissible": {"type": "boolean", "description": "Whether this is negative evidence about the mechanism at all."},
+          "retirable": {"type": "boolean", "description": "Admissible, swept, and with no recorded retry condition."},
+          "points_tried": {"type": "integer", "minimum": 1},
+          "reason": {"type": "string"},
+          "reopen_when": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "implementation": {"type": "integer", "minimum": 0},
+        "measurement": {"type": "integer", "minimum": 0},
+        "premise": {"type": "integer", "minimum": 0},
+        "unclassified": {"type": "integer", "minimum": 0}
+      }
+    },
+    "open": {"type": "array", "items": {"type": "object"}},
+    "retirable": {"type": "array", "items": {"type": "object"}},
+    "note": {"type": "string", "minLength": 20}
+  }
+}

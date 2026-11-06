@@ -25,6 +25,8 @@ hand and the state machine says something you did not expect.
        │                                                      gap ◄─────┘
        │                                                       │
        │                                                       ▼
+       │                                                    revisit ──► hypothesize (reopen)
+       │                                                       │
        └──────────────── plan ◄──────────────────────────────────┘
                                    │
                                    ▼
@@ -58,10 +60,18 @@ Both are bounded, and both ending is a blocked campaign rather than a false resu
 | --- | --- | --- |
 | Correctness | 2 retries after the first attempt | Blocked. No timing, no evidence: a fast wrong kernel is not a candidate. |
 | Not implemented | 2 retries after the first attempt | Blocked. Recorded as an implementation failure that counts toward no rule. |
+| Reopen | 2 reopens per direction | Reported as unresolved: the direction was reopened and refuted that many times, which is what the report says. |
 
 The second bound is the important one. Without it, an agent that writes plausible code which does
 nothing eventually produces a "confirmed" experiment whose evidence is empty, and every rule
 distilled from that evidence is superstition.
+
+There is a third bound, on what a campaign may *conclude*, and it is the one that stops the same
+problem from re-entering through the exit. Every refuted or not-implemented round leaves a closure
+record saying whether the mechanism ever reached machine code, whether its counters were measured,
+and how many points of its parameter were tried. The `revisit` state runs before `plan` and before
+a stop is reported, and a direction whose closure is not admissible and swept is reopened rather
+than retired. `docs/closures.md` has the classes and the rules.
 
 ## The stop conditions
 
@@ -71,7 +81,7 @@ judgement call:
 - **Attainment reached** the target (85 % by default).
 - **The budget is spent**: the experiment count reached the cap.
 - **Five rounds without a significant gain** and no remaining hypothesis predicts one above the
-  noise floor.
+  noise floor, with every closure admissible and swept.
 - **Three rounds without a gain** triggers a re-diagnosis first, because the bottleneck may have
   moved. This is not a stop; it is a forced restatement of the problem.
 

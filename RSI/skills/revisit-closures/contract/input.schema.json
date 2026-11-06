@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/revisit-closures/input.schema.json",
+  "title": "revisit-closures input",
+  "description": "One operator's campaign state plus the closures it has accumulated. `entries` items are the subset of schemas/ledger-entry.schema.json this decision consumes: the closure field, the verdict, the predicted speedup and the card's direction. The shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "entries"],
+  "properties": {
+    "op": {"type": "string", "minLength": 1},
+    "entries": {
+      "type": "array",
+      "description": "This operator's ledger entries, oldest first. Read them from ledger/experiments.jsonl; never edit them.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exp_id", "verdict"],
+        "properties": {
+          "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "op": {"type": "string", "minLength": 1},
+          "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+          "significant": {"type": ["boolean", "null"]},
+          "speedup": {"type": ["number", "null"]},
+          "parent": {"type": "string", "minLength": 1},
+          "closure": {
+            "type": "object",
+            "description": "Why this experiment closed a direction; see docs/closures.md.",
+            "additionalProperties": false,
+            "properties": {
+              "direction": {"type": "string", "minLength": 1},
+              "evidence": {"type": "string", "enum": ["implementation", "measurement", "premise", "unclassified"]},
+              "landed": {"type": "boolean"},
+              "reason": {"type": "string"},
+              "checks_failed": {"type": "array", "items": {"type": "string"}},
+              "points_tried": {"type": "integer", "minimum": 1},
+              "parameters": {"type": "array", "items": {"type": "string"}},
+              "reopen_when": {"type": ["string", "null"]},
+              "reopened_by": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "hypothesis": {
+            "type": "object",
+            "properties": {
+              "direction": {"type": "string", "minLength": 1},
+              "transformation": {"type": "string", "minLength": 1},
+              "predictions": {
+                "type": "object",
+                "properties": {
+                  "speedup": {
+                    "type": "object",
+                    "properties": {
+                      "expect": {"type": "number", "exclusiveMinimum": 0},
+                      "low": {"type": "number", "exclusiveMinimum": 0},
+                      "high": {"type": "number", "exclusiveMinimum": 0}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "verdicts": {
+      "type": "object",
+      "description": "Archived verdict documents by experiment id. An entry that predates closures is classified from its verdict instead of from the verdict word, which would guess exactly the thing that is in question.",
+      "additionalProperties": {"type": "object"}
+    },
+    "stalled_rounds": {"type": "integer", "minimum": 0, "description": "Rounds without a significant gain, as the campaign counted them."},
+    "proposed_action": {"type": ["string", "null"], "enum": [null, "continue", "change_direction", "combine", "stop"], "description": "What plan-campaign decided, so a proposed stop can be checked against the closures."},
+    "revisit_after_stalled_rounds": {"type": "integer", "minimum": 0},
+    "min_open_closures": {"type": "integer", "minimum": 0},
+    "min_points": {"type": "integer", "minimum": 1, "description": "Points of a direction's parameter a premise refutation needs before it may retire the direction."},
+    "max_reopens": {"type": "integer", "minimum": 0},
+    "max_reopen_cards": {"type": "integer", "minimum": 0}
+  }
+}

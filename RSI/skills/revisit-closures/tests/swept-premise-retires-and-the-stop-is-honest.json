@@ -1,0 +1,55 @@
+{
+  "name": "a premise refuted across a swept parameter is retirable, so the stop is honest and nothing reopens",
+  "note": "two points of the parameter were tried, the mechanism landed, the counter was measured and did not move, and no retry condition is recorded",
+  "script": "scripts/revisit_closures.py",
+  "input": {
+    "op": "vec_add",
+    "proposed_action": "stop",
+    "stalled_rounds": 5,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "closure": {
+          "direction": "reduce-m-column-split",
+          "evidence": "premise",
+          "landed": true,
+          "points_tried": 3,
+          "parameters": [
+            "tile_elems"
+          ]
+        },
+        "hypothesis": {
+          "direction": "reduce-m-column-split",
+          "transformation": "split the row reduction over column tiles as well as rows",
+          "predictions": {
+            "speedup": {
+              "expect": 1.03,
+              "low": 1.01,
+              "high": 1.06
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "triggered": true,
+    "decision": "exhausted",
+    "counts": {
+      "implementation": 0,
+      "measurement": 0,
+      "premise": 1,
+      "unclassified": 0
+    },
+    "reopens": [],
+    "retirable_directions": [
+      "reduce-m-column-split"
+    ],
+    "open_directions": []
+  },
+  "source": "a swept refutation is the only closure that may be called exhausted; anything less must reopen or be reported as unresolved"
+}

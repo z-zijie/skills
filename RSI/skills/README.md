@@ -1,6 +1,6 @@
 # Skills
 
-Twenty-two skills, grouped as the build plan groups them. Each is a directory with `SKILL.md`,
+Twenty-three skills, grouped as the build plan groups them. Each is a directory with `SKILL.md`,
 `contract/` (frozen), `strategy/` (the outer loop may edit), `scripts/` where the work is
 deterministic, and `tests/` with labelled regression cases.
 
@@ -32,6 +32,7 @@ what runs next, so the sequence is data and every step can be costed, replayed a
 | `retrieve-knowledge` | Fetches the few rules, anti-patterns, patterns and past experiments that match | P3 |
 | `propose-hypothesis` | Proposes one to three ranked, falsifiable hypothesis cards | P3 |
 | `plan-campaign` | Decides one campaign move: continue, change direction, combine or stop | P3 |
+| `revisit-closures` | Reopens a written-off direction that was never really tried, before a stop is reported | P3 |
 
 ## Hardware knowledge: a feel for the device
 

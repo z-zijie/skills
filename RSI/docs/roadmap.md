@@ -41,7 +41,7 @@ allowed to judge itself.
 
 ## Status of this repository
 
-Shipped: the evaluator, the shared tooling, the schemas, all 22 skills, eight playbooks, the
+Shipped: the evaluator, the shared tooling, the schemas, all 23 skills, eight playbooks, the
 knowledge-base stores with seed content, the orchestrator state machine and the replay judge.
 Not yet done, because it needs a real device and real experiments: calibration on the target
 machine, the first onboarded operator's baseline, and any replayed scaffold change. Every

@@ -619,6 +619,53 @@ def _():
     expect(reprofile.state == "diagnose", "three stalled rounds did not force a re-diagnosis")
 
 
+@case("campaign: a stop with an unresolved closure is spent on the revisit, not on the report")
+def _():
+    from orchestrator import sm
+
+    campaign = sm.new_campaign("op", budget=100)
+    campaign.closures = [{"direction": "rope-tile", "evidence": "implementation",
+                          "retirable": False, "points_tried": 1}]
+    step = sm.apply_plan(campaign, "stop", {"reason": "no open route"})
+    expect(campaign.state == "revisit", f"an unresolved closure did not force a revisit: {step}")
+    expect(step["skill"] == "revisit-closures", "the revisit ran no skill")
+
+    # The plan answers the question once: with every reopen used, the campaign may then stop and
+    # the report carries the unresolved direction instead of pretending the playbook is exhausted.
+    sm.advance(campaign, {"decision": "hold",
+                          "closures": [{"direction": "rope-tile", "evidence": "implementation",
+                                        "retirable": False, "points_tried": 1}],
+                          "note": "the closure used its reopens: report it as unresolved"})
+    expect(campaign.state == "plan", "the revisit did not hand back to the planner")
+    sm.apply_plan(campaign, "stop", {"reason": "no open route"})
+    expect(campaign.state == "report", "the second stop did not reach the report")
+    expect("rope-tile" in sm.stop_conditions(campaign)["unresolved_closures"],
+           "the report cannot name the direction it left unresolved")
+
+    target = sm.new_campaign("op", budget=100)
+    target.current_attainment_pct = 90.0
+    target.closures = [{"direction": "x", "retirable": False}]
+    sm.apply_plan(target, "stop_target")
+    expect(target.state == "report", "reaching the target must not wait on a closure check")
+
+
+@case("campaign: a reopen goes to hypothesize and the campaign continues")
+def _():
+    from orchestrator import sm
+
+    campaign = sm.new_campaign("op", budget=100)
+    sm.record_revisit(campaign, {"decision": "reopen",
+                                 "reopens": [{"direction": "rope-tile",
+                                              "retry": "fix_implementation"}],
+                                 "closures": [{"direction": "rope-tile",
+                                               "evidence": "implementation",
+                                               "retirable": False}]})
+    expect(campaign.state == "hypothesize", "a reopen did not become the next card")
+    expect(campaign.reopen_direction == "rope-tile", "the reopen did not name the direction")
+    expect(campaign.reopen_retry == "fix_implementation", "the reopen did not name the retry")
+    expect(campaign.revisit_due, "the campaign does not record that a revisit was due")
+
+
 @case("campaign: the state machine saves and reloads without losing a decision")
 def _():
     from orchestrator import sm
@@ -791,7 +838,7 @@ def _():
         problems.extend(skills.validate_skill(path.name, ROOT))
     expect(not problems, "; ".join(problems))
     found = len(skills.discover(ROOT))
-    expect(found == 22, f"expected 22 skills, found {found}")
+    expect(found == 23, f"expected 23 skills, found {found}")
 
 
 @case("skills: every skill's own regression cases pass")
@@ -825,6 +872,48 @@ def _():
                    f"{path.name} cites {cited}, which is not in kb/rules")
         for cited in re.findall(r"\b(A-[0-9]+)\b", text):
             expect(cited in anti_ids, f"{path.name} cites {cited}, which is not in kb/antipatterns")
+
+
+@case("closures: the class is derived from the checks and the verdict word cannot choose it")
+def _():
+    from rsi import closures
+
+    refuting = {"verdict": "refuted", "checks": [
+        {"id": "A1", "group": "A", "conclusion": "pass"},
+        {"id": "B1", "group": "B", "conclusion": "pass"},
+        {"id": "C1", "group": "C", "conclusion": "fail"}]}
+    expect(closures.classify(refuting)["evidence"] == "premise",
+           "a landed, measured, unmoved counter is not a premise refutation")
+
+    never_landed = dict(refuting, checks=[
+        {"id": "A1", "group": "A", "conclusion": "pass"},
+        {"id": "B1", "group": "B", "conclusion": "fail"},
+        {"id": "C1", "group": "C", "conclusion": "fail"}])
+    expect(closures.classify(never_landed)["evidence"] == "implementation",
+           "a change that did not reach machine code was classified as evidence")
+
+    confirmed_no_score = dict(refuting, checks=[
+        {"id": "A1", "group": "A", "conclusion": "pass"},
+        {"id": "B1", "group": "B", "conclusion": "pass"},
+        {"id": "C1", "group": "C", "conclusion": "pass"}])
+    expect(closures.classify(confirmed_no_score)["evidence"] == "measurement",
+           "a confirmed mechanism with no score is a mislabelled confirmation")
+
+    expect(closures.classify({"verdict": "refuted", "checks": []})["evidence"] == "unclassified",
+           "a refutation with no checks was classified anyway")
+
+    claimed = closures.from_verdict(refuting, {"direction": "d"}, {},
+                                    {"evidence": "implementation"})
+    expect(claimed["evidence"] == "premise" and claimed["declared_evidence"] == "implementation",
+           "a caller-supplied evidence class overrode the checks")
+
+    swept = {"direction": "d", "evidence": "premise", "landed": True, "points_tried": 3}
+    expect(closures.is_retirable(swept), "a swept premise refutation was not retirable")
+    expect(not closures.is_retirable(dict(swept, points_tried=1)),
+           "a one-point refutation retired a direction")
+    expect(not closures.is_retirable(dict(swept, reopen_when="when the kernel's share rises")),
+           "a closure with a retry condition was retired")
+    expect(not closures.is_retirable(None), "a missing closure was treated as retirable")
 
 
 @case("knowledge: every rule card validates against the shared schema")

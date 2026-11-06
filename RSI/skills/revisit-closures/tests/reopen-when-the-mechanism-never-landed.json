@@ -1,0 +1,96 @@
+{
+  "name": "a refutation whose mechanism never landed is reopened before the direction is retired",
+  "note": "the verifier's group B failed, so the direction was never exercised: this closure proves nothing and reopens as a fix_implementation",
+  "script": "scripts/revisit_closures.py",
+  "input": {
+    "op": "mla_prolog",
+    "proposed_action": "stop",
+    "stalled_rounds": 4,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "mla_prolog",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.05,
+        "hypothesis": {
+          "direction": "projection-n-slice",
+          "transformation": "size the projection N slice from n instead of m",
+          "predictions": {
+            "speedup": {
+              "expect": 1.07,
+              "low": 1.02,
+              "high": 1.2
+            }
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "mla_prolog",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "hypothesis": {
+          "direction": "rope-tile-deinterleave",
+          "transformation": "de-interleave the tile so the rotation runs on contiguous panes",
+          "predictions": {
+            "speedup": {
+              "expect": 1.5,
+              "low": 1.1,
+              "high": 1.8
+            }
+          }
+        }
+      }
+    ],
+    "verdicts": {
+      "exp-0002": {
+        "hypothesis_id": "H-0002",
+        "verdict": "refuted",
+        "checks": [
+          {
+            "id": "A1",
+            "group": "A",
+            "conclusion": "pass",
+            "evidence": "the rotated path is added and called"
+          },
+          {
+            "id": "B1",
+            "group": "B",
+            "conclusion": "fail",
+            "evidence": "the probe exits non-zero: mismatch 4.18M of 4.19M"
+          },
+          {
+            "id": "C1",
+            "group": "C",
+            "conclusion": "fail",
+            "evidence": "no correct run to compare"
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "triggered": true,
+    "decision": "reopen",
+    "counts": {
+      "implementation": 1,
+      "measurement": 0,
+      "premise": 0,
+      "unclassified": 0
+    },
+    "retirable": [],
+    "reopen_directions": [
+      "rope-tile-deinterleave"
+    ],
+    "reopen_retries": [
+      "fix_implementation"
+    ],
+    "open_directions": [
+      "rope-tile-deinterleave"
+    ],
+    "retirable_directions": []
+  },
+  "source": "the real campaign's H-0011 record: the de-interleaved rope probed correct at 1.58x only after two API-convention fixes, and the first attempt was written down as a refutation"
+}

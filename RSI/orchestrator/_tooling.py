@@ -16,6 +16,7 @@ if str(_TOOLING) not in sys.path:
     sys.path.insert(0, str(_TOOLING))
 
 from rsi import (  # noqa: E402
+    closures,
     counters,
     hardware,
     jsonschema_lite,
@@ -31,7 +32,7 @@ from rsi import (  # noqa: E402
 )
 
 __all__ = [
-    "counters", "hardware", "jsonschema_lite", "knowledge", "ledger", "metrics", "paths",
+    "closures", "counters", "hardware", "jsonschema_lite", "knowledge", "ledger", "metrics", "paths",
     "signature", "skills", "spec", "timing", "yamlite", "ROOT",
 ]
 

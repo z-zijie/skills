@@ -47,6 +47,18 @@
     "hw_id": {"type": "string", "minLength": 1},
     "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$", "description": "Only for replaying a stored experiment; normally allocated from the ledger."},
     "root": {"type": "string", "minLength": 1, "description": "Alternative repository root; the regression cases use a scratch copy."},
+    "closure": {
+      "type": "object",
+      "description": "What the verifier knows and its checks do not: the direction, the parameter it varies, how many points were tried, and any condition under which it should be retried. `evidence`, `landed` and `reason` are derived from the verdict document and a value supplied for them is recorded only as a disagreement.",
+      "additionalProperties": false,
+      "properties": {
+        "direction": {"type": "string", "minLength": 1, "description": "Stable slug for the direction. Without one, the same direction retried under a new sentence never accumulates refutations."},
+        "points_tried": {"type": "integer", "minimum": 1},
+        "parameters": {"type": "array", "items": {"type": "string"}},
+        "reopen_when": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
     "dry_run": {"type": "boolean", "description": "Build and validate the entry and archive nothing."}
   }
 }

@@ -58,7 +58,7 @@ RSI/
 │   └── cli.py          the only entry point: evaluate / profile / calibrate / aa / redteam
 ├── tooling/rsi/        shared code: contracts, units, statistics, signatures, ledger, paths
 ├── schemas/            frozen JSON Schemas, the interface between skills
-├── skills/             22 skills, one entry point plus five groups
+├── skills/             23 skills, one entry point plus five groups
 ├── playbooks/          eight tactics, ordered by bottleneck signature
 ├── kb/                 documented, measured, patterns, rules, antipatterns, conjectures, proposals
 ├── ledger/             experiments.jsonl (append-only) + artifacts/
@@ -110,7 +110,7 @@ those are the cheats a correctness-only evaluator cannot see.
 
 ## Honest status
 
-The evaluator, tooling, schemas, all 22 skills, eight playbooks, the knowledge-base stores with
+The evaluator, tooling, schemas, all 23 skills, eight playbooks, the knowledge-base stores with
 seed content, the orchestrator state machine and the replay judge are implemented and
 exercisable on the reference backend. The seed rule cards are labelled examples, every playbook
 records `Last replay: never`, and the ledger is empty: attribution needs real experiments on a

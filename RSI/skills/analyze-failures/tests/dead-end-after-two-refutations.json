@@ -1,6 +1,6 @@
 {
   "name": "dead-end-after-two-refutations",
-  "note": "one transformation refuted twice is a dead end and leaves the priority order",
+  "note": "two admissible refutations of one direction, each swept over three points of its parameter: the direction leaves the priority order",
   "script": "scripts/cluster.py",
   "input": {
     "op": "vec_add",
@@ -18,6 +18,15 @@
           "signature_tags": [
             "mem_saturated"
           ]
+        },
+        "closure": {
+          "direction": "fewer-registers",
+          "evidence": "premise",
+          "landed": true,
+          "points_tried": 3,
+          "parameters": [
+            "register_budget"
+          ]
         }
       },
       {
@@ -31,6 +40,15 @@
           "transformation": "fewer_registers",
           "signature_tags": [
             "mem_saturated"
+          ]
+        },
+        "closure": {
+          "direction": "fewer-registers",
+          "evidence": "premise",
+          "landed": true,
+          "points_tried": 3,
+          "parameters": [
+            "register_budget"
           ]
         }
       },
@@ -60,7 +78,7 @@
         ],
         "kind": "dead_end",
         "share": 0.6667,
-        "summary": "2 refutation(s) of exhausted transformations: fewer_registers",
+        "summary": "2 refutation(s) of exhausted directions: fewer_registers",
         "tags": [
           "mem_saturated"
         ],
@@ -81,10 +99,12 @@
         "fewer_registers"
       ],
       "mean_prediction_error": 0.0867,
-      "not_implemented_rate": 0.0
+      "not_implemented_rate": 0.0,
+      "open_closure_rate": 0.0
     },
     "rounds_seen": 3,
     "top_cluster": "dead_end",
     "unattributed": []
-  }
+  },
+  "source": "a refutation only retires a direction when its mechanism landed and its parameter was swept; an unclassified refutation is an open closure instead"
 }

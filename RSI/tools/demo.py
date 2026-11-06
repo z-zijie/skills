@@ -201,13 +201,16 @@ def main(argv=None) -> int:
             {"speedup": 1.2, "significant": True, "qualifies": True, "prediction_error": 0.05},
             {"attained_pct": 62.0},
             {},
+            {"decision": "not_triggered", "closures": []},
             {"decision": "continue"},
         ]
         for outcome in outcomes:
             sm.advance(campaign, outcome)
         assert campaign.experiments == 1, campaign.experiments
         assert campaign.best_attainment_pct == 62.0, campaign.best_attainment_pct
-        return f"attainment {campaign.best_attainment_pct:.0f}%, round {campaign.round}"
+        assert campaign.state == "hypothesize", campaign.state
+        return (f"attainment {campaign.best_attainment_pct:.0f}%, round {campaign.round}, "
+                f"next {campaign.state}")
 
     if not args.no_tests:
         print("\n9. the test suite")

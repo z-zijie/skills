@@ -60,6 +60,12 @@ verdict toward "it was implemented".
    incomplete, the verdict is `not_implemented`. Done when the file passes the contract and every
    check in `checks` carries a conclusion and an evidence location.
 
+8. **Say what the verdict closes.** A `refuted` or `not_implemented` verdict closes a direction,
+   and which direction and how widely it was tried are what a later revisit reads. Record the
+   `direction` slug, the `parameters` the card varied and the `points_tried`, so `record-experiment`
+   can build the closure from your checks. Done when a two-point sweep and a one-point guess are
+   distinguishable from the verdict alone.
+
 ## Output
 
 `verdict.json`:

@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _shared import ROOT, emit, jsonschema_lite, ledger, metrics, paths, read_request, shared_schema, yamlite  # noqa: E402
-from rsi import timing  # noqa: E402
+from rsi import closures, timing  # noqa: E402
 
 REQUIRED_ARTIFACTS = {"diff_file": "diff.patch", "profile_file": "profile.json",
                       "binary_file": "binary.json"}
@@ -153,6 +153,12 @@ def build_entry(root: Path, request: Dict[str, Any], result: Dict[str, Any],
         entry["counters_after"] = metrics.normalise(request["counters_after"])
     if request.get("verifier_notes") is not None:
         entry["verifier_notes"] = request["verifier_notes"]
+    # A refutation is not just a word: it closes a direction, and why it closed is what decides
+    # later whether the direction may be written off. The evidence class comes from the verifier's
+    # own checks, so an implementer cannot file a compile failure as "the idea does not pay".
+    if str(verdict_doc["verdict"]) in ("refuted", "not_implemented"):
+        entry["closure"] = closures.from_verdict(verdict_doc, card, entry,
+                                                request.get("closure") or {})
     if request.get("dry_run"):
         entry["promoted"] = False
     return entry

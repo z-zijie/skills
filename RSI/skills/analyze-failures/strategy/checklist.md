@@ -6,7 +6,8 @@
 | --- | --- | --- | --- |
 | `not_implemented` | verdict is `not_implemented` | A clearer card, a smaller scope, or a stronger implementer | Evidence against the mechanism, or a new rule |
 | `large_prediction_error` | confirmed and `prediction_error > hole` | Narrowing a rule's scope, or a microbenchmark proposal | A playbook edit, since the tactic worked |
-| `dead_end` | refuted twice for one operator | Moving the transformation down or out of the priority order | Deleting the rule: refutations are operator-scoped |
+| `open_closure` | refuted, and its closure is not `premise`, or tried fewer than `MIN_POINTS` points, or carries a retry condition | Reopening the direction through `revisit-closures` | Retiring the direction, or editing a playbook on the strength of it |
+| `dead_end` | refuted twice for one operator, each refutation an admissible swept closure | Moving the transformation down or out of the priority order | Deleting the rule: refutations are operator-scoped |
 | `wrong_diagnosis` | confirmed and `significant` false | Fixing signature thresholds, or re-diagnosing | Adding negative evidence to the rule |
 | `unexplained_speedup` | refuted and `significant` true | A follow-up experiment naming the real mechanism | Counting the win as evidence for the card as written |
 | `correctness` | `correctness.passed` false | Nothing in the outer loop; the round never became evidence | Treating it as a performance failure |
@@ -52,9 +53,21 @@ The change never reached the machine code. There is nothing here about the mecha
 - The fix lives in the card's `evidence_of_implementation` list. Vague evidence is the single
   most common cause, and it is cheap to fix without touching a playbook.
 
+### open_closure
+
+The refutation is not evidence about the direction: the mechanism never landed, it landed and its
+counters moved while the score did not, or one point of a parameter was tried. Counted here so the
+outer loop cannot retire a direction the campaign never really tried.
+
+- Reopen it through `revisit-closures` before anything else. The reopen names the retry kind:
+  isolate a failing artefact, sweep a second point, or bank a confirmed patch.
+- Do not route this cluster to a playbook edit. A cluster of compile failures is a statement about
+  the scaffold's isolation practice, not about the tactic the card named.
+
 ### dead_end
 
-A transformation refuted twice for the same operator under the same signature.
+A transformation refuted twice for the same operator under the same signature, each time with an
+admissible closure that swept its parameter.
 
 - Scoped to the operator, not global: the same transformation may be established elsewhere.
   Record the operator in the summary so a later reader does not over-generalise.
