@@ -90,9 +90,19 @@ def direction_of(card: Optional[Dict[str, Any]], closure: Optional[Dict[str, Any
 
 
 def slug(text: str, limit: int = 64) -> str:
-    """A stable, lowercase, hyphenated key from a phrase."""
+    """A stable, lowercase, hyphenated key from a phrase, cut at a word boundary.
+
+    Cutting mid-word would make two different directions differ twice, once in their last word
+    and once in where the cut fell, which is the opposite of what a stable key is for.
+    """
     words = [word for word in _SLUG.sub("-", str(text).lower()).split("-") if word]
-    return ("-".join(words))[:limit] or "unknown"
+    key = ""
+    for word in words:
+        candidate = f"{key}-{word}" if key else word
+        if len(candidate) > limit:
+            break
+        key = candidate
+    return key or ("-".join(words))[:limit] or "unknown"
 
 
 def classify(verdict_doc: Optional[Dict[str, Any]], entry: Optional[Dict[str, Any]] = None
@@ -263,11 +273,19 @@ def summarise(entries: Iterable[Dict[str, Any]],
             "reopen_when": (closure or {}).get("reopen_when"),
         })
     open_rows = [row for row in rows if not row["retirable"]]
+    # A direction with two unresolved attempts is one direction to reopen, not two: the count that
+    # triggers a revisit and the count a report names are both directions.
+    open_directions = []
+    for row in open_rows:
+        if row["direction"] not in open_directions:
+            open_directions.append(row["direction"])
+    retirable = [row for row in rows if row["retirable"]]
     return {
         "closures": rows,
         "counts": counts,
         "open": open_rows,
-        "retirable": [row for row in rows if row["retirable"]],
+        "open_directions": open_directions,
+        "retirable": retirable,
         "admissible": counts.get(REFUTING_EVIDENCE, 0),
     }
 
@@ -348,8 +366,9 @@ def revisit_plan(entries: Iterable[Dict[str, Any]], verdicts: Optional[Dict[str,
     if int(stalled_rounds) >= int(revisit_after_stalled):
         triggers.append(f"{int(stalled_rounds)} rounds without a significant gain "
                         f"(threshold {int(revisit_after_stalled)})")
-    if len(summary["open"]) >= int(min_open):
-        triggers.append(f"{len(summary['open'])} open closures (threshold {int(min_open)})")
+    if len(summary["open_directions"]) >= int(min_open):
+        triggers.append(f"{len(summary['open_directions'])} open closures "
+                        f"(threshold {int(min_open)})")
     triggered = bool(triggers)
 
     groups = by_direction(entries, verdicts)
@@ -411,10 +430,11 @@ def revisit_plan(entries: Iterable[Dict[str, Any]], verdicts: Optional[Dict[str,
         "closures": summary["closures"],
         "counts": summary["counts"],
         "open": summary["open"],
-        "open_directions": [row["direction"] for row in summary["open"]],
+        "open_directions": summary["open_directions"],
         "retirable": summary["retirable"],
         "retirable_directions": [row["direction"] for row in summary["retirable"]],
-        "note": _note(decision, summary["counts"], len(reopens), len(summary["open"])),
+        "note": _note(decision, summary["counts"], len(reopens),
+                      len(summary["open_directions"])),
     }
 
 
