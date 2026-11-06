@@ -1,0 +1,21 @@
+{
+  "quantity": "aiv_total_cycles (AIV cycle counter, NOT wall-clock)",
+  "transaction_counter": "aiv_read_local_l2_miss",
+  "bytes_per_transaction": 256,
+  "miss_exactness": "l2_miss == K*B*S/256 exactly for cold reads (ratio 1.000 on every clean launch)",
+  "b56_contention_regime": {
+    "model": "cycles = 105743 + 0.0554 * (K*B*S)",
+    "n_points": 10,
+    "in_sample_mape": 3.33,
+    "loo_mape": 5.18,
+    "cv_per_config_cycles_pct": [1.93, 4.16, 3.45, 1.89, 1.67, 2.13, 1.17, 2.57, 1.80, 2.21]
+  },
+  "low_b_regime": {
+    "note": "B<=42 does not follow the aggregate-bytes law; own-transfer term dominates. 5 points are too few to identify. Reported as an open item, not fitted.",
+    "n_points": 5
+  },
+  "versus_wall_clock": {
+    "time_based_best_loo": 8.81,
+    "counter_based_best_loo_b56": 5.18
+  }
+}
