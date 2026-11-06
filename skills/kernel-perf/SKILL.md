@@ -19,6 +19,13 @@ python3 scripts/kernel_perf.py profile --app ./vector_add --kernel add_kernel --
 python3 scripts/kernel_perf.py profile --app ./vector_add --kernel add_kernel --out ./out \
     --with-instructions --instr-pipes="vector|mte2|mte3"
 
+# Add the pipeline waveform from the raw per-cycle stream (report section 15)
+python3 scripts/kernel_perf.py profile --app ./vector_add --kernel add_kernel --out ./out \
+    --with-timeline
+
+# Or decode an existing capture directly, and check the decode
+python3 references/pipeline_waveform.py --capture ./out/capture/OPPROF_* --out ./waveform --verify
+
 # Validate the capture and the report (exit code gates delivery)
 python3 scripts/critic.py --out ./out --report ./out/report.md
 
@@ -44,6 +51,7 @@ Metrics are organised by which part of the machine they describe; the report rea
 | **SoC** | Data-movement bandwidth, interconnect, L2, cross-die (SIO), die count | Is the algorithmic shape or total tiling wrong? |
 | **Core** | MTE2/MTE3/Cube/Vector/Scalar/FixPipe occupancy, conflict rates, UB/L0/L1 bandwidth, iCache/DCache, VF ratio | Which unit is the bottleneck? |
 | **Schedule** | Per-block start/end timestamps, launch skew, tail | Did the cores start together, did any straggle? |
+| **Waveform** | Per-cycle pipe state, idle intervals, pipe overlap | Did the pipes overlap, or take turns? Where are the bubbles? |
 
 `scripts/layers.py` is the single source of truth for layer assignment; the `layers` field of `kernel_perf.py --json` maps each metric to its layer.
 
@@ -74,6 +82,39 @@ Measured on matmul: 47.05 GB/s cross-die against 30.52 GB/s on-die — **60.6% c
 
 > **The `memory_path` ids are undocumented in CANN**, so the names and the cross-die grouping are inferred, and the confidence tier is C. When cross-die traffic is high, the available levers are: map GM addresses to the L2 interleave so each core writes only its local die's cachelines, reduce the number of cores writing the same cacheline, or reduce same-address write participation.
 
+### Waveform layer: pipe ordering
+
+Every other layer reports a sum over the kernel, so "MTE2 31%, VECTOR 7%" reads
+the same whether the pipes overlapped or took strict turns. The raw per-cycle
+stream settles it.
+
+`--with-timeline` adds a `PipeTimeline` pass, which writes
+`dump/timeline.bin.0`: the unparsed record of which pipe was busy on which
+cycle. `references/pipeline_waveform.py` decodes it into intervals, idle gaps
+and a Chrome trace, and report section 15 renders it.
+
+Measured on vector_add (56 blocks): mean idle 2.0%, MTE2 30.9%, SCALAR 34.9%,
+VECTOR 7.4%, MTE3 11.6%. SCALAR outweighs VECTOR 4.7x -- the kernel spends more
+time on address arithmetic than on arithmetic, which no amount of bandwidth work
+will fix.
+
+On a cube matmul (28 blocks): CUBE 47.8%, MTE2 39.5%, MTE1 11.8%, SCALAR 5.7%,
+FIXP 3.4%, with CUBE and MTE2 overlapping across the whole body -- a healthy
+double-buffered matmul.
+
+> **The vendor's `trace.json` is not the waveform.** It is a sampled, clipped
+> parse of it (first sampling group only), and it rounds to microseconds. The
+> decoder reads the raw stream and keeps integer cycles.
+
+The decode is verified by `--verify`, which requires an exact interval-for-
+interval match against `trace.json` for the same run: 94/94 checks across four
+captures, both AIV and AIC. The container format, timing convention and pipe bit
+assignment are documented in `references/pipeline-waveform.md`, including the one
+non-obvious rule -- a token's mask pairs with the *next* token's duration.
+
+> **Coverage limit**: the profiler samples a subset of cores over a short window.
+> These are per-core samples; never add them up into a kernel duration.
+
 ## What is collected
 
 One collection, split across passes where metric sets cannot coexist:
@@ -91,6 +132,7 @@ One collection, split across passes where metric sets cannot coexist:
 | Key metrics | MFU, MAC usage, arithmetic intensity, binding constraint | Derived |
 | Instructions | Per-opcode cost, per-PC cost, pipe attribution | `trace.json` + `dfx_region_map.txt` |
 | Schedule | Per-block start/end, launch skew, tail | `trace.json` (PipeTimeline) |
+| Waveform | Per-cycle pipe state, idle intervals, overlap | `dump/timeline.bin.0` (raw) |
 
 ## Key metrics (section 2)
 
@@ -125,6 +167,13 @@ The same trace also drives **PC-vs-cycle icache-miss diagnosis** (the primary te
 - **`--instr-timeline-pipe`** accepts only `cube|fixp|vector|mte1|mte2|mte3`; `scalar` is rejected outright.
 - **`dfx_region_map.txt` is deleted by msopprof's later parsing**, so collection archives it into `probe/` immediately.
 - **`TimelineDetail` fails outright** on dav-3510.
+- **The raw waveform needs both the right metric set and the right entry point.**
+  `dump/timeline.bin.0` is written by `PipeTimeline`, and only when the
+  collection goes through `msprof op` -- calling `tools/msopprof/bin/msopprof`
+  directly accepts the same flags and writes a `trace.json`, but stages **no raw
+  stream**. `npu-compute --section Pipeline` is no substitute either: its
+  `.npu-rep` container holds only parsed files. `kernel_perf.py` routes its
+  `PipeTimeline` pass through `msprof op` accordingly.
 - **Application-level `msprof` (non-`op`) is unusable on this host**: the bundled Python's `_ctypes` does not match the interpreter, so capture data cannot be parsed. Kernel-level analysis is unaffected.
 - **`biprof` is not an on-device tool**: it is a `cannsim` simulator package requiring `plotly`, which is not installed. `msprof op` is itself a wrapper over `msopprof`.
 
@@ -144,7 +193,7 @@ Report section 10 lists every E-tier metric in that report and why, so an unstab
 
 ## Reading the results
 
-Thresholds in `references/interpretation.md`; measured data in `references/measurements.md`; platform constants in `references/platform-constants.md`; container format and capability boundaries in `references/dav3510-notes.md`; worked examples in `references/example-vector-add.md` and `references/example-three-kernels.md`.
+Thresholds in `references/interpretation.md`; measured data in `references/measurements.md`; platform constants in `references/platform-constants.md`; container format and capability boundaries in `references/dav3510-notes.md`; the raw waveform format and its verification in `references/pipeline-waveform.md`; worked examples in `references/example-vector-add.md` and `references/example-three-kernels.md`.
 
 Three rules:
 

@@ -1,0 +1,242 @@
+# Pipeline waveform from raw CANN data
+
+`msopprof`'s CSV + `visualize_data.bin` path (`kernel_perf.py`) answers *how
+much* of the kernel went to each pipe. It cannot answer *when*, or *in what
+order* -- and "the pipes are at 40% each" reads very differently depending on
+whether they overlap or take turns.
+
+The pipeline waveform answers the ordering question, and it does so from the one
+artefact the vendor does not publish a spec for: the per-cycle pipe stream that
+the profiler dumps as `dump/timeline.bin.0`. `scripts/pipeline_waveform.py`
+decodes it.
+
+## Collect
+
+```bash
+source $ASCEND_HOME_PATH/set_env.sh        # npu-compute/msprof are not on the login PATH
+
+# PipelineTimeline is what writes dump/timeline.bin.0. Adding PipeUtilization
+# costs nothing and gives the step-3 cross-check.
+msprof op --aic-metrics=PipeTimeline,PipeUtilization --warm-up=3 --output ./prof ./your_app
+```
+
+`--output` creates `./prof/OPPROF_<timestamp>_<id>/`. Keep the whole directory:
+the decoder needs `dump/timeline.bin.0`, and the cross-check needs `trace.json`.
+
+> **Use `msprof op`, not the bare `msopprof` binary.** Both take the same flags
+> and both write a `trace.json`, but only the `msprof op` wrapper stages the raw
+> stream into `device0/.../dump/timeline.bin.0`. Calling
+> `tools/msopprof/bin/msopprof` directly produces a capture with every parsed
+> file and **no raw stream at all** -- measured on the same binary and kernel:
+> direct call, 11 files, zero `timeline.bin.0`; `msprof op`, 12 files including
+> the 25 MB raw stream. There is no flag that turns it back on. `kernel_perf.py`
+> routes its `PipeTimeline` pass through `msprof op` for this reason.
+
+| File | Size (vector_add) | What it is |
+|---|---:|---|
+| `dump/timeline.bin.0` | 25 MB | **the raw per-cycle pipe stream** -- the waveform |
+| `trace.json` | 8 KB | the vendor's own decode of it (sampled and clipped) |
+| `dump/op_basic_info.txt` | 153 B | kernel name, block dim, clock |
+| `PipeUtilization.csv` | 10 KB | per-block pipe time, for the cross-check |
+
+> `trace.json` is not the waveform. Every `dur` in it is a whole number of
+> 1650 MHz cycles because it is already parsed, and it keeps only the first
+> sampling group per core. The raw stream is the source; `trace.json` is the
+> evidence used to verify the decoder.
+
+## Decode
+
+```bash
+# report + machine-readable numbers
+python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --out ./waveform
+
+# verify the decoder against the vendor's own parse of the same run
+python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --verify
+
+# Chrome/Perfetto trace, all cores on one axis
+python3 scripts/pipeline_waveform.py --capture ./prof/OPPROF_xxx --chrome trace.json
+```
+
+Add `--out` to write `waveform.md` and `waveform.json`; without it the report
+goes to stdout. `--json` prints the full decode, so another tool can consume it
+without re-parsing markdown.
+
+## The container format
+
+CANN publishes no specification for `timeline.bin.0`. The layout below was
+recovered by decoding captures and checking the result against the vendor's
+`trace.json` and `PipeUtilization.csv` for the same runs; the checks are
+reproducible with `--verify`.
+
+The file is a fixed-stride array of records:
+
+```
+stride = 524290 words = 2 097 160 bytes
+
+record:  word[0]  id    = 0x000V_CCCC     V = subcore + 1, CCCC = core index
+         word[1]  blen  = payload bytes
+         word[2:] payload = blen/4 words, zero-padded to the stride
+```
+
+An AIV record is `0x0001_CCCC` (veccore0) or `0x0002_CCCC` (veccore1); an AIC
+record is `0x0000_CCCC`.
+
+Each payload word is `tag:16 | value:16`, tag in the high half:
+
+| tag | meaning |
+|---|---|
+| `0xe0xx`-`0xe3xx` | record header (op id, block dim, clock); carries no time |
+| `0xf0xx` | timed token: `value` = cycles |
+| `0x0dxx` | counter block; also ends a sampling group |
+
+### Timing convention
+
+For a timed token, the low byte of the tag is the pipe bitmask that is busy, and
+**the run it describes is the one *after* it** -- the duration is carried by the
+next timed token. Put the other way: token *k*'s own value is the time that had
+already elapsed before its state took effect.
+
+This one detail is worth stating plainly because it is not guessable. Reading
+mask and duration from the same token also produces a plausible timeline, but it
+shifts every interval by one and disagrees with the vendor's parse. The pairing
+that reproduces the vendor *exactly* is the lookahead one.
+
+The very first timed token's value is the lead-in before any state is recorded;
+it must still advance the clock, or the whole timeline shifts left.
+
+Mask `0x00` means "no pipe busy" and is emitted as a real interval. Those are
+the bubbles.
+
+Bit assignments, by core kind:
+
+| bit | AIV | AIC |
+|---|---|---|
+| `0x01` | SCALAR | SCALAR |
+| `0x02` | VECTOR | -- |
+| `0x04` | -- | CUBE |
+| `0x08` | -- | MTE1 |
+| `0x10` | MTE2 | MTE2 |
+| `0x20` | MTE3 | -- |
+| `0x40` | -- | FIXP |
+
+The decoder carries a per-kind list of bits it has verified (`AIV_CONFIDENT`,
+`AIC_CONFIDENT`). A mask outside that list is reported as an *unnamed* state
+with its cycle count rather than being given a name it has not earned.
+
+### Sampling groups
+
+A `0x0dxx` counter block ends the current group. Everything after it is a
+separate sample of the same core, starting again from cycle 0, with a different
+counter block (the first group carries `0xd88`, later ones `0xd99` onward).
+
+The kernel body is the **first** group. Later groups are follow-up samples with
+no counterpart in `trace.json`, so `--verify` compares group 0 only, and the
+report's span/idle figures come from group 0. Picking the longest group instead
+silently mixes a later sample into the numbers.
+
+## Verification
+
+`--verify` asserts equality, not containment. For every core and pipe that
+`trace.json` reports, the decoded intervals must match it interval for interval,
+and the decoder must not claim a pipe the vendor omits.
+
+Measured on CANN 9.3.0 / Ascend950PR_9579 / dav-3510, 1650 MHz:
+
+| Capture | Kernel | Records | Checks | Result |
+|---|---|---:|---:|---|
+| `pt` | `add_kernel`, 56 blocks, vector | 12 | 48 | pass |
+| `pt2` | `add_kernel`, 56 blocks, vector | 4 | 16 | pass |
+| `mm` | `MatmulKernel`, 28 blocks, cube | 6 | 20 | pass |
+| `mm2` | `MatmulKernel`, 28 blocks, cube | 6 | 10 | pass |
+
+94/94 checks. Both core kinds, both a tiny and a long kernel.
+
+A third check is possible against `PipeUtilization.csv`, which the profiler
+produces through a different path. On the vector kernel it agrees to the CSV's
+own 3-decimal rounding:
+
+| Core | Pipe | Decoded cycles | CSV us x 1650 |
+|---|---|---:|---:|
+| `core4.veccore0` | SCALAR | 1463 | 1463 |
+| `core4.veccore0` | MTE2 | 2326 | 2326 |
+| `core4.veccore0` | VECTOR | 263 | 263 |
+| `core4.veccore0` | MTE3 | 494 | 494 |
+
+**It does not agree on the cube kernel, and that disagreement is in the vendor's
+own files, not in this decoder.** For the same `MatmulKernel` run, `trace.json`
+and `PipeUtilization.csv` contradict each other on four of the five AIC pipes:
+
+| Pipe | `trace.json` cycles | `PipeUtilization.csv` x 1650 |
+|---|---:|---:|
+| CUBE | 646 | 512 |
+| FIXP | 441 | 633 |
+| MTE1 | 283 | 284 |
+| MTE2 | 842 | 1307 |
+| SCALAR | 971 | 683 |
+
+Since both files come from the vendor and describe the same launch, this tool
+cannot be validated against both. It is validated against `trace.json`, because
+that is the file decoded from the *same* sampled records as the raw stream; the
+CSV is an independent aggregation whose cube-side numbers evidently come from a
+different pass. Treat a cube-kernel cycle count as tier C and prefer
+`trace.json`/the raw decode when the two disagree, or re-collect.
+
+Only one block in that CSV carries non-zero AIC time (block 0); the other 27
+report zeros. The sample is a single core, which is why the CSV totals cannot be
+matched block-for-block against a multi-core decode in the first place.
+
+## Reading the result
+
+Three questions, in this order:
+
+1. **Is the kernel ever idle?** `idle_pct` per core. Idle means *no* pipe was
+   busy -- the core was waiting on something outside the pipes (a dependency, a
+   sync, a launch gap). High idle and low pipe shares together point away from
+   the pipes entirely.
+2. **Do the pipes overlap?** Memory and compute overlapping is what double
+   buffering buys. Zero overlap between MTE2 and the compute pipe means they
+   serialise, and no amount of tiling width will help until that changes.
+3. **Which pipe is the long pole?** The busiest pipe's share, read next to its
+   `wait` ratio from `ResourceConflictRatio.csv`. A pipe that is busy and
+   waiting is blocked; a pipe that is busy and not waiting is at its limit.
+
+On `add_kernel` (56 blocks, vector): mean idle 2.0%, MTE2 30.9%, SCALAR 34.9%,
+VECTOR 7.4%, MTE3 11.6%. SCALAR outweighs VECTOR by 4.7x -- the kernel spends
+more time on address arithmetic and loop control than on arithmetic, which is
+the signature of too few elements per iteration rather than a memory problem.
+
+On `MatmulKernel` (28 blocks, cube): CUBE 47.8%, MTE2 39.5%, MTE1 11.8%,
+SCALAR 5.7%, FIXP 3.4%, with CUBE and MTE2 overlapping across the whole body.
+That is a healthy double-buffered matmul: the cube is the long pole, memory
+feeds it, and the flame graph shows MTE1 loading L1 just ahead of each MMAD.
+
+## Limits
+
+- **Per-core sampling, not a chip-wide trace.** The profiler instruments a
+  subset of cores per collection and the sampling groups are short. A 56-block
+  kernel yields 12 veccore records; the span is the sampled record's own, not
+  the kernel's wall-clock duration. Do not add per-core spans together to
+  estimate kernel time.
+- **AIC bit assignment is inferred**, not documented. It is verified for the
+  five pipes seen on `MatmulKernel` against `trace.json`; a sixth pipe on
+  another operator would show up as an unnamed mask rather than a wrong label.
+- **`0x0dxx` counters are not decoded.** They are preserved in
+  `waveform.json` under `counters` but this tool does not claim to know what
+  they mean.
+- **`timeline.bin.0` is large** (25 MB for a 4 us vector kernel, nearly all zero
+  padding). It is per-collection, so prune old `OPPROF_*` directories.
+
+## What this adds over `trace.json`
+
+Same source data, three things the vendor's parse does not give you:
+
+| | `trace.json` | this decoder |
+|---|---|---|
+| Sampling groups | first only, and clipped | every group, complete |
+| Idle / bubbles | not emitted | explicit intervals with duration |
+| Time base | microseconds, rounded | integer cycles |
+
+`npu-compute --section Pipeline` produces a similar Chrome trace, but its
+`.npu-rep` container holds **no raw stream at all** -- only parsed files. When
+you need to re-derive or question a number, the raw stream is the only thing
+that can answer.

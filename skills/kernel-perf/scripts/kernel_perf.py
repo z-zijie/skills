@@ -63,6 +63,17 @@ except ImportError:  # pragma: no cover
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+try:
+    # The raw-waveform decoder lives in references/ (it is a standalone tool
+    # there, so it can be run directly against a capture); import it by path.
+    import sys as _sys
+    _refs = Path(__file__).resolve().parent.parent / "references"
+    if str(_refs) not in _sys.path:
+        _sys.path.insert(0, str(_refs))
+    import pipeline_waveform as PW
+except ImportError:  # pragma: no cover
+    PW = None
+
 VERSION = "1.0.0"
 
 # Metric groups we always request. Each is an independent msopprof collection
@@ -397,6 +408,7 @@ class Capture:
     op_detail: List[Dict[str, Any]] = field(default_factory=list)
     timeline: Optional[Dict[str, Any]] = None
     trace_path: Optional[Path] = None
+    waveform: Optional[Dict[str, Any]] = None
 
     def per_core(self, table: str) -> List[Dict[str, Any]]:
         """Rows of one CSV table with numeric fields parsed."""
@@ -557,6 +569,52 @@ def derive_bw_peaks(rows: List[Dict[str, str]]) -> Dict[str, List[float]]:
 # capture loading
 # ---------------------------------------------------------------------------
 
+def load_waveform(root: Path, extra_roots: Iterable[Path] = ()) -> Optional[Dict[str, Any]]:
+    """Decode the raw per-cycle pipe stream, if this capture has one.
+
+    ``--aic-metrics=PipeTimeline`` is what writes ``dump/timeline.bin.0``: the
+    unparsed record of which pipe was busy on which cycle. It is the only
+    artefact that can answer *when* -- whether the memory and compute pipes
+    overlapped or took turns -- because the CSV path only ever reports sums.
+    Captures collected without PipeTimeline simply do not have it, which is not
+    an error; the report then omits the section.
+
+    A multi-pass collection puts PipeTimeline in its own pass, so the stream
+    lives in a sibling ``extra/<pass>/`` directory rather than under the core
+    capture. Those are searched too, newest first, so the caller does not have
+    to know which pass wrote it.
+    """
+    if PW is None:
+        return None
+    candidates: List[Path] = []
+    found = PW.locate_timeline(root)
+    if found is not None:
+        candidates.append(found)
+    for extra in extra_roots:
+        if not extra.is_dir():
+            continue
+        # The passes are symlinks into the collection directory, and the stream
+        # sits under a device/core subtree, so neither `glob("*")` alone nor a
+        # fixed-depth pattern finds it: resolve the `extra` prefix by hand and
+        # search the rest recursively.
+        for child in sorted(extra.iterdir()):
+            try:
+                base = child.resolve()
+            except OSError:
+                continue
+            if not base.is_dir():
+                continue
+            candidates.extend(sorted(base.rglob("timeline.bin.0")))
+    if not candidates:
+        return None
+    timeline = max(candidates, key=lambda p: p.stat().st_mtime)
+    freq = PW.read_freq_mhz(root)
+    result = PW.summarize(root, freq, timeline=timeline)
+    if not result.get("aggregate"):
+        return None
+    return result
+
+
 def find_capture_root(path: Path) -> Optional[Path]:
     """Given a dir, find the OPPROF_* (or PROF_*) capture inside it."""
     if not path.exists():
@@ -702,6 +760,15 @@ def load_capture(path: Path, home: Optional[Path] = None) -> Capture:
             capture.timeline = json.loads(trace.read_text(errors="replace"))
         except (OSError, ValueError):
             capture.timeline = None
+
+    # The raw per-cycle pipe stream (dump/timeline.bin.0). Optional: only a
+    # PipeTimeline collection writes it, and the decoder is an enrichment --
+    # a capture without it still produces a complete CSV-based report.
+    if PW is not None:
+        try:
+            capture.waveform = load_waveform(root, extra_candidates)
+        except (OSError, ValueError):
+            capture.waveform = None
 
     capture.platform = load_platform_for_soc(capture.soc, home)
     if not capture.soc and capture.platform is not None:
@@ -1165,6 +1232,7 @@ def analyze(capture: Capture) -> Dict[str, Any]:
     }
     result["per_core"] = build_per_core(capture)
     result["timeline"] = summarize_timeline(capture)
+    result["waveform"] = capture.waveform
     result["subblocks"] = summarize_subblocks(capture)
     result["op_detail"] = summarize_op_detail(capture)
 
@@ -1377,6 +1445,84 @@ def summarize_timeline(capture: Capture) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # report rendering
 # ---------------------------------------------------------------------------
+
+def render_waveform(waveform: Dict[str, Any], number: int) -> List[str]:
+    """Report section for the raw pipeline waveform.
+
+    This is the only part of the report that describes *ordering*. Every other
+    section is a sum over the kernel, so "MTE2 30%, VECTOR 7%" looks the same
+    whether the pipes overlapped or took strict turns. These numbers say which.
+    """
+    lines: List[str] = []
+    add = lines.append
+    agg = waveform["aggregate"]
+    freq = waveform.get("freq_mhz") or 0
+
+    add(f"## {number}. Pipeline waveform (raw per-cycle stream)")
+    add("")
+    add(f"Decoded from `{Path(str(waveform['timeline'])).name}` in the capture "
+        f"({waveform['records']} core records, {freq:g} MHz), not from the parsed "
+        "`trace.json`: the vendor's trace keeps only its first sampling group and "
+        "clips the tail, while this stream is complete and carries explicit idle "
+        "intervals.")
+    add("")
+
+    add(f"### {number}.1 Pipe occupancy")
+    add("")
+    add("| Pipe | Share | Cycles |")
+    add("|---|---:|---:|")
+    for name, pct in agg["pipes_weighted_pct"].items():
+        add(f"| {name} | {pct:.1f}% | {agg['pipe_cycles'][name]:,} |")
+    add("")
+    add("Shares are of summed core span. Pipes run in parallel, so a pipe near "
+        "100% means it was busy for the whole sampled window -- not that it used "
+        "all the machine.")
+    add("")
+
+    add(f"### {number}.2 Idle and overlap")
+    add("")
+    add(f"- Mean idle across {agg['cores_active']} sampled cores: "
+        f"**{_fmt(agg['mean_idle_pct'], '%')}**")
+    add(f"- Worst core `{agg['max_idle_pid']}`: {_fmt(agg['max_idle_pct'], '%')} idle")
+    add("")
+    add("Idle here means *no* pipe was busy -- the core was waiting on something "
+        "outside the pipes. A core that is idle and has low pipe shares points at "
+        "a dependency or sync problem, not at a pipe at its limit.")
+    add("")
+
+    add("| Core | Span us | Idle | Busiest pipe | Longest idle us |")
+    add("|---|---:|---:|---|---:|")
+    for core in waveform["per_core"]:
+        if not core.get("span_cycles"):
+            continue
+        pipes = core.get("pipes") or {}
+        if pipes:
+            top = max(pipes.items(), key=lambda kv: kv[1]["cycles"])
+            busiest = f"{top[0]} {top[1]['pct']:.0f}%"
+        else:
+            busiest = "-"
+        add(f"| `{core['pid']}` | {core['span_us']:.3f} | "
+            f"{core['idle_pct']:.1f}% | {busiest} | "
+            f"{core.get('longest_idle_us') or 0.0:.2f} |")
+    add("")
+
+    unknown = {c["pid"]: c["unknown_masks"] for c in waveform["per_core"]
+               if c.get("unknown_masks")}
+    if unknown:
+        add("Unnamed pipe states (a bit this tool has not verified):")
+        add("")
+        for pid, masks in unknown.items():
+            detail = ", ".join(f"`{m}` {d['cycles']:,} cyc"
+                               for m, d in masks.items())
+            add(f"- `{pid}`: {detail}")
+        add("")
+
+    add("**Coverage limit**: the profiler samples a subset of cores and keeps a "
+        "short window per core. Treat these as per-core samples, never add them "
+        "up into a kernel duration. Every number is tier C (sampled) or better.")
+    add("")
+    return lines
+
 
 def render_markdown(result: Dict[str, Any]) -> str:
     kernel = result["kernel"]
@@ -1696,9 +1842,13 @@ def render_markdown(result: Dict[str, Any]) -> str:
                 f"{_fmt(row['throughput'])} | {_fmt(row['l2_hit_rate_pct'], '%')} |")
         add("")
 
+    waveform = result.get("waveform")
+    if waveform and waveform.get("aggregate"):
+        lines.extend(render_waveform(waveform, 15))
+
     timeline = result.get("timeline")
     if timeline:
-        add("## 15. Timeline events")
+        add("## 16. Timeline events (accumulated, legacy view)")
         add("")
         add(f"- {timeline['event_count']} events from `{timeline['source']}`")
         add("")
@@ -1737,12 +1887,26 @@ def run_msopprof(home: Path, app: List[str], out_dir: Path,
                  kernel: Optional[str], replay_mode: str,
                  timeout: int,
                  instr_pipes: Optional[str] = None) -> Tuple[int, str, Optional[Path]]:
-    """Run one msopprof collection. Returns (rc, log, capture_dir)."""
+    """Run one profiling collection. Returns (rc, log, capture_dir).
+
+    ``PipeTimeline`` is invoked through ``msprof op`` rather than by calling the
+    ``msopprof`` binary directly. Both accept identical flags and both write an
+    ``OPPROF_*`` directory with ``trace.json``, but only the ``msprof op``
+    wrapper stages the raw per-cycle stream into ``device0/.../dump/timeline.bin.0``
+    -- calling ``msopprof`` directly leaves that file out entirely (measured:
+    a direct call produced 11 files, all parsed, and no raw stream). Since the
+    raw stream is the whole point of the waveform section, that pass has to go
+    through the wrapper.
+    """
     env = cann_env(home)
-    binary = home / "tools" / "msopprof" / "bin" / "msopprof"
     out_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        str(binary),
+    if "PipeTimeline" in metrics:
+        binary = home / "bin" / "msprof"
+        prefix = [str(binary), "op"]
+    else:
+        binary = home / "tools" / "msopprof" / "bin" / "msopprof"
+        prefix = [str(binary)]
+    cmd = prefix + [
         f"--warm-up={warmup}",
         f"--launch-count={launch_count}",
         f"--replay-mode={replay_mode}",
@@ -1958,7 +2122,11 @@ def command_profile(args: argparse.Namespace) -> int:
         capture_dir = out_dir / "capture"
         metrics = list(DEFAULT_METRICS)
         if args.with_timeline:
-            metrics.append("BasicInfo")
+            # BasicInfo carries the identity fields; PipeTimeline is what writes
+            # the raw per-cycle stream the waveform section decodes. Neither can
+            # share a pass with the core CSV groups, so plan_passes puts them in
+            # their own and run_multipass merges the results.
+            metrics.extend(["BasicInfo", "PipeTimeline"])
         if args.metrics:
             metrics = [m.strip() for m in args.metrics.split(",") if m.strip()]
         if getattr(args, "with_instructions", False) and "InstrTimeline" not in metrics:
@@ -2116,7 +2284,8 @@ def build_parser() -> argparse.ArgumentParser:
     profile.add_argument("--metrics", default=None,
                          help="comma-separated msopprof metric sets (overrides the defaults)")
     profile.add_argument("--with-timeline", action="store_true",
-                         help="also collect BasicInfo (needed for the pipeline timeline)")
+                         help="also collect BasicInfo and PipeTimeline: adds the block "
+                              "timeline and the raw per-cycle pipeline waveform section")
     profile.add_argument("--with-instructions", action="store_true",
                          help="add a separate InstrTimeline pass for instruction-level cost "
                               "(slow: tens to hundreds of MB of intermediates, usually 1-4 minutes)")

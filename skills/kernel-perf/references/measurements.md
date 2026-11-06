@@ -269,3 +269,80 @@ stalls = 0, total_stall_us = 0.0, stall_pct = 0.0
 **That is the honest result**: the kernel is short with a small code footprint, so it has no icache misses. The tool reports zero rather than manufacturing a finding. The detector's own correctness is covered by a synthetic trace (same PC, 0.4 us gap) yielding one residence covering 80% of the span, in `selftest.py`.
 
 The threshold is an absolute 0.05 us rather than a multiple of event duration: instrumented `dur` values are on the order of nanoseconds, so a ratio test would classify every adjacent pair as a residence.
+
+## Raw pipeline waveform (2026-11-06)
+
+`msprof op --aic-metrics=PipeTimeline` writes `dump/timeline.bin.0` alongside
+`trace.json`. The decoder in `references/pipeline_waveform.py` reads the raw
+stream; `--verify` checks it against the vendor's own `trace.json` for the run.
+
+Four captures, CANN 9.3.0, Ascend950PR_9579, 1650 MHz:
+
+| Capture | Kernel | Records | Verify checks | Result |
+|---|---|---:|---:|---|
+| `pt` | `add_kernel`, 56 blocks, vector | 12 | 48 | pass |
+| `pt2` | `add_kernel`, 56 blocks, vector | 4 | 16 | pass |
+| `mm` | `MatmulKernel`, 28 blocks, cube | 6 | 20 | pass |
+| `mm2` | `MatmulKernel`, 28 blocks, cube | 6 | 10 | pass |
+
+94/94 exact interval matches. The container is a fixed 524290-word stride, and
+the raw file is 25 MB for a 4 us kernel -- almost all of it zero padding, which
+is worth knowing before keeping captures around.
+
+### vector_add, first sampling group
+
+| Pipe | Share | Idle (mean) | Worst core idle |
+|---|---:|---:|---:|
+| SCALAR | 34.9% | 2.04% | 11.62% (`core4.veccore1`) |
+| MTE2 | 30.9% | | |
+| MTE3 | 11.6% | | |
+| VECTOR | 7.4% | | |
+
+SCALAR is 4.7x VECTOR. This matches the CSV-based collection 1 (scalar 23.9% vs
+vec 8.3%) in shape, though the waveform numbers are per-core samples and the CSV
+numbers are block averages -- the two are not expected to agree digit for digit.
+
+### MatmulKernel (cube), first sampling group
+
+| Pipe | Share |
+|---|---:|
+| CUBE | 47.8% |
+| MTE2 | 39.5% |
+| MTE1 | 11.8% |
+| SCALAR | 5.7% |
+| FIXP | 3.4% |
+
+CUBE and MTE2 overlap across the whole body: a healthy double-buffered matmul.
+
+### The vendor's two outputs disagree on cube kernels
+
+For the same `MatmulKernel` launch, `trace.json` and `PipeUtilization.csv`
+report different AIC cycle counts (three of five pipes off by more than the
+CSV's rounding):
+
+| Pipe | `trace.json` | `PipeUtilization.csv` x 1650 |
+|---|---:|---:|
+| CUBE | 646 | 512 |
+| FIXP | 441 | 633 |
+| MTE2 | 842 | 1307 |
+| SCALAR | 971 | 683 |
+| MTE1 | 283 | 284 |
+
+Only block 0 of that CSV carries non-zero AIC time; the other 27 blocks report
+zero. The decoder is validated against `trace.json`, because that file is
+decoded from the same sampled records as the raw stream. Cube-side cycle counts
+from the CSV are not a usable cross-check.
+
+### The raw stream needs `msprof op`, not the bare `msopprof`
+
+Same binary, same kernel, same `--aic-metrics=PipeTimeline`:
+
+| Entry point | Files written | `dump/timeline.bin.0` |
+|---|---:|---|
+| `tools/msopprof/bin/msopprof ...` | 11 | **absent** |
+| `msprof op ...` | 12 | 25,165,920 B |
+
+The direct binary accepts every flag and returns 0, and its `trace.json` is
+complete enough to look like a successful pipeline collection -- the omission is
+silent. `kernel_perf.py` therefore runs its `PipeTimeline` pass through
+`msprof op`.

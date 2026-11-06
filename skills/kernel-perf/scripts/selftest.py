@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 import struct
 import sys
 import tempfile
@@ -673,6 +674,113 @@ def test_pc_cycle_stalls() -> None:
     check("render explains the diagnosis", "icache" in text)
 
 
+def test_pipeline_waveform() -> None:
+    """The raw-stream decoder, against a synthesised capture.
+
+    The container and token semantics are pinned here so a refactor cannot
+    silently change them: the fixture writes a known timeline, and the decoded
+    intervals must come back identical.
+    """
+    print("\n[Pipeline waveform decoder]")
+    if KP.PW is None:
+        check("pipeline_waveform.py importable", False, "import failed")
+        return
+    PW = KP.PW
+
+    root = Path(tempfile.mkdtemp(prefix="kp-waveform-"))
+    try:
+        # --- container round-trip -------------------------------------------
+        # Build one AIV record: SCALAR 100 cycles, then MTE2 50, then idle 30.
+        # The encoding pairs a mask with the NEXT token's duration, so the
+        # tokens are: mask, dur-of-previous, mask, dur-of-previous, ...
+        payload: List[int] = [
+            (0xE000 << 16) | 0x1234,        # header
+            (0xF001 << 16) | 10,            # lead-in 10 cycles, mask SCALAR
+            (0xF010 << 16) | 100,           # SCALAR held for 100
+            (0xF000 << 16) | 50,            # MTE2 held for 50
+            (0xF001 << 16) | 30,            # idle held for 30
+            (0x0D88 << 16) | 7,             # counter, ends the group
+        ]
+        stride = PW.STRIDE_WORDS
+        words = [0] * (stride * 2)
+        words[0] = 0x00010003               # veccore0, core 3
+        words[1] = len(payload) * 4
+        for index, word in enumerate(payload):
+            words[2 + index] = word
+
+        dump = root / "dump"
+        dump.mkdir(parents=True)
+        timeline = dump / "timeline.bin.0"
+        timeline.write_bytes(struct.pack(f"<{len(words)}I", *words))
+        (dump / "op_basic_info.txt").write_text(
+            "Op Name=demo\nBlock Dim=1\nCurrent Freq=1000\nRated Freq=1000\n"
+        )
+
+        records = PW.read_records(timeline)
+        check("one record decoded", len(records) == 1, str(len(records)))
+        if len(records) == 1:
+            record = records[0]
+            check("record is AIV veccore0 of core 3",
+                  record.core_kind == "aiv" and record.core_id == 3
+                  and record.subcore_id == 0,
+                  f"{record.core_kind}/{record.core_id}/{record.subcore_id}")
+            groups = PW.decode_groups(record)
+            check("one sampling group", len(groups) == 1, str(len(groups)))
+            if groups:
+                intervals = groups[0].intervals
+                # The clock starts at 10 (the lead-in), so states are
+                # [10,110) SCALAR, [110,160) MTE2, [160,190) idle.
+                check("three intervals", len(intervals) == 3, str(len(intervals)))
+                expected = [(10, 110, "SCALAR"), (110, 160, "MTE2"), (160, 190, None)]
+                got = [
+                    (iv.start, iv.end, iv.pipes[0] if iv.pipes else None)
+                    for iv in intervals
+                ]
+                check("intervals match the encoded timeline", got == expected, str(got))
+                check("lead-in advances the clock",
+                      intervals[0].start == 10, str(intervals[0].start))
+                check("end cycle is the summed durations",
+                      groups[0].end_cycle == 190, str(groups[0].end_cycle))
+                busy = PW.busy_by_pipe(groups[0])
+                check("busy cycles per pipe",
+                      busy.get("SCALAR") == 100 and busy.get("MTE2") == 50,
+                      str(busy))
+                check("idle interval detected",
+                      len(PW.bubbles(groups[0])) == 1)
+
+        # --- freq fallback ---------------------------------------------------
+        check("clock read from capture metadata",
+              PW.read_freq_mhz(root) == 1000.0, str(PW.read_freq_mhz(root)))
+
+        # --- summary ---------------------------------------------------------
+        result = PW.summarize(root, 1000.0)
+        check("summary reports the record", result["records"] == 1)
+        check("summary has an aggregate", bool(result["aggregate"]))
+        core = result["per_core"][0]
+        check("span converts at the capture clock",
+              abs(core["span_us"] - 0.190) < 1e-6, str(core["span_us"]))
+        check("idle share computed",
+              abs(core["idle_pct"] - 30 / 190 * 100) < 0.01, str(core["idle_pct"]))
+
+        # --- missing raw stream is not an error ------------------------------
+        empty = root / "empty"
+        empty.mkdir()
+        check("locate_timeline returns None when absent",
+              KP.PW.locate_timeline(empty) is None)
+        check("load_waveform returns None when absent",
+              KP.load_waveform(empty) is None)
+
+        # --- unverified bits are reported, not named -------------------------
+        pieces, unnamed = PW.pipe_mask_names(0x04, "aiv")
+        check("unverified AIV bit is unnamed", unnamed == 0x04 and not pieces,
+              f"{pieces}/{unnamed:#x}")
+        pieces, unnamed = PW.pipe_mask_names(0x04, "aic")
+        check("same bit is CUBE on AIC", pieces == ("CUBE",) and unnamed == 0,
+              f"{pieces}/{unnamed:#x}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_cli_contracts() -> None:
     print("\n[CLI contracts]")
     import subprocess
@@ -716,6 +824,7 @@ def main() -> int:
     test_stability_threshold()
     test_stability_harness()
     test_multipass_planning()
+    test_pipeline_waveform()
     test_cli_contracts()
     print()
     if FAILURES:
