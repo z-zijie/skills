@@ -15,7 +15,7 @@ The framework will be used for **NPU operator performance work** as well as GPU 
 - Use the canonical vocabulary everywhere else: `device_mem`, `onchip_cache`, `scratchpad`,
   `register_file`, `work_lane`, `work_group`, `wave`, `contiguous_flat_buffer` access,
   `tile`, `pipeline stage`.
-- Name canonical metrics from `RSI/tooling/rsi/metrics.py`, never raw profiler expressions.
+- Name canonical metrics from `skills/RSI/tooling/rsi/metrics.py`, never raw profiler expressions.
 - Timings, throughputs and peak values come from the measured layer or the evaluator. A
   number written into prose is a lie waiting to happen; state the *relationship* instead.
 - Say "the device", "the accelerator", "the target machine" — not "the GPU".
@@ -43,11 +43,11 @@ their own tool substituted. If a sentence only makes sense on one device, rewrit
 - `SKILL.md`: frontmatter (`name`, `description`) plus a body under ~200 lines. The
   description says *when* the skill fires — the trigger branches, front-loaded.
 - `contract/input.schema.json` and `contract/output.schema.json`: the frozen interface.
-  Derive them from the shared schemas in `RSI/schemas/` by `$ref` where possible; a skill's
+  Derive them from the shared schemas in `skills/RSI/schemas/` by `$ref` where possible; a skill's
   contract narrows what it accepts and states exactly what it emits.
 - `strategy/checklist.md` (and `strategy/examples/` where useful): the judgement text the
   outer loop is allowed to edit.
-- `scripts/`: deterministic code. Where the logic already exists in `RSI/tooling/rsi/`,
+- `scripts/`: deterministic code. Where the logic already exists in `skills/RSI/tooling/rsi/`,
   the script is a thin CLI over it — do not reimplement.
 - `tests/`: labelled regression cases as data (`.json` or `.yaml`), plus a `run_tests.py`
   that replays them without needing a device.
