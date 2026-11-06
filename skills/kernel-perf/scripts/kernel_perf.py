@@ -1991,8 +1991,9 @@ def run_msopprof(home: Path, app: List[str], out_dir: Path,
     waveform section at all, which reads exactly like "the user did not ask for
     one". ``waveform_retries`` re-runs the same command until the stream exists;
     each retry writes a new ``OPPROF_*`` beside the previous one, and the newest
-    wins. The probe that motivated the default: re-running recovered the stream
-    2 of 2 times, so a retry is worth one extra collection.
+    wins. The default is 2 because a retry is cheap next to a lost capture; it
+    is NOT backed by evidence that a retry recovers a specific failure (see
+    `references/measurements.md`, "Collection stability").
     """
     attempt = 0
     logs: List[str] = []

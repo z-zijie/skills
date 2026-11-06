@@ -70,7 +70,8 @@ the decoder needs `dump/timeline.bin.0`, and the cross-check needs `trace.json`.
 > KDA collections, 3 exited 0, logged `All task success`, and produced a capture
 > with every parsed file but no `dump/timeline.bin.0` (a 10.8 KB
 > `visualize_data.bin` instead of 14.3 KB). Nothing in the capture records the
-> loss. Re-running recovered it 2 of 2 times when probed, so treat a missing
+> loss. Re-running is the only remedy known to work, though it is unproven at
+> this rate (§ *Collection stability* in `measurements.md`): treat a missing
 > stream as "re-collect" rather than "this kernel has no waveform", and check
 > for the file before trusting a capture. `kernel_perf.py --with-timeline`
 > checks and retries automatically.

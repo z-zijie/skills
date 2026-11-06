@@ -308,11 +308,15 @@ success.`, and a `visualize_data.bin` 10 776-10 808 bytes instead of 14 076-14 3
 They carry no `0x02` (trace) record and no stream, so nothing in the capture
 records that anything went wrong.
 
-Re-running the identical command recovered the stream 2 of 2 times, so
-`--with-timeline` now retries (`--waveform-retries`, default 2) and, if the
-budget is exhausted, the report says so in section 15 instead of omitting the
-section. This is the one place where "no waveform" must never be left to read
-like "no waveform requested".
+The retry itself is **not** demonstrated by this data. A separate probe of two
+further identical runs produced a stream both times, but at a ~70% base rate two
+successes say nothing about whether re-running recovers a *specific* failure --
+that would need a run that failed and then succeeded, which did not occur in the
+probe. So `--with-timeline` retries (`--waveform-retries`, default 2) as a cheap
+mitigation with an honest cost bound, not as a verified repair, and when the
+budget is exhausted section 15 says the stream was not collected instead of
+omitting the section. This is the one place where "no waveform" must never be
+left to read like "no waveform requested".
 
 ### KDA stability across the 7 complete captures
 

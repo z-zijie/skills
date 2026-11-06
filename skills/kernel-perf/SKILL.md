@@ -196,8 +196,8 @@ The same trace also drives **PC-vs-cycle icache-miss diagnosis** (the primary te
   `OpBasicInfo.csv` and every parsed CSV, and contained no `timeline.bin.0` at
   all. Nothing in the capture records the loss. `--with-timeline` therefore
   confirms the stream exists before accepting a collection, re-runs when it does
-  not (`--waveform-retries`, default 2; re-running recovered it 2 of 2 times
-  when probed), and when the budget runs out the report says the waveform was
+  not (`--waveform-retries`, default 2), and when the budget runs out the
+  report says the waveform was
   not collected rather than omitting section 15. Never read a missing section as
   "this kernel has no waveform".
 - **Application-level `msprof` (non-`op`) is unusable on this host**: the bundled Python's `_ctypes` does not match the interpreter, so capture data cannot be parsed. Kernel-level analysis is unaffected.
