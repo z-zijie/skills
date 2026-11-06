@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/run-evaluator/output.schema.json",
+  "title": "run-evaluator output",
+  "description": "The status of one evaluator run plus the signed result. The `result` object is the evaluator's own contract, schemas/result.schema.json; the shape below is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "result", "problems"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "correctness_failed", "signature_invalid", "schema_invalid", "unavailable"],
+      "description": "ok and correctness_failed both carry a signed result; the other three carry the reason."
+    },
+    "result": {
+      "type": ["object", "null"],
+      "description": "The signed evaluator result, as defined by schemas/result.schema.json.",
+      "required": [
+        "schema_version", "exp_kind", "op", "candidate", "hw_id", "env_fingerprint",
+        "evaluator_version", "evaluator_hash", "created", "correctness", "timing", "signature"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "1"},
+        "exp_kind": {"type": "string", "enum": ["evaluate", "aa_test", "redteam", "operator_baseline"]},
+        "op": {"type": "string", "minLength": 1},
+        "candidate": {"type": "string", "minLength": 1},
+        "hw_id": {"type": "string", "minLength": 1},
+        "env_fingerprint": {"type": "string", "minLength": 1},
+        "evaluator_version": {"type": "string"},
+        "evaluator_hash": {"type": "string"},
+        "created": {"type": "string"},
+        "correctness": {
+          "type": "object",
+          "required": ["passed", "cases_run", "cases_failed"],
+          "properties": {
+            "passed": {"type": "boolean"},
+            "cases_run": {"type": "integer", "minimum": 0},
+            "cases_failed": {"type": "integer", "minimum": 0},
+            "failures": {"type": "array", "items": {"type": "object"}},
+            "canary_tripped": {"type": "boolean"},
+            "sentinel_untouched": {"type": "boolean"}
+          }
+        },
+        "timing": {
+          "type": "object",
+          "required": ["candidate_us", "baseline_us", "samples", "setup_us"],
+          "properties": {
+            "candidate_us": {"type": ["number", "null"]},
+            "baseline_us": {"type": ["number", "null"]},
+            "speedup": {"type": ["number", "null"]},
+            "speedup_ci_low": {"type": ["number", "null"]},
+            "speedup_ci_high": {"type": ["number", "null"]},
+            "samples": {"type": "integer", "minimum": 0},
+            "noise_threshold": {"type": ["number", "null"]},
+            "significant": {"type": ["boolean", "null"]},
+            "setup_us": {"type": "number", "minimum": 0},
+            "setup_cap_us": {"type": ["number", "null"]},
+            "interleaved": {"type": "boolean"}
+          }
+        },
+        "guards": {"type": "object"},
+        "signature": {
+          "type": "object",
+          "required": ["algo", "value"],
+          "properties": {
+            "algo": {"type": "string", "enum": ["hmac-sha256"]},
+            "key_id": {"type": "string"},
+            "value": {"type": "string", "minLength": 32}
+          }
+        }
+      }
+    },
+    "problems": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "One entry per failed check, prefixed with the check that failed."
+    },
+    "command": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "The argv that produced the result, for reproduction."
+    }
+  }
+}

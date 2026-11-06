@@ -1,0 +1,15 @@
+{
+  "name": "a device with no profiler yields a complete profile of unavailable metrics",
+  "input": {"profile_file": "skills/collect-profile/tests/fixtures/profile_null_adapter.json"},
+  "expected": {
+    "status": "ok",
+    "problems": [],
+    "metric_count": 0,
+    "unavailable_count": 17,
+    "declared": true,
+    "no_metric_note": true,
+    "null_fields_dropped": 1
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from the null adapter path: every registered metric unavailable, none invented as zero"
+}

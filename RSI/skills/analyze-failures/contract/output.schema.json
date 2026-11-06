@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/analyze-failures/output.schema.json",
+  "title": "analyze-failures output",
+  "description": "Failure clusters for one ledger window, ordered by size. This is the only input edit-scaffold may use to choose what to change.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "entries_seen", "clusters", "top_cluster", "rates"],
+  "properties": {
+    "op": {"type": "string"},
+    "entries_seen": {"type": "integer", "minimum": 0},
+    "rounds_seen": {"type": "integer", "minimum": 0, "description": "Entries whose verdict is confirmed or refuted, which are the ones that carry evidence."},
+    "clusters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "count", "experiments", "transformations", "tags", "share", "summary"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["not_implemented", "large_prediction_error", "dead_end", "wrong_diagnosis",
+                     "unexplained_speedup", "correctness", "implausible"]
+          },
+          "count": {"type": "integer", "minimum": 1},
+          "experiments": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"}},
+          "transformations": {"type": "array", "items": {"type": "string"}},
+          "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Signature tags shared by the members; this is the retrieval key for the playbook the cluster points at."
+          },
+          "share": {"type": "number", "minimum": 0, "maximum": 1},
+          "summary": {"type": "string", "minLength": 10}
+        }
+      }
+    },
+    "top_cluster": {
+      "type": ["string", "null"],
+      "enum": [null, "not_implemented", "large_prediction_error", "dead_end", "wrong_diagnosis",
+               "unexplained_speedup", "correctness", "implausible"],
+      "description": "The largest cluster, or null when the window holds no failures."
+    },
+    "rates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "not_implemented_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "confirmation_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "mean_prediction_error": {"type": ["number", "null"], "minimum": 0},
+        "dead_end_transformations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "prediction_error_hole": {"type": "number", "minimum": 0},
+    "unattributed": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+      "description": "Failures with no signature tags: they cannot be routed to a playbook."
+    },
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

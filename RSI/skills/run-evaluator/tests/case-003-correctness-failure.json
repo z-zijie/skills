@@ -1,0 +1,15 @@
+{
+  "name": "a correct-looking signature does not rescue a correctness failure",
+  "input": {
+    "result_file": "skills/run-evaluator/tests/fixtures/result_correctness_failed.json",
+    "signing_key": "regression-key-not-a-secret"
+  },
+  "expected": {
+    "status": "correctness_failed",
+    "failed_checks": [],
+    "correctness_passed": false,
+    "significant": null
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a run where one edge shape exceeded tolerance: signed and schema-valid, still not a candidate"
+}

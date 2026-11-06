@@ -1,0 +1,47 @@
+# Conjecture C-001. UNVERIFIED. Not evidence, and not usable as grounds for a verdict.
+# It may only inspire a hypothesis card; W7 (conjecture test) decides its fate.
+#
+# Note: this file uses `id: C-001` rather than an R- or A- id on purpose, so validate_rule
+# rejects it as a rule card. A conjecture is stored in the conjectures store, not in rules/,
+# and must never be mistaken for one by retrieval.
+id: C-001
+title: Two independent ceilings can be attacked at once when a signature is mixed.
+status: conjecture
+unverified: true
+statement: >
+  When a signature is mixed — device_mem_throughput_pct and compute_throughput_pct both above
+  their thresholds — a change that lowers device_mem_bytes without adding instructions can raise
+  attained_pct by more than the same change on either single-bound signature, because it lowers
+  the memory term and leaves the compute term as the new limiting term rather than moving the
+  kernel along a fixed bound.
+mechanism_hypothesis: >
+  On a single-bound signature the bound is fixed by one term, so a change moves the kernel
+  toward a wall it cannot pass. On a mixed signature both terms are near each other, so removing
+  bytes from the memory term can make the compute term the limiting one; the kernel then sits at
+  a lower absolute time than either single-bound kernel could reach. If this is true, mixed
+  signatures should show a larger speedup per byte removed than memory-bound ones.
+why_plausible:
+  - The roofline is a max, so the bound can switch terms when one side is reduced.
+  - Mixed signatures are currently routed to the mem-dram-saturated playbook, which assumes the
+    memory term is the only one that matters.
+observable_if_true:
+  - Across mixed-signature experiments, speedup correlates with device_mem_bytes reduction more
+    strongly than in memory-bound experiments at the same reduction.
+  - The roofline limiting_term flips from device_mem to compute in the after-profile.
+  - attained_pct rises even when device_mem_throughput_pct stays at its ceiling.
+test_plan:
+  - Take three mixed-signature operators from the ledger and apply the same byte-removal
+    transformation to each, recording limiting_term before and after.
+  - Prefer a microbenchmark variant that sits deliberately on the ridge point, where both terms
+    are equal, so the flip is unambiguous.
+  - Compare the per-byte-removed speedup against the memory-bound control set.
+falsified_if:
+  - The per-byte speedup is no larger on mixed signatures, or limiting_term never flips.
+  - attained_pct falls while bytes fall, which would mean the compute side paid for the change.
+scope:
+  hw: [accel-a]
+  tags_any: [mem_saturated, compute_saturated]
+  classes: [mixed]
+source: human intuition during playbook authoring; not measured
+created: 2026-10-20
+last_reviewed: 2026-11-05

@@ -1,0 +1,15 @@
+{
+  "name": "a counter name outside the canonical registry is refused, aliases still accepted",
+  "input": {
+    "result_file": "skills/record-experiment/tests/fixtures/result_signed.json",
+    "counters_before": {"sm_occupancy_pct": 50, "bogus_counter": 3}
+  },
+  "expected": {
+    "status": "refused_unregistered_metric",
+    "problem_kinds": ["unregistered_metric"],
+    "ledger_lines": 0,
+    "archived_count": 0
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a card that cited a vendor spelling absent from the registry: sm_occupancy_pct has no alias, so it is refused rather than stored"
+}

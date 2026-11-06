@@ -1,0 +1,50 @@
+{
+  "hw_id": "accel-b",
+  "hw_class": "npu",
+  "model": "accel-a-1",
+  "env_fingerprint": "hw=accel-b|device=accel-b-1|runtime=rt-1.0|driver=d-1.0|compiler=c-1.0|flags=default|os=Linux-x86_64",
+  "measured_at": "2026-11-02T00:00:00Z",
+  "calibration_suite": "core",
+  "peak_bandwidth_gbps": 1200.0,
+  "peak_flops": {
+    "fp32": 80000000000000.0,
+    "fp16": 160000000000000.0
+  },
+  "noise_floor": {
+    "threshold": 1.03,
+    "relative_spread": 0.011,
+    "measured_at": "2026-10-01T00:00:00Z"
+  },
+  "coalescing": {
+    "1": 100.0,
+    "2": 110.0
+  },
+  "history": [
+    {
+      "at": "2026-11-02T00:00:00Z",
+      "suite": "core",
+      "fingerprint": "hw=accel-b|device=accel-b-1|runtime=rt-1.0|driver=d-1.0|compiler=c-1.0|flags=default|os=Linux-x86_64",
+      "moved": [],
+      "skipped": [
+        "memory_bandwidth",
+        "peak_compute",
+        "bank_conflicts"
+      ]
+    }
+  ],
+  "under_review": false,
+  "skipped": [
+    {
+      "name": "memory_bandwidth",
+      "reason": "backend lacks timed copy"
+    },
+    {
+      "name": "peak_compute",
+      "reason": "no fp16 kernel"
+    },
+    {
+      "name": "bank_conflicts",
+      "reason": "backend has no scratchpad model"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "a counter the registry does not know is quarantined, not passed on",
+  "input": {"profile_file": "skills/collect-profile/tests/fixtures/profile_partial.json"},
+  "expected": {
+    "status": "ok",
+    "problems": [],
+    "metric_count": 1,
+    "metric_names": ["device_mem_throughput_pct"],
+    "unavailable_unknown": ["mystery_counter_pct"],
+    "declared": true
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a partial-coverage adapter that also emitted one unregistered counter"
+}

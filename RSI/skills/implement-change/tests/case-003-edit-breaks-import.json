@@ -1,0 +1,19 @@
+{
+  "name": "an edit that produces a module which will not import is reported as a build failure",
+  "input": {
+    "edits_file": "skills/implement-change/tests/fixtures/edits_syntax_error.json"
+  },
+  "expected": {
+    "status": "build_failed",
+    "files_changed": [
+      "kernel.py"
+    ],
+    "build_ok": false,
+    "diff_lines_added": 1,
+    "problem_kinds": [
+      "build_failed"
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a truncated replacement: the diff is returned so a retry has something to fix, and the change is not a candidate"
+}

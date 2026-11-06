@@ -1,0 +1,188 @@
+{
+  "name": "system-report-tracks-primary-metric-by-version",
+  "note": "the system report groups by scaffold commit so the primary metric is attributed to one scaffold",
+  "script": "scripts/report.py",
+  "input": {
+    "report_id": "REPORT-system-2026-11-05",
+    "today": "2026-11-05",
+    "report_kind": "system",
+    "kb_summary": {
+      "rules": 40,
+      "established": 12,
+      "deprecated": 3,
+      "evidence_total": 140
+    },
+    "attainment_by_op": {
+      "vec_add": 71.5,
+      "layernorm_fwd": 63.0
+    },
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "scaffold_commit": "aaa111",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "prediction_error": 0.05,
+        "hypothesis": {}
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "scaffold_commit": "aaa111",
+        "verdict": "not_implemented",
+        "significant": null,
+        "speedup": null,
+        "prediction_error": null,
+        "hypothesis": {}
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "layernorm_fwd",
+        "scaffold_commit": "aaa111",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "prediction_error": 0.31,
+        "hypothesis": {}
+      },
+      {
+        "exp_id": "exp-0004",
+        "op": "vec_add",
+        "scaffold_commit": "bbb222",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.26,
+        "prediction_error": 0.07,
+        "hypothesis": {}
+      },
+      {
+        "exp_id": "exp-0005",
+        "op": "layernorm_fwd",
+        "scaffold_commit": "bbb222",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.12,
+        "prediction_error": 0.09,
+        "hypothesis": {}
+      },
+      {
+        "exp_id": "exp-0006",
+        "op": "layernorm_fwd",
+        "scaffold_commit": "bbb222",
+        "verdict": "confirmed",
+        "significant": false,
+        "speedup": 1.01,
+        "prediction_error": 0.28,
+        "hypothesis": {}
+      },
+      {
+        "exp_id": "exp-0007",
+        "op": "softmax_fwd",
+        "scaffold_commit": "bbb222",
+        "verdict": "not_implemented",
+        "significant": null,
+        "speedup": null,
+        "prediction_error": null,
+        "hypothesis": {}
+      }
+    ]
+  },
+  "expected": {
+    "created": "2026-11-05",
+    "generated_from": {
+      "ledger_entries": 7,
+      "source": "ledger/experiments.jsonl"
+    },
+    "id": "REPORT-system-2026-11-05",
+    "kind": "system",
+    "report": {
+      "by_scaffold_version": [
+        {
+          "confirmation_rate": 0.5,
+          "experiments": 3,
+          "log_speedup_per_experiment": 0.0828,
+          "median_prediction_error": 0.18,
+          "not_implemented_rate": 0.3333,
+          "operators": [
+            "layernorm_fwd",
+            "vec_add"
+          ],
+          "rounds": 2,
+          "scaffold_commit": "aaa111",
+          "total_speedup": 1.18,
+          "total_speedup_aggregation": "compounded",
+          "total_speedup_note": "per-step speedups are each measured against that step's parent, so the campaign total is their product. At least one entry does not record its parent, so the compounded figure assumes successive steps"
+        },
+        {
+          "confirmation_rate": 1.0,
+          "experiments": 4,
+          "log_speedup_per_experiment": 0.1148,
+          "median_prediction_error": 0.09,
+          "not_implemented_rate": 0.25,
+          "operators": [
+            "layernorm_fwd",
+            "softmax_fwd",
+            "vec_add"
+          ],
+          "rounds": 3,
+          "scaffold_commit": "bbb222",
+          "total_speedup": 1.4112,
+          "total_speedup_aggregation": "compounded",
+          "total_speedup_note": "per-step speedups are each measured against that step's parent, so the campaign total is their product. At least one entry does not record its parent, so the compounded figure assumes successive steps"
+        }
+      ],
+      "developments": [
+        "the primary metric is up from aaa111 to bbb222",
+        "not-implemented rate above 0.3 on at least one scaffold version: the implementer tier or the card wording is the constraint"
+      ],
+      "kind": "system",
+      "knowledge_health": {
+        "deprecated_share": 0.075,
+        "established_rules": 12,
+        "mean_evidence_per_rule": 3.5,
+        "rules": 40
+      },
+      "per_operator": [
+        {
+          "attainment_pct": 63.0,
+          "confirmed": 2,
+          "experiments": 3,
+          "mean_prediction_error": 0.2267,
+          "not_implemented": 0,
+          "op": "layernorm_fwd"
+        },
+        {
+          "attainment_pct": null,
+          "confirmed": 0,
+          "experiments": 1,
+          "mean_prediction_error": null,
+          "not_implemented": 1,
+          "op": "softmax_fwd"
+        },
+        {
+          "attainment_pct": 71.5,
+          "confirmed": 2,
+          "experiments": 3,
+          "mean_prediction_error": 0.06,
+          "not_implemented": 1,
+          "op": "vec_add"
+        }
+      ],
+      "secondary_metrics": {
+        "confirmation_rate": 0.8,
+        "implausible": 0,
+        "median_prediction_error": 0.09,
+        "not_implemented_rate": 0.2857
+      },
+      "window": {
+        "experiments": 7,
+        "first_exp": "exp-0001",
+        "last_exp": "exp-0007",
+        "operators": 3
+      }
+    }
+  },
+  "source": "labelled from a seven-experiment history across two scaffold versions. The trend is ordered by when each scaffold version first ran an experiment, and the campaign total says which aggregation produced it: these entries do not record their parent, so the compounded figure states that it assumes successive steps."
+}

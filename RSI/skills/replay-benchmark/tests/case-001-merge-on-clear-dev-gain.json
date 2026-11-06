@@ -1,0 +1,22 @@
+{
+  "name": "a dev gain whose interval excludes zero, a flat holdout and unchanged secondaries merge",
+  "input": {
+    "fixture": "skills/replay-benchmark/tests/fixtures/replay_merge.json"
+  },
+  "expected": {
+    "status": "ok",
+    "decision": "merge",
+    "excludes_zero": true,
+    "holdout_regressed": false,
+    "secondary_regressed": false,
+    "changelog_applied": false,
+    "split_names_only": [
+      "dev",
+      "holdout"
+    ],
+    "leaks_operator_names": false,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a retrieval-ranking change: four dev operators improve by 7 to 10 attainment points, two holdout operators stay flat"
+}

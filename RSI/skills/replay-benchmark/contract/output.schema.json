@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/replay-benchmark/output.schema.json",
+  "title": "replay-benchmark output",
+  "description": "The decision and the report behind it. `report` is the object schemas/replay-report.schema.json defines. No held-out operator name leaves this skill: `split_totals` carries aggregates only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "report", "split_totals", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "human_only", "needs_more_repeats", "schema_invalid", "unavailable"]
+    },
+    "decision": {
+      "type": ["string", "null"],
+      "enum": ["merge", "rollback", "needs_more_repeats", "human_only", null]
+    },
+    "report": {
+      "type": ["object", "null"],
+      "required": ["id", "proposal_id", "change_summary", "configs", "decision"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^RP-[0-9]+$"},
+        "proposal_id": {"type": "string"},
+        "change_summary": {"type": "string"},
+        "created": {"type": "string"},
+        "base_commit": {"type": "string"},
+        "candidate_commit": {"type": "string"},
+        "budget": {"type": "object"},
+        "configs": {"type": "array", "items": {"type": "object"}},
+        "primary_metric": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {"type": "string"},
+            "delta": {"type": "number"},
+            "ci_low": {"type": ["number", "null"]},
+            "ci_high": {"type": ["number", "null"]},
+            "excludes_zero": {"type": "boolean"}
+          }
+        },
+        "holdout_regressed": {"type": "boolean"},
+        "secondary_regressed": {"type": "boolean"},
+        "screening_stage": {"type": "string", "enum": ["two_stage_screen", "offline_ledger", "full"]},
+        "decision": {"type": "string", "enum": ["merge", "rollback", "needs_more_repeats", "human_only"]},
+        "rationale": {"type": "string"}
+      }
+    },
+    "split_totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Aggregates per split. Never operator names.",
+      "properties": {
+        "dev": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "configs": {"type": "integer", "minimum": 0},
+            "mean_delta": {"type": "number"},
+            "min_delta": {"type": "number"}
+          }
+        },
+        "holdout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "configs": {"type": "integer", "minimum": 0},
+            "mean_delta": {"type": "number"},
+            "min_delta": {"type": "number"}
+          }
+        }
+      }
+    },
+    "changelog_applied": {"type": "boolean"},
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

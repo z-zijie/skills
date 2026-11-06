@@ -1,0 +1,26 @@
+{
+  "name": "saturated device memory with poor contiguity names the cache-miss playbook first",
+  "input": {
+    "profile_file": "skills/diagnose-bottleneck/tests/fixtures/profile_memory_bound.json",
+    "measured_us": 16.0
+  },
+  "expected": {
+    "status": "ok",
+    "class": "memory_bound",
+    "tags": [
+      "mem_saturated",
+      "uncoalesced",
+      "cache_hit_low",
+      "memory_stall_high",
+      "launch_dominated"
+    ],
+    "primary_bottleneck": "mem-cache-miss",
+    "limiting_term": "device_mem",
+    "attained_pct": 78.64,
+    "gap_points": 6.36,
+    "at_target": false,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a memory-bound profile: 87.5% device-memory throughput, 3.8 transactions per request, 41% cache hit. The specific tag outranks the class tag, so the playbook is cache-miss rather than the saturated-memory playbook"
+}

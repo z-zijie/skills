@@ -1,0 +1,308 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/audit-knowledge/input.schema.json",
+  "title": "audit-knowledge input",
+  "description": "A snapshot of the knowledge stores plus the ledger ids available to check evidence against. Rule cards follow schemas/rule.schema.json; the shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rules"
+  ],
+  "properties": {
+    "today": {
+      "type": "string",
+      "description": "ISO date the audit is judged against; defaults to the machine date."
+    },
+    "stale_after_days": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "next_proposal_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(R|A)-[0-9]+$"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "object"
+          },
+          "effect": {
+            "type": "object"
+          },
+          "evidence": {
+            "type": "object"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "conjecture",
+              "candidate",
+              "established",
+              "under_review",
+              "deprecated"
+            ]
+          },
+          "mechanism": {
+            "type": "string"
+          },
+          "expected_counters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mean_prediction_error": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "last_verified": {
+            "type": "string"
+          },
+          "counter_example_note": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "statement_text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "antipatterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "statement": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "object"
+          },
+          "effect": {
+            "type": "object"
+          },
+          "evidence": {
+            "type": "object"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "conjecture",
+              "candidate",
+              "established",
+              "under_review",
+              "deprecated"
+            ]
+          },
+          "mechanism": {
+            "type": "string"
+          },
+          "expected_counters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mean_prediction_error": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "last_verified": {
+            "type": "string"
+          },
+          "counter_example_note": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "statement_text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "statement": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "object"
+          },
+          "effect": {
+            "type": "object"
+          },
+          "evidence": {
+            "type": "object"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "conjecture",
+              "candidate",
+              "established",
+              "under_review",
+              "deprecated"
+            ]
+          },
+          "mechanism": {
+            "type": "string"
+          },
+          "expected_counters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mean_prediction_error": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "last_verified": {
+            "type": "string"
+          },
+          "counter_example_note": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "statement_text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "conjectures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "statement": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "object"
+          },
+          "effect": {
+            "type": "object"
+          },
+          "evidence": {
+            "type": "object"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "conjecture",
+              "candidate",
+              "established",
+              "under_review",
+              "deprecated"
+            ]
+          },
+          "mechanism": {
+            "type": "string"
+          },
+          "expected_counters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mean_prediction_error": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "last_verified": {
+            "type": "string"
+          },
+          "counter_example_note": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "statement_text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ledger_exp_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^exp-[0-9]{4,}$"
+      },
+      "description": "Experiment ids present in the ledger window. An evidence id outside this set cannot be re-derived, so its rule is demoted."
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "measured_at": {
+          "type": "string"
+        },
+        "changed_parameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

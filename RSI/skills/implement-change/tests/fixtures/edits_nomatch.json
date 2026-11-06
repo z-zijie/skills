@@ -1,0 +1,8 @@
+{
+  "edits": [
+    {
+      "old": "    for index in range(n):\n        out[index] = a[index] * 3",
+      "new": "    for index in range(n):\n        out[index] = a[index] + b[index]"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+id: R-051
+statement: >
+  On a different device the same layout transformation had no measurable effect, so it is bound to
+  that hardware id and must not be reused here.
+scope:
+  hw: [accel-z]
+  tags_all: [mem_saturated]
+effect:
+  metric: sectors_per_request
+  direction: down
+  speedup_median: 1.01
+  range: [0.98, 1.04]
+evidence:
+  confirmed: []
+  refuted: [exp-0301]
+confirm_rate: 0.0
+mean_prediction_error: 0.01
+status: deprecated

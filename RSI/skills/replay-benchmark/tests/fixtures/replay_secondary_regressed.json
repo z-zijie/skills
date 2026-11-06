@@ -1,0 +1,89 @@
+{
+  "configs": [
+    {
+      "operator": "op-a",
+      "split": "dev",
+      "old": {
+        "attainment_gain": 0.02,
+        "not_implemented_rate": 0.2,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      },
+      "new": {
+        "attainment_gain": 0.11,
+        "not_implemented_rate": 0.32,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      }
+    },
+    {
+      "operator": "op-b",
+      "split": "dev",
+      "old": {
+        "attainment_gain": 0.02,
+        "not_implemented_rate": 0.2,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      },
+      "new": {
+        "attainment_gain": 0.09,
+        "not_implemented_rate": 0.32,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      }
+    },
+    {
+      "operator": "op-c",
+      "split": "dev",
+      "old": {
+        "attainment_gain": 0.02,
+        "not_implemented_rate": 0.2,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      },
+      "new": {
+        "attainment_gain": 0.12,
+        "not_implemented_rate": 0.32,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      }
+    },
+    {
+      "operator": "op-d",
+      "split": "dev",
+      "old": {
+        "attainment_gain": 0.02,
+        "not_implemented_rate": 0.2,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      },
+      "new": {
+        "attainment_gain": 0.1,
+        "not_implemented_rate": 0.32,
+        "prediction_error": 0.18,
+        "cost": 1.0
+      }
+    },
+    {
+      "operator": "softmax_fwd",
+      "split": "holdout",
+      "old": {
+        "attainment_gain": 1.0,
+        "not_implemented_rate": 0.1
+      },
+      "new": {
+        "attainment_gain": 1.05,
+        "not_implemented_rate": 0.1
+      }
+    }
+  ],
+  "proposal": {
+    "id": "P-0007",
+    "kind": "skill_strategy",
+    "title": "Rank retrieved rules by confirm rate before scope width",
+    "rationale": "Rules with a high confirmation rate and narrow scope are more likely to hold; ranking them first should raise attainment per experiment.",
+    "target": "skills/retrieve-knowledge/strategy/checklist.md",
+    "status": "replay_pending"
+  },
+  "change_summary": "Rank retrieved rules by confirmation rate before scope width"
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/retrieve-knowledge/output.schema.json",
+  "title": "retrieve-knowledge output",
+  "description": "The retrieval result and the context file the hypothesizer reads. Caps are enforced here, not downstream: 5 rules, 3 anti-patterns, 3 patterns, 3 experiments.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "context_md", "counts", "match_level", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "empty", "unavailable"]
+    },
+    "context_md": {"type": ["string", "null"], "description": "The rendered context file."},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules", "antipatterns", "patterns", "experiments"],
+      "properties": {
+        "rules": {"type": "integer", "minimum": 0, "maximum": 5},
+        "antipatterns": {"type": "integer", "minimum": 0, "maximum": 3},
+        "patterns": {"type": "integer", "minimum": 0, "maximum": 3},
+        "experiments": {"type": "integer", "minimum": 0, "maximum": 3}
+      }
+    },
+    "match_level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules", "antipatterns", "patterns"],
+      "properties": {
+        "rules": {"type": "string", "enum": ["exact", "hw_relaxed", "tags_any", "none"]},
+        "antipatterns": {"type": "string", "enum": ["exact", "hw_relaxed", "tags_any", "none"]},
+        "patterns": {"type": "string", "enum": ["exact", "hw_relaxed", "tags_any", "none"]}
+      }
+    },
+    "dropped": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rules": {"type": "integer", "minimum": 0},
+        "antipatterns": {"type": "integer", "minimum": 0},
+        "patterns": {"type": "integer", "minimum": 0},
+        "experiments": {"type": "integer", "minimum": 0}
+      }
+    },
+    "refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Ids of every entry that made it into the context, so a ledger entry can cite what it was based on."
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

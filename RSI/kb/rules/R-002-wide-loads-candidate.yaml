@@ -1,0 +1,39 @@
+# Rule card — life cycle state: candidate (thin evidence).
+# EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger. Replace after
+# distill-rules has run over real evidence. One confirmation is not a rule; it is a lead.
+example: true  # seed card: shows the shape, carries no evidence
+id: R-002
+statement: >
+  Under a memory-bound signature with mem_saturated and lanes issuing loads narrower than the
+  widest aligned load the device supports, widening each load to the full aligned width lowers
+  instruction_count and sectors_per_request for the same element count.
+mechanism: >
+  Covering several adjacent elements with one instruction spends one issue slot and one request
+  instead of several, and an aligned wide access maps onto the transaction granularity exactly,
+  so no payload is wasted at either end of the transaction.
+expected_counters: [instruction_count, sectors_per_request, device_mem_throughput_pct]
+implementation_traps:
+  - A wide load at an unaligned address, which the compiler splits back into narrow accesses.
+  - Widening only the main loop while the tail still runs the narrow path.
+  - A per-element guard around the wide load, which restores one branch per element.
+scope:
+  hw: [accel-a]
+  tags_all: [mem_saturated]
+  tags_any: [uncoalesced]
+  classes: [memory_bound, mixed]
+  elem_bytes: "4"
+effect:
+  metric: instruction_count
+  direction: down
+  speedup_median: 1.09
+  range: [1.0, 1.18]
+evidence:
+  confirmed: [example-exp-0011]
+  refuted: []
+confirm_rate: 1.0
+mean_prediction_error: 0.14
+status: candidate
+last_verified: 2026-10-30
+counter_example_note: >
+  None yet. With a single confirmation the scope is a guess, and the elem_bytes constraint in
+  particular has not been tested outside one dtype.

@@ -1,0 +1,27 @@
+# Pattern: remove a barrier whose ordering the data does not need.
+id: P-014
+name: fewer-synchronisations
+statement: >
+  When a work_group synchronises more often than the data dependencies require, consolidating
+  phases, double-buffering the staged region, or dropping a barrier that no access crosses lowers
+  stall_barrier and raises effective throughput without changing the result.
+mechanism: >
+  A barrier stops every lane in the group until the last one arrives, so its cost is the spread
+  of arrival times, not the barrier instruction itself. Barriers that separate phases with
+  nothing to order still pay that spread. Fewer barriers, or barriers that separate larger
+  phases, let lanes run ahead and overlap the next fill with the current compute, which is exactly
+  the idle time stall_barrier measures.
+expected_counters: [stall_barrier, device_mem_throughput_pct, scratchpad_throughput_pct]
+implementation_traps:
+  - Removing one of two adjacent barriers, which changes nothing because the cost is the same
+    spread paid once.
+  - Dropping a barrier whose ordering was in fact relied on, producing a race that passes on
+    small shapes.
+  - Double-buffering without the extra scratchpad budget, so residency falls and the gain is
+    cancelled.
+  - Merging phases so the group's working set no longer fits on chip, converting a barrier cost
+    into a capacity miss.
+scope_tags: [memory_stall_high, scratchpad_conflict]
+scope:
+  tags_any: [memory_stall_high]
+  classes: [memory_bound, latency_bound, mixed]

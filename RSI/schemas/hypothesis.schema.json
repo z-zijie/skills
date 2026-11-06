@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/hypothesis.schema.json",
+  "title": "Hypothesis card",
+  "description": "One falsifiable experiment. `predictions` and `evidence_of_implementation` are mandatory: a card without both is rejected before it reaches the implementer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "op", "parent", "signature_tags", "transformation", "mechanism", "predictions", "evidence_of_implementation", "scope_of_change"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^H-[0-9]+$"},
+    "op": {"type": "string", "minLength": 1},
+    "parent": {"type": "string", "minLength": 1, "description": "Kernel version the experiment starts from, e.g. best@exp-0137 or baseline."},
+    "signature_tags": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "transformation": {"type": "string", "minLength": 1},
+    "mechanism": {"type": "string", "minLength": 20},
+    "predictions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counters", "speedup"],
+      "properties": {
+        "counters": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["metric", "direction"],
+            "properties": {
+              "metric": {"type": "string", "description": "Canonical metric name from docs/vocabulary.md."},
+              "direction": {"type": "string", "enum": ["up", "down"]},
+              "expect": {"type": "string", "description": "Predicted value or bound, e.g. '<= 1.5'."},
+              "min_delta": {"type": "number", "minimum": 0}
+            }
+          }
+        },
+        "speedup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["expect", "low", "high"],
+          "properties": {
+            "expect": {"type": "number", "exclusiveMinimum": 0},
+            "low": {"type": "number", "exclusiveMinimum": 0},
+            "high": {"type": "number", "exclusiveMinimum": 0}
+          }
+        }
+      }
+    },
+    "evidence_of_implementation": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Checkable statements: what the diff and the disassembly must show if the change really landed.",
+      "items": {"type": "string", "minLength": 10}
+    },
+    "scope_of_change": {"type": "string", "minLength": 1},
+    "based_on": {"type": "array", "items": {"type": "string"}},
+    "risk": {"type": "string"},
+    "priority": {"type": "integer", "minimum": 1},
+    "created": {"type": "string"}
+  }
+}

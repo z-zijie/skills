@@ -1,0 +1,15 @@
+{
+  "name": "a speedup above the review cap is reported, never promoted",
+  "input": {
+    "result_file": "skills/run-evaluator/tests/fixtures/result_implausible.json",
+    "signing_key": "regression-key-not-a-secret"
+  },
+  "expected": {
+    "status": "ok",
+    "failed_checks": [],
+    "implausible": true,
+    "significant": true
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a run at 3.4x against a 2.0x spec review cap: the check passes, the guard pauses the round"
+}

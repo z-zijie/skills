@@ -1,0 +1,16 @@
+{
+  "name": "a plateau tag from the campaign outranks every counter tag",
+  "input": {
+    "profile_file": "skills/diagnose-bottleneck/tests/fixtures/profile_memory_bound.json",
+    "measured_us": 16.0,
+    "extra_tags": ["plateau"]
+  },
+  "expected": {
+    "status": "ok",
+    "class": "memory_bound",
+    "primary_bottleneck": "plateau",
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from the fourth round without improvement: the structural tag is what changes the playbook, and it is supplied by the campaign rather than derived from a counter"
+}

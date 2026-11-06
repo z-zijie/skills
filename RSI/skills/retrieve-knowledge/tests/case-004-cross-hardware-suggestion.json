@@ -1,0 +1,34 @@
+{
+  "name": "a store entry bound to another device can only arrive relaxed",
+  "input": {
+    "signature": {
+      "op": "vec_add",
+      "hw_id": "accel-q",
+      "class": "compute_bound",
+      "tags": [
+        "compute_saturated"
+      ],
+      "metrics": {}
+    },
+    "kb_root": "skills/retrieve-knowledge/tests/fixtures",
+    "include_hardware": false
+  },
+  "expected": {
+    "status": "ok",
+    "counts": {
+      "rules": 0,
+      "patterns": 0,
+      "antipatterns": 1,
+      "experiments": 0
+    },
+    "match_level": {
+      "rules": "none",
+      "patterns": "none",
+      "antipatterns": "hw_relaxed"
+    },
+    "relaxed_warning": true,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from an unknown hardware id: the only match is an anti-pattern recorded on a different device, offered as a suggestion rather than precedent"
+}

@@ -1,0 +1,76 @@
+{
+  "name": "tightening-check-earns-offline-screen",
+  "note": "a verifier check that only tightens is gated on replay over ledger history, no device needed",
+  "script": "scripts/propose.py",
+  "input": {
+    "proposal_id": "P-24",
+    "cluster": {
+      "kind": "not_implemented",
+      "count": 4,
+      "summary": "pad_scratchpad never reached the machine code on 4 attempts",
+      "tags": [
+        "scratchpad_conflict"
+      ],
+      "experiments": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ]
+    },
+    "target": "kb/verifier/checks.md",
+    "change": "Add check: a claimed wide load must show a wider access in the disassembly, not merely a new variable name.",
+    "tightens_only": true,
+    "offline_replay_possible": true
+  },
+  "expected": {
+    "branch": {
+      "base": "HEAD",
+      "commit_message": "Target not_implemented in kb/verifier/checks.md\n\nCluster: not_implemented (4 experiments)\nProposal: P-24\nGate: tighten_only_replay\n",
+      "files_changed": [
+        "kb/verifier/checks.md"
+      ],
+      "name": "scaffold/P-24-kb-verifier-checks-md"
+    },
+    "change_note": {
+      "expected_effect": "the targeted cluster shrinks without a secondary metric regressing",
+      "one_change": true,
+      "revert": "git revert the merge of P-24; the branch touches one file",
+      "what_changed": "Add check: a claimed wide load must show a wider access in the disassembly, not merely a new variable name.",
+      "what_did_not_change": "nothing outside kb/verifier/checks.md",
+      "why_this_cluster": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in kb/verifier/checks.md."
+    },
+    "proposal": {
+      "author": "edit-scaffold",
+      "diff": "Add check: a claimed wide load must show a wider access in the disassembly, not merely a new variable name.",
+      "evidence": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ],
+      "gate": "tighten_only_replay",
+      "id": "P-24",
+      "kind": "verifier_check",
+      "rationale": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in kb/verifier/checks.md.",
+      "status": "draft",
+      "target": "kb/verifier/checks.md",
+      "title": "Target not_implemented in kb/verifier/checks.md"
+    },
+    "ready_for_replay": true,
+    "refusals": [],
+    "replay": {
+      "decision_rule": "merge when the primary metric improves on dev with a confidence interval that excludes zero, holdout does not regress, and no secondary metric gets clearly worse",
+      "experiments_per_operator": 10,
+      "from_checkpoint": true,
+      "gate": "tighten_only_replay",
+      "holdout_visible_to": "replay_judge",
+      "repeats": 3,
+      "screening": "two_stage_screen",
+      "stage_1_offline_ledger": true,
+      "stage_1_operators": [],
+      "stage_2_operators": []
+    },
+    "target_kind": "verifier_check"
+  }
+}

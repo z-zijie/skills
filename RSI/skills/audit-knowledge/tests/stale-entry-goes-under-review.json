@@ -1,0 +1,129 @@
+{
+  "name": "stale-entry-goes-under-review",
+  "note": "a card untouched for longer than the staleness window drops to under review rather than deprecated",
+  "script": "scripts/audit.py",
+  "input": {
+    "today": "2026-11-05",
+    "stale_after_days": 90,
+    "ledger_exp_ids": [
+      "exp-0098",
+      "exp-0121",
+      "exp-0142",
+      "exp-0133",
+      "exp-0201"
+    ],
+    "rules": [
+      {
+        "id": "R-033",
+        "statement": "When device memory is saturated, wide loads lower instruction count.",
+        "scope": {
+          "hw": [
+            "accel-a"
+          ],
+          "tags_all": [
+            "mem_saturated"
+          ],
+          "classes": [
+            "memory_bound"
+          ]
+        },
+        "effect": {
+          "metric": "instruction_count",
+          "direction": "down",
+          "speedup_median": 1.2,
+          "range": [
+            1.05,
+            1.4
+          ]
+        },
+        "evidence": {
+          "confirmed": [
+            "exp-0201"
+          ],
+          "refuted": []
+        },
+        "status": "candidate",
+        "mean_prediction_error": 0.08,
+        "last_verified": "2026-06-01",
+        "mechanism": "the access pattern changes so the limiter moves"
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "by_kind": {
+        "conflict": 0,
+        "legacy_metric": 0,
+        "missed_counterexample": 0,
+        "no_mechanism": 0,
+        "orphan_evidence": 0,
+        "stale": 1,
+        "thin_evidence": 0,
+        "unbound_metric": 0
+      },
+      "by_severity": {
+        "high": 0,
+        "low": 0,
+        "medium": 1
+      },
+      "findings": 1,
+      "mechanical": 1,
+      "needs_replay": 0,
+      "proposals": 1
+    },
+    "findings": [
+      {
+        "detail": "last verified 157 days ago, older than 90",
+        "entry": "R-033",
+        "kind": "stale",
+        "proposal": {
+          "action": "demote",
+          "gate": "mechanical",
+          "kind": "rule",
+          "reason": "not verified for 157 days",
+          "target": "kb/rules/",
+          "to_status": "under_review"
+        },
+        "severity": "medium"
+      }
+    ],
+    "health": {
+      "deprecated_share": 0.0,
+      "established_rules": 0,
+      "mean_evidence_per_rule": 1.0,
+      "rules_with_evidence_in_window": 1
+    },
+    "notes": [
+      "no established rules yet: retrieval will return thin evidence, which is honest but slow, so prefer narrowing scopes to promoting cards"
+    ],
+    "proposals": [
+      {
+        "action": "demote",
+        "entries": [
+          "R-033"
+        ],
+        "evidence": [
+          "exp-0201"
+        ],
+        "gate": "mechanical",
+        "group": null,
+        "id": "P-1",
+        "kind": "rule",
+        "rationale": "last verified 157 days ago, older than 90",
+        "reasons": [
+          "last verified 157 days ago, older than 90"
+        ],
+        "status": "draft",
+        "target": "kb/rules/",
+        "to_status": "under_review"
+      }
+    ],
+    "stores_audited": {
+      "antipatterns": 0,
+      "conjectures": 0,
+      "patterns": 0,
+      "rules": 1
+    },
+    "today": "2026-11-05"
+  }
+}

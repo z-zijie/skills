@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/report-campaign/input.schema.json",
+  "title": "report-campaign input",
+  "description": "Ledger entries plus the few facts that are not in the ledger: the campaign's attainment, the run's knowledge-base summary. Entries are the subset of schemas/ledger-entry.schema.json the report reads; the shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entries",
+    "report_kind"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string"
+    },
+    "today": {
+      "type": "string"
+    },
+    "report_kind": {
+      "type": "string",
+      "enum": [
+        "campaign",
+        "system"
+      ]
+    },
+    "op": {
+      "type": "string",
+      "description": "Operator, for a campaign report."
+    },
+    "attainment_pct": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "baseline_attainment_pct": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "target_attainment_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "stop_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        null,
+        "target_reached",
+        "budget_exhausted",
+        "no_gain_in_five_rounds",
+        "no_open_route"
+      ]
+    },
+    "open_routes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "exp_id"
+        ],
+        "properties": {
+          "exp_id": {
+            "type": "string",
+            "pattern": "^exp-[0-9]{4,}$"
+          },
+          "op": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scaffold_commit": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "refuted",
+              "not_implemented"
+            ]
+          },
+          "significant": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "speedup": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "prediction_error": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "implausible": {
+            "type": "boolean"
+          },
+          "correctness": {
+            "type": "object"
+          },
+          "signature": {
+            "type": "object"
+          },
+          "hypothesis": {
+            "type": "object",
+            "properties": {
+              "transformation": {
+                "type": "string"
+              },
+              "mechanism": {
+                "type": "string"
+              },
+              "signature_tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "cost": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "attainment_by_op": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "number",
+          "null"
+        ]
+      }
+    },
+    "kb_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rules": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "established": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deprecated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

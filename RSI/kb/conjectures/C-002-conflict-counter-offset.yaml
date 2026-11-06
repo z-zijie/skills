@@ -1,0 +1,44 @@
+# Conjecture C-002. UNVERIFIED. Not evidence, and not usable as grounds for a verdict.
+# It may only inspire a hypothesis card; W7 (conjecture test) decides its fate.
+id: C-002
+title: The conflict counter's noise is itself measurable and can be subtracted.
+status: conjecture
+unverified: true
+statement: >
+  For a given hw_id and a given scratchpad access shape, scratchpad_conflict_ratio carries a
+  reproducible offset that can be measured with a conflict-free control kernel at the same
+  access width and access count; subtracting that control's reading leaves a residual that is
+  stable enough to compare before and after a padding change, making a metric the documented
+  layer marks unreliable usable as a directional signal.
+mechanism_hypothesis: >
+  The counter increments for replays with causes other than bank conflicts — address divergence
+  within a request, misalignment, bank-mode transitions. Those causes are properties of the
+  access shape, not of the bank mapping. A control kernel with the same shape but a stride
+  guaranteed conflict-free (stride one, contiguous) exercises the same non-conflict replays, so
+  its reading is the offset. The conflict-attributable part is the difference.
+why_plausible:
+  - The documented layer records that the counter conflates several replay causes.
+  - counters.py already flags the metric as unreliable and asks for a cross-check; a measured
+    offset would be a stronger cross-check than a second, differently-noisy counter.
+observable_if_true:
+  - Repeated runs of the control kernel produce a tight distribution of the ratio at a fixed
+    shape, with a spread well below the effect size of a real conflict.
+  - The residual moves when the pad changes the bank mapping and does not move when the pad is
+    a multiple of the bank count.
+  - The residual's direction agrees with scratchpad_throughput_pct and with measured time.
+test_plan:
+  - Add a microbenchmark that runs the control kernel and the strided kernel at matched access
+    width and count, on the same device and in the same window.
+  - Repeat each five times to separate the offset's stability from the noise floor.
+  - If stable, propose it as a derived metric rather than as a change to the raw counter.
+falsified_if:
+  - The control's own reading varies as much as the effect being measured.
+  - The residual has no consistent sign against measured time across pads.
+  - The offset depends on co-scheduled work strongly enough that it cannot be reproduced.
+scope:
+  hw: [accel-a]
+  tags_any: [scratchpad_conflict]
+  classes: [memory_bound, latency_bound, mixed]
+source: derived from the documented pitfall that the conflict counter over-counts; not measured
+created: 2026-10-22
+last_reviewed: 2026-11-05

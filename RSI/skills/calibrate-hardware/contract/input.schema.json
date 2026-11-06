@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/calibrate-hardware/input.schema.json",
+  "title": "calibrate-hardware input",
+  "description": "One calibration request. The microbenchmark code belongs to the evaluator; this picks a suite and a protocol.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "suite": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Suite name registered inside the evaluator, e.g. core or quick."
+    },
+    "samples": {"type": "integer", "minimum": 1},
+    "seed": {"type": "integer", "minimum": 0},
+    "quick": {"type": "boolean", "description": "Fast pass: fewer samples per microbenchmark, for a smoke test."},
+    "backend": {"type": "string", "minLength": 1},
+    "hw_id": {"type": "string", "minLength": 1, "description": "Defaults to the device description."},
+    "measured_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Replay a stored calibration report instead of running the suite; used by the regression cases."
+    },
+    "previous_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A previously measured file, so a replay can compare against history."
+    },
+    "dry_run": {"type": "boolean", "description": "Derive and compare without writing the measured file."},
+    "timeout_s": {"type": "integer", "minimum": 1}
+  }
+}

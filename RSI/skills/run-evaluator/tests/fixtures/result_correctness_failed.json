@@ -1,0 +1,46 @@
+{
+  "schema_version": "1",
+  "exp_kind": "evaluate",
+  "op": "vec_add",
+  "candidate": "operators/vec_add/workspace/kernel.py",
+  "hw_id": "accel-a",
+  "env_fingerprint": "hw=accel-a|device=generic|runtime=ref|driver=none|compiler=cc|flags=default|os=Linux-x86_64",
+  "evaluator_version": "1.0.0",
+  "evaluator_hash": "0123456789abcdef",
+  "created": "2026-01-01T00:00:00Z",
+  "correctness": {
+    "passed": false,
+    "cases_run": 7,
+    "cases_failed": 1,
+    "failures": [
+      {
+        "shape": {
+          "n": 7
+        },
+        "dtype": "fp32",
+        "seed": 0,
+        "reason": "tolerance exceeded",
+        "max_abs_err": 0.5,
+        "max_rel_err": 0.02
+      }
+    ],
+    "canary_tripped": false,
+    "sentinel_untouched": true
+  },
+  "timing": {
+    "candidate_us": null,
+    "baseline_us": null,
+    "samples": 0,
+    "setup_us": 0.0
+  },
+  "guards": {
+    "implausible_speedup": false,
+    "files_modified": [],
+    "tolerances_unchanged": true
+  },
+  "signature": {
+    "algo": "hmac-sha256",
+    "key_id": "local",
+    "value": "c743010a7a83a9f60061bda62120e0e53e3e35ab2808766fea02dfd11513d6da"
+  }
+}

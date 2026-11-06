@@ -1,0 +1,14 @@
+{
+  "name": "a dev gain inside run-to-run variation is not a gain",
+  "input": {
+    "fixture": "skills/replay-benchmark/tests/fixtures/replay_noise.json"
+  },
+  "expected": {
+    "status": "ok",
+    "decision": "rollback",
+    "excludes_zero": false,
+    "holdout_regressed": false
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a change worth a fraction of a point per experiment: the bootstrap interval straddles zero"
+}

@@ -1,0 +1,155 @@
+{
+  "name": "evaluator-loophole-needs-a-human",
+  "note": "a loophole in the evaluator is described precisely and marked needs_human, never edited here",
+  "script": "scripts/capture.py",
+  "input": {
+    "proposal_id": "P-33",
+    "experiment_id": "exp-0133",
+    "correction_note": "The candidate reused the reference output buffer; the evaluator's sentinel check never ran because the buffer was already warm from the previous case.",
+    "classification": "evaluator_loophole",
+    "check": {},
+    "ledger": [
+      {
+        "exp_id": "exp-0098",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.22,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.8
+        },
+        "counters_after": {
+          "sectors_per_request": 1.1
+        }
+      },
+      {
+        "exp_id": "exp-0121",
+        "op": "layernorm_fwd",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.2
+        },
+        "counters_after": {
+          "sectors_per_request": 1.2
+        }
+      },
+      {
+        "exp_id": "exp-0133",
+        "op": "layernorm_fwd",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 1.2
+        },
+        "counters_after": {
+          "sectors_per_request": 1.19
+        }
+      },
+      {
+        "exp_id": "exp-0142",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.31,
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "loads are wider in the disassembly"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.8
+        },
+        "counters_after": {
+          "sectors_per_request": 3.79
+        }
+      }
+    ]
+  },
+  "expected": {
+    "check": null,
+    "classification": "evaluator_loophole",
+    "goal": "each kind of human correction is needed only once",
+    "problems": [],
+    "proposal": {
+      "author": "capture-correction",
+      "evidence": [
+        "exp-0133"
+      ],
+      "gate": "human_only",
+      "id": "P-33",
+      "kind": "contract",
+      "rationale": "Human correction on exp-0133: The candidate reused the reference output buffer; the evaluator's sentinel check never ran because the buffer was already warm from the previous case.",
+      "status": "needs_human",
+      "target": "evaluator/",
+      "title": "Correction from exp-0133"
+    },
+    "ready": true,
+    "replay": null
+  }
+}

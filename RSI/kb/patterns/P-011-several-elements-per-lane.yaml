@@ -1,0 +1,28 @@
+# Pattern: amortise one lane's fixed costs over several elements.
+id: P-011
+name: several-elements-per-lane
+statement: >
+  When each lane handles exactly one element and the kernel is latency-bound, having each lane
+  process several elements in an unrolled, already-resident form amortises the per-lane setup and
+  exposes independent memory requests, lowering stall_memory and raising occupancy_pct in
+  effective terms.
+mechanism: >
+  Per-lane costs — index computation, bounds checks, the first request's latency — are paid once
+  per lane regardless of how much work the lane does. Several elements per lane means one lane
+  issues several independent requests back to back, so the memory path is kept busy while the
+  first result is in flight. This is what turns a kernel that is idle waiting into one that is
+  waiting on a resource at its ceiling.
+expected_counters: [stall_memory, device_mem_throughput_pct, instruction_count]
+implementation_traps:
+  - Elements per lane assigned with a stride that makes each of them a separate transaction,
+    turning the amortisation into an uncoalesced pattern.
+  - A register-resident batch large enough to push registers per lane over the pressure
+    threshold, which lowers real residency and can cost more than the latency hidden.
+  - Handling the remainder with the original one-element path for a large fraction of the
+    elements, so the amortised path covers little of the runtime.
+  - Increasing elements per lane on a kernel that is already at a utilisation ceiling, where the
+    extra independent work has no idle resource to fill.
+scope_tags: [memory_stall_high, occupancy_low]
+scope:
+  tags_any: [memory_stall_high, occupancy_low]
+  classes: [latency_bound, memory_bound]

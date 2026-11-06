@@ -1,0 +1,28 @@
+# Pattern: compute in a narrower dtype where the tolerance allows it.
+id: P-018
+name: mixed-precision
+statement: >
+  When the operator's tolerance is looser than the dtype it computes in, narrowing the storage
+  and the multiply to a smaller dtype while keeping the accumulation in a wider one lowers
+  device_mem_bytes and raises compute_throughput_pct, provided the measured error stays inside the
+  tolerance on every shape in the spec.
+mechanism: >
+  A narrower element means proportionally fewer bytes for the same element count, so the memory
+  term of the bound falls; a narrower multiply means more results per instruction, so the compute
+  term falls too. Keeping the accumulator wide preserves the accuracy that the reduction needs,
+  which is why the transformation is a split — narrow where bytes dominate, wide where summation
+  error accumulates — rather than a global change.
+expected_counters: [device_mem_bytes, compute_throughput_pct, instruction_count]
+implementation_traps:
+  - Narrowing the accumulator as well, so the result drifts outside tolerance on long reductions
+    while the small shapes still pass.
+  - Narrowing storage but converting to wide for every element in the hot loop, which pays the
+    conversion per element and gains nothing.
+  - Checking the tolerance on one shape only, when the spec's shape distribution includes a much
+    longer reduction.
+  - A kernel that is compute-bound and already on the wide pipe, where narrowing storage alone
+    lowers the memory term of a bound that was not limiting.
+scope_tags: [mem_saturated, compute_saturated]
+scope:
+  tags_any: [mem_saturated, compute_saturated]
+  classes: [memory_bound, compute_bound, mixed]

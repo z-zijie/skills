@@ -1,0 +1,23 @@
+{
+  "name": "wide loads, fused multiply-add, scratchpad traffic and spills are each visible",
+  "input": {
+    "disassembly_file": "skills/inspect-binary/tests/fixtures/wide.dump.txt",
+    "work_group": 64,
+    "lane_count": 1048576,
+    "scratchpad_capacity_bytes": 16384
+  },
+  "expected": {
+    "status": "ok",
+    "instruction_total": 9,
+    "wide_loads": 3,
+    "compute_total": 1,
+    "barriers": 1,
+    "registers_per_lane": 40,
+    "scratchpad_bytes_per_workgroup": 8192,
+    "spill_bytes": 64,
+    "work_groups": 8192,
+    "missing": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a dump after a widening change: three wide loads, one fused multiply-add, half the scratchpad capacity and a small spill"
+}

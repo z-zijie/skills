@@ -1,0 +1,155 @@
+{
+  "cards": [
+    {
+      "id": "H-0001",
+      "op": "vec_add",
+      "parent": "best@exp-0003",
+      "signature_tags": [
+        "mem_saturated",
+        "uncoalesced"
+      ],
+      "transformation": "widen_loads",
+      "mechanism": "Narrow per-element loads issue one device-memory transaction per element; widening the access makes each request span a full transaction, so transactions per request falls toward one.",
+      "predictions": {
+        "counters": [
+          {
+            "metric": "sectors_per_request",
+            "direction": "down",
+            "expect": "<= 1.5"
+          },
+          {
+            "metric": "stall_memory",
+            "direction": "down"
+          }
+        ],
+        "speedup": {
+          "expect": 1.3,
+          "low": 1.12,
+          "high": 1.5
+        }
+      },
+      "evidence_of_implementation": [
+        "in the diff, the hot loop issues one wide load per lane instead of one narrow load per element",
+        "in the disassembly, the overweighted wide-load class rises while the narrow-load class falls"
+      ],
+      "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+      "based_on": [
+        "R-031",
+        "P-010"
+      ],
+      "created": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "H-0002",
+      "op": "vec_add",
+      "parent": "best@exp-0003",
+      "signature_tags": [
+        "mem_saturated",
+        "uncoalesced"
+      ],
+      "transformation": "scratchpad_tiling",
+      "mechanism": "Each element is read twice from device memory; staging a tile in scratchpad turns the second read into a scratchpad hit, so bytes moved falls and memory stall shrinks.",
+      "predictions": {
+        "counters": [
+          {
+            "metric": "device_mem_bytes",
+            "direction": "down"
+          },
+          {
+            "metric": "stall_memory",
+            "direction": "down"
+          },
+          {
+            "metric": "scratchpad_bytes_per_workgroup",
+            "direction": "up"
+          }
+        ],
+        "speedup": {
+          "expect": 1.18,
+          "low": 1.05,
+          "high": 1.32
+        }
+      },
+      "evidence_of_implementation": [
+        "in the diff, the hot loop issues one wide load per lane instead of one narrow load per element",
+        "in the disassembly, the overweighted wide-load class rises while the narrow-load class falls"
+      ],
+      "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+      "based_on": [
+        "P-011",
+        "A-004"
+      ],
+      "created": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "H-0003",
+      "op": "vec_add",
+      "parent": "best@exp-0003",
+      "signature_tags": [
+        "mem_saturated",
+        "uncoalesced"
+      ],
+      "transformation": "predicated_tail",
+      "mechanism": "The scalar epilogue diverges at the tail; a predicated tail removes the divergent branch so the last work-group takes one path.",
+      "predictions": {
+        "counters": [
+          {
+            "metric": "branch_divergence_pct",
+            "direction": "down"
+          },
+          {
+            "metric": "instruction_count",
+            "direction": "down"
+          }
+        ],
+        "speedup": {
+          "expect": 1.06,
+          "low": 1.01,
+          "high": 1.12
+        }
+      },
+      "evidence_of_implementation": [
+        "in the diff, the hot loop issues one wide load per lane instead of one narrow load per element",
+        "in the disassembly, the overweighted wide-load class rises while the narrow-load class falls"
+      ],
+      "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+      "based_on": [
+        "R-044"
+      ],
+      "created": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "H-0012",
+      "op": "vec_add",
+      "parent": "best@exp-0003",
+      "signature_tags": [
+        "mem_saturated",
+        "uncoalesced"
+      ],
+      "transformation": "merge_kernels",
+      "mechanism": "Two neighbouring stages each launch separately at small shapes; merging them removes one launch cost from the measured window.",
+      "predictions": {
+        "counters": [
+          {
+            "metric": "launch_overhead_us",
+            "direction": "down"
+          }
+        ],
+        "speedup": {
+          "expect": 1.08,
+          "low": 1.03,
+          "high": 1.15
+        }
+      },
+      "evidence_of_implementation": [
+        "in the diff, the hot loop issues one wide load per lane instead of one narrow load per element",
+        "in the disassembly, the overweighted wide-load class rises while the narrow-load class falls"
+      ],
+      "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+      "based_on": [
+        "R-044"
+      ],
+      "created": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

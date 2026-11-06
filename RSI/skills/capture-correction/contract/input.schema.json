@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/capture-correction/input.schema.json",
+  "title": "capture-correction input",
+  "description": "One human correction, the experiment it is about, and the ledger window a proposed check must be replayed over. The check block is a tiny declarative predicate so the human can read what their sentence turned into.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["experiment_id", "correction_note", "ledger"],
+  "properties": {
+    "proposal_id": {"type": "string", "pattern": "^P-[0-9]+$"},
+    "experiment_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$", "description": "The experiment the human is correcting."},
+    "correction_note": {"type": "string", "minLength": 10, "description": "The human's own words: what the agent concluded and what the right conclusion is."},
+    "classification": {
+      "type": "string",
+      "enum": ["verifier_check", "antipattern", "playbook", "evaluator_loophole"],
+      "description": "Named by the human when known; inferred from the note otherwise."
+    },
+    "title": {"type": "string"},
+    "playbook_target": {"type": "string", "description": "Playbook the correction edits, when it is a try-order fix."},
+    "check": {
+      "type": "object",
+      "description": "The proposed verifier check. Required when the classification is verifier_check.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "predicate": {
+          "type": "string",
+          "enum": ["metric_unmoved", "metric_moved_wrong_way", "no_gain_but_confirmed",
+                   "evidence_line_missing", "scope_mismatch", "unnamed_regression",
+                   "implausible_speedup", "tag_overlap"]
+        },
+        "checks_metric": {"type": "string", "description": "Canonical metric the predicate reads; required for a metric predicate."},
+        "metric": {"type": "string", "description": "Alias for checks_metric, accepted so a card reads naturally."},
+        "band": {"type": "number", "minimum": 0, "description": "Movement inside this band counts as unmoved."},
+        "direction": {"type": "string", "enum": ["up", "down"]},
+        "contains": {"type": "string"},
+        "field": {"type": "string"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "statement": {"type": "string", "minLength": 10},
+        "from_experiment": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+        "must_catch": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "description": "Past cases of the same kind the check has to catch; empty means 'every entry the check applies to'."
+        },
+        "must_not_flag": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "description": "Experiments that were rightly confirmed; the check must leave them alone."
+        }
+      }
+    },
+    "ledger": {
+      "type": "array",
+      "description": "The window to replay over. Read from ledger/experiments.jsonl; read-only.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exp_id"],
+        "properties": {
+          "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "op": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+          "significant": {"type": ["boolean", "null"]},
+          "speedup": {"type": ["number", "null"]},
+          "implausible": {"type": "boolean"},
+          "counters_before": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+          "counters_after": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+          "unnamed_regressions": {"type": "array", "items": {"type": "string"}},
+          "correctness": {"type": "object"},
+          "signature": {"type": "object"},
+          "hypothesis": {"type": "object"}
+        }
+      }
+    }
+  }
+}

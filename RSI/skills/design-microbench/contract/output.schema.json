@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/design-microbench/output.schema.json",
+  "title": "design-microbench output",
+  "description": "A microbenchmark proposal that always needs human approval, with the design, the reasons any part was refused, and the decision the human is being asked to make. The proposal matches schemas/proposal.schema.json (shape inlined).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["proposal", "design", "problems", "ready_for_human", "human_decision"],
+  "properties": {
+    "proposal": {
+      "type": "object",
+      "description": "A proposal as defined by schemas/proposal.schema.json. Gate is always human_only for this skill.",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "rationale", "target", "status", "gate"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^P-[0-9]+$"},
+        "kind": {"type": "string", "const": "microbench"},
+        "title": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 20},
+        "target": {"type": "string", "minLength": 1},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+        "status": {"type": "string", "enum": ["draft", "needs_human"]},
+        "gate": {"type": "string", "const": "human_only"},
+        "author": {"type": "string"}
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mechanism", "isolates", "repeats", "produces", "would_settle"],
+      "properties": {
+        "mechanism": {"type": "string", "minLength": 20},
+        "extends_suite_item": {"type": ["string", "null"]},
+        "is_new_item": {"type": "boolean"},
+        "isolates": {"type": "string"},
+        "sweep": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "variable": {"type": "string"},
+            "values": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "repeats": {"type": "integer", "minimum": 3},
+        "produces": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["parameter"],
+          "properties": {
+            "parameter": {"type": "string", "minLength": 5},
+            "unit": {"type": "string"},
+            "used_by": {"type": "string"}
+          }
+        },
+        "counters_observed": {"type": "array", "items": {"type": "string"}},
+        "environment_fingerprint_required": {"type": "boolean"},
+        "expiry": {"type": "string"},
+        "would_settle": {"type": "string"},
+        "fallback_if_rejected": {"type": "string"}
+      }
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "ready_for_human": {"type": "boolean"},
+    "human_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "why_human", "on_approval", "on_rejection"],
+      "properties": {
+        "question": {"type": "string", "minLength": 10},
+        "why_human": {"type": "string", "minLength": 10},
+        "on_approval": {"type": "string"},
+        "on_rejection": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+# Pattern: skew the scratchpad stride so concurrent accesses land in different banks.
+id: P-013
+name: scratchpad-padding
+statement: >
+  When scratchpad accesses at a particular stride map many lanes onto the same bank, adding a
+  pad to the row length so the stride and the bank count are coprime lowers
+  scratchpad_conflict_ratio and stall_barrier at the cost of a small increase in
+  scratchpad_bytes_per_workgroup.
+mechanism: >
+  Bank selection is a function of the address, so a fixed stride can map a whole column onto one
+  bank and serialise accesses that should have been parallel. Changing the row length changes
+  the address sequence, and if the new stride is coprime with the bank count the accesses spread
+  evenly. The cost is the pad itself, which occupies scratchpad capacity and therefore can lower
+  residency; the trade is only worth it when the measured conflict curve says the serialisation
+  is material.
+expected_counters: [scratchpad_conflict_ratio, stall_barrier, scratchpad_bytes_per_workgroup]
+implementation_traps:
+  - Padding by a value that shares a factor with the bank count, so the same collisions recur.
+  - Padding the allocation but indexing with the unpadded stride, so the addresses are unchanged.
+  - A pad large enough to push the allocation over budget and spill, which trades a conflict for
+    local-memory traffic.
+  - Trusting the conflict counter alone; it is the metric the documented layer marks unreliable,
+    so the verdict needs the timing or the throughput counter as a second signal.
+scope_tags: [scratchpad_conflict]
+scope:
+  tags_any: [scratchpad_conflict]
+  classes: [memory_bound, latency_bound, mixed]

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/ingest-docs/input.schema.json",
+  "title": "ingest-docs input",
+  "description": "The documents to ingest and the hardware they describe.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hw_id", "documents"],
+  "properties": {
+    "hw_id": {"type": "string", "minLength": 1, "description": "Hardware id these documents describe, or 'any' for device-independent material."},
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind"],
+        "properties": {
+          "path": {"type": "string"},
+          "kind": {"type": "string", "enum": ["spec_sheet", "runtime_docs", "profiler_metrics", "vendor_notes", "other"]},
+          "access_note": {"type": "string"}
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "What the caller needs answered. Entry extraction is scoped to these."
+    },
+    "existing_topics": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Entries already present, so an ingest merges rather than duplicates."
+    }
+  }
+}

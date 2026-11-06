@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/report-campaign/output.schema.json",
+  "title": "report-campaign output",
+  "description": "A campaign report or a periodic system report, with every figure computed from ledger entries. The `report` object is one of the two shapes below, selected by the top-level `kind`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "generated_from", "report"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "kind": {"type": "string", "enum": ["campaign", "system"]},
+    "created": {"type": "string"},
+    "generated_from": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ledger_entries", "source"],
+      "properties": {
+        "ledger_entries": {"type": "integer", "minimum": 0},
+        "source": {"type": "string", "const": "ledger/experiments.jsonl"}
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["campaign", "system"]},
+        "op": {"type": "string"},
+        "verdict": {"type": "string", "minLength": 10},
+        "needs_algorithm_rewrite": {"type": "boolean"},
+        "headline": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "attainment_pct": {"type": ["number", "null"]},
+            "baseline_attainment_pct": {"type": ["number", "null"]},
+            "gain_points": {"type": ["number", "null"]},
+            "target_attainment_pct": {"type": "number", "minimum": 0},
+            "gap_points": {"type": ["number", "null"]},
+            "total_speedup": {"type": "number", "minimum": 0},
+            "experiments": {"type": "integer", "minimum": 0},
+            "rounds": {"type": "integer", "minimum": 0},
+            "stop_reason": {"type": ["string", "null"]}
+          }
+        },
+        "confirmed_changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["exp_id", "transformation"],
+            "properties": {
+              "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+              "transformation": {"type": ["string", "null"]},
+              "speedup": {"type": ["number", "null"]},
+              "prediction_error": {"type": ["number", "null"]}
+            }
+          }
+        },
+        "unexplained_observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["exp_id", "note"],
+            "properties": {
+              "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+              "transformation": {"type": ["string", "null"]},
+              "speedup": {"type": ["number", "null"]},
+              "note": {"type": "string", "minLength": 10}
+            }
+          }
+        },
+        "wrong_diagnoses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["exp_id", "note"],
+            "properties": {
+              "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+              "transformation": {"type": ["string", "null"]},
+              "note": {"type": "string", "minLength": 10}
+            }
+          }
+        },
+        "remaining_opportunities": {"type": "array", "items": {"type": "string"}},
+        "efficiency": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "log_speedup_per_experiment": {"type": ["number", "null"]},
+            "experiments_to_target": {"type": ["integer", "null"]},
+            "mean_prediction_error": {"type": ["number", "null"]}
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "experiments": {"type": "integer", "minimum": 0},
+            "operators": {"type": "integer", "minimum": 0},
+            "first_exp": {"type": ["string", "null"]},
+            "last_exp": {"type": ["string", "null"]}
+          }
+        },
+        "by_scaffold_version": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scaffold_commit", "experiments"],
+            "properties": {
+              "scaffold_commit": {"type": "string"},
+              "experiments": {"type": "integer", "minimum": 0},
+              "rounds": {"type": "integer", "minimum": 0},
+              "log_speedup_per_experiment": {"type": ["number", "null"]},
+              "not_implemented_rate": {"type": ["number", "null"]},
+              "confirmation_rate": {"type": ["number", "null"]},
+              "median_prediction_error": {"type": ["number", "null"]},
+              "operators": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "per_operator": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["op", "experiments"],
+            "properties": {
+              "op": {"type": "string"},
+              "experiments": {"type": "integer", "minimum": 0},
+              "attainment_pct": {"type": ["number", "null"]},
+              "confirmed": {"type": "integer", "minimum": 0},
+              "not_implemented": {"type": "integer", "minimum": 0},
+              "mean_prediction_error": {"type": ["number", "null"]}
+            }
+          }
+        },
+        "secondary_metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "not_implemented_rate": {"type": ["number", "null"]},
+            "confirmation_rate": {"type": ["number", "null"]},
+            "implausible": {"type": "integer", "minimum": 0},
+            "median_prediction_error": {"type": ["number", "null"]}
+          }
+        },
+        "knowledge_health": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "established_rules": {"type": "integer", "minimum": 0},
+            "rules": {"type": "integer", "minimum": 0},
+            "mean_evidence_per_rule": {"type": ["number", "null"]},
+            "deprecated_share": {"type": ["number", "null"]}
+          }
+        },
+        "developments": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

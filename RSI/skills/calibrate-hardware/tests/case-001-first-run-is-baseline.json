@@ -1,0 +1,18 @@
+{
+  "name": "a first calibration records the peak and the noise floor and derives thresholds from them",
+  "input": {"measured_file": "skills/calibrate-hardware/tests/fixtures/measured_first_run.json", "dry_run": true},
+  "expected": {
+    "status": "dry_run",
+    "hw_id": "accel-a",
+    "moved": [],
+    "moved_count": 0,
+    "under_review": false,
+    "skipped_count": 0,
+    "peak_bandwidth_present": true,
+    "min_reportable_speedup": 1.03,
+    "all_skipped_have_reason": true,
+    "problem_kinds": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a fresh device: no previous run exists, so nothing counts as moved, and the noise floor becomes the minimum reportable speedup"
+}

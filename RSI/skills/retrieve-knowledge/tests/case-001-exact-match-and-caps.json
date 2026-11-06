@@ -1,0 +1,58 @@
+{
+  "name": "exact tag match returns the scoped entries and the caps cut the rest",
+  "input": {
+    "signature": {
+      "op": "vec_add",
+      "hw_id": "accel-a",
+      "class": "memory_bound",
+      "tags": [
+        "mem_saturated",
+        "uncoalesced",
+        "cache_hit_low",
+        "memory_stall_high"
+      ],
+      "metrics": {
+        "device_mem_throughput_pct": 87.5,
+        "compute_throughput_pct": 31.0,
+        "sectors_per_request": 3.8,
+        "stall_memory": 0.58
+      },
+      "roofline": {
+        "bound_us": 212.0,
+        "measured_us": 270.0,
+        "attained_pct": 78.5,
+        "limiting_term": "device_mem"
+      },
+      "primary_bottleneck": "mem-cache-miss"
+    },
+    "kb_root": "skills/retrieve-knowledge/tests/fixtures",
+    "include_hardware": false,
+    "ledger_file": "skills/retrieve-knowledge/tests/fixtures/ledger.jsonl"
+  },
+  "expected": {
+    "status": "ok",
+    "counts": {
+      "rules": 5,
+      "patterns": 2,
+      "antipatterns": 2,
+      "experiments": 3
+    },
+    "dropped": {
+      "rules": 2,
+      "patterns": 0,
+      "antipatterns": 0,
+      "experiments": 2
+    },
+    "match_level": {
+      "rules": "exact",
+      "patterns": "exact",
+      "antipatterns": "exact"
+    },
+    "within_caps": true,
+    "relaxed_warning": false,
+    "has_sections": true,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a memory-bound signature against a store holding seven matching rules: five survive, and the two cut are reported as dropped rather than silently omitted"
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/ingest-docs/output.schema.json",
+  "title": "ingest-docs output",
+  "description": "Documented-layer entries written and indexed. Every entry names its source; an entry without one belongs in kb/conjectures/ instead.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries", "index_updated"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["topic", "path", "claim", "source", "accessed"],
+        "properties": {
+          "topic": {"type": "string"},
+          "path": {"type": "string"},
+          "claim": {"type": "string", "minLength": 20},
+          "source": {"type": "string", "minLength": 3},
+          "accessed": {"type": "string"},
+          "hw_ids": {"type": "array", "items": {"type": "string"}},
+          "reliability": {"type": "array", "items": {"type": "string"}},
+          "device_specific": {"type": "string"}
+        }
+      }
+    },
+    "index_updated": {"type": "boolean"},
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "topic": {"type": "string"},
+          "existing": {"type": "string"},
+          "new": {"type": "string"},
+          "proposal": {"type": "string"}
+        }
+      }
+    },
+    "declined": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Questions no supplied document answered, so they were not written as documented facts."
+    }
+  }
+}

@@ -1,0 +1,28 @@
+# Pattern: change the on-device arrangement of the data, not the traversal.
+id: P-017
+name: change-data-layout
+statement: >
+  When the operator's arithmetic intensity is fixed but the arrangement of the data forces every
+  stage to stride, converting to a blocked or tiled layout once, outside the timed hot loop, lets
+  each stage read contiguous runs and lowers sectors_per_request and device_mem_bytes for the
+  whole pipeline.
+mechanism: >
+  Layout decides which elements are neighbours in memory; traversal decides which neighbours are
+  touched together. When several stages want different neighbour sets, no single traversal suits
+  all of them, and the arrangement itself must change: a blocked layout makes each stage's working
+  set a contiguous run instead of a strided gather. Because the conversion is paid once and the
+  reuse is paid per stage, the total transaction count falls even though one extra pass exists.
+expected_counters: [sectors_per_request, cache_hit_pct, device_mem_bytes]
+implementation_traps:
+  - Converting the layout inside the timed region on every call, so the conversion pass costs
+    more than the striding it removed.
+  - A blocked layout whose block size does not match the tile the measured cache curve supports,
+    so the working set straddles a capacity step.
+  - Converting to a layout that suits the producer and forces the consumer to gather, moving the
+    penalty downstream instead of removing it.
+  - A layout the operator's interface cannot expose, so the conversion is pushed to every caller
+    and the cost reappears outside the measurement.
+scope_tags: [uncoalesced, cache_hit_low]
+scope:
+  tags_any: [uncoalesced, cache_hit_low]
+  classes: [memory_bound, mixed]

@@ -1,0 +1,26 @@
+{
+  "name": "three grounded cards come back ordered by the lower bound of the speedup each commits to",
+  "input": {
+    "cards_file": "skills/propose-hypothesis/tests/fixtures/cards_ranked.json",
+    "noise_threshold": 1.03
+  },
+  "expected": {
+    "status": "ok",
+    "card_ids": [
+      "H-0001",
+      "H-0002",
+      "H-0003"
+    ],
+    "priorities": [
+      1,
+      2,
+      3
+    ],
+    "card_count": 3,
+    "rejected_count": 0,
+    "noise_warnings": 1,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a memory-bound round: widening loads at 1.12 lower bound ranks above tiling at 1.05, and the predicated tail at 1.01 is flagged as inside the 1.03 noise floor"
+}

@@ -1,0 +1,162 @@
+{
+  "name": "unknown-operator-refused",
+  "note": "an operator with no spec.yaml cannot be measured, so the campaign never opens",
+  "script": "scripts/campaign.py",
+  "input": {
+    "mode": "start",
+    "op": "nonexistent_op",
+    "budget": {
+      "experiments": 5
+    },
+    "target_attainment_pct": 85,
+    "noise_threshold": 0.04,
+    "baseline_exp_id": "exp-0000",
+    "read_ledger": false
+  },
+  "expected": {
+    "budget_guard": {
+      "counts": [
+        "experiments",
+        "device_seconds",
+        "tokens"
+      ],
+      "replay_is_outside_the_campaign_budget": true,
+      "stops_on": "budget_exhausted"
+    },
+    "campaign_id": "CAMPAIGN-nonexistent_op-1",
+    "gates": {
+      "contracts": "human_only",
+      "evaluator_microbench_tolerances_holdout": "human_only",
+      "model_routing": "human_only",
+      "playbooks_skill_strategy_thresholds": "replay_dev_holdout",
+      "rule_status": "mechanical",
+      "verifier_checks": "tighten_only_replay"
+    },
+    "mode": "start",
+    "next": {
+      "instruction": "fix operator_exists before any budget is spent",
+      "skill": "optimize-operator",
+      "stage": "preflight"
+    },
+    "op": "nonexistent_op",
+    "preflight": {
+      "checks": [
+        {
+          "check": "operator_exists",
+          "detail": "operators/nonexistent_op/spec.yaml is the operator's contract; onboarding runs first otherwise",
+          "ok": false
+        },
+        {
+          "check": "budget_granted",
+          "detail": "a campaign needs an experiment budget; zero means nothing may be spent",
+          "ok": true
+        },
+        {
+          "check": "target_set",
+          "detail": "the stop condition is a target attainment between 0 and 100",
+          "ok": true
+        },
+        {
+          "check": "noise_floor_known",
+          "detail": "without a measured noise floor no win can be told from run-to-run variation",
+          "ok": true
+        },
+        {
+          "check": "baseline_on_record",
+          "detail": "experiment 0 is the baseline; a campaign that starts from nothing cannot measure a gain",
+          "ok": true
+        }
+      ],
+      "failed": [
+        "operator_exists"
+      ],
+      "op": "nonexistent_op",
+      "passed": false
+    },
+    "ready": false,
+    "refusals": [
+      "preflight failed: operator_exists"
+    ],
+    "round_steps": [
+      "collect-profile",
+      "diagnose-bottleneck",
+      "retrieve-knowledge",
+      "propose-hypothesis",
+      "implement-change",
+      "run-evaluator",
+      "inspect-binary",
+      "verify-mechanism",
+      "record-experiment"
+    ],
+    "stage_plan": [
+      {
+        "done_when": "operator, budget and noise floor are all in place",
+        "skill": "optimize-operator",
+        "stage": "preflight"
+      },
+      {
+        "done_when": "baseline measured, profiled, diagnosed and recorded as exp-0000",
+        "skill": "run-evaluator",
+        "stage": "baseline"
+      },
+      {
+        "done_when": "one round of W2, from hypothesis to recorded experiment",
+        "skill": "propose-hypothesis",
+        "stage": "round"
+      },
+      {
+        "done_when": "one campaign move: continue, change_direction, combine or stop",
+        "skill": "plan-campaign",
+        "stage": "decide"
+      },
+      {
+        "done_when": "the campaign report, including a rewrite recommendation",
+        "skill": "report-campaign",
+        "stage": "report"
+      }
+    ],
+    "state": {
+      "attainment_pct": null,
+      "budget": {
+        "device_seconds": null,
+        "experiments": 5,
+        "remaining": 5,
+        "spent_experiments": 0
+      },
+      "op": "nonexistent_op",
+      "progress": {
+        "confirmed": 0,
+        "experiments": 0,
+        "implausible": 0,
+        "not_implemented": 0,
+        "refuted": 0,
+        "rounds": 0
+      },
+      "state": "ready_to_start",
+      "stop_condition": null,
+      "target_attainment_pct": 85.0
+    },
+    "stop_conditions": [
+      "target_attainment_reached",
+      "five_rounds_without_significant_gain",
+      "budget_exhausted",
+      "no_hypothesis_above_noise"
+    ],
+    "write_boundary": {
+      "inner_loop": [
+        "operators/<op>/workspace/**",
+        "ledger/experiments.jsonl"
+      ],
+      "never_by_an_agent": [
+        "evaluator/**",
+        "schemas/**",
+        "benchmark/holdout*",
+        "operators/<op>/spec.yaml"
+      ],
+      "outer_loop": [
+        "kb/proposals/**",
+        "a branch off the scaffold"
+      ]
+    }
+  }
+}

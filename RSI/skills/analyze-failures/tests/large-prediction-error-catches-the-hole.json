@@ -1,0 +1,57 @@
+{
+  "name": "large-prediction-error-catches-the-hole",
+  "note": "a confirmed change that missed its predicted size by more than the hole triggers a microbenchmark",
+  "script": "scripts/cluster.py",
+  "input": {
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.06,
+        "prediction_error": 0.44,
+        "hypothesis": {
+          "transformation": "tile_scratchpad",
+          "signature_tags": [
+            "cache_hit_low"
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "clusters": [
+      {
+        "count": 1,
+        "experiments": [
+          "exp-0001"
+        ],
+        "kind": "large_prediction_error",
+        "share": 1.0,
+        "summary": "1 confirmed change(s) missed their predicted size (mean error 0.44): tile_scratchpad",
+        "tags": [
+          "cache_hit_low"
+        ],
+        "transformations": [
+          "tile_scratchpad"
+        ]
+      }
+    ],
+    "entries_seen": 1,
+    "notes": [],
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "rates": {
+      "confirmation_rate": 1.0,
+      "dead_end_transformations": [],
+      "mean_prediction_error": 0.44,
+      "not_implemented_rate": 0.0
+    },
+    "rounds_seen": 1,
+    "top_cluster": "large_prediction_error",
+    "unattributed": []
+  }
+}

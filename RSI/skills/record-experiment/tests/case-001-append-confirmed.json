@@ -1,0 +1,19 @@
+{
+  "name": "a signed confirmed experiment appends one line, archives four artifacts and derives the numbers",
+  "input": {"result_file": "skills/record-experiment/tests/fixtures/result_signed.json"},
+  "expected": {
+    "status": "ok",
+    "exp_id": "exp-0001",
+    "ledger_lines": 1,
+    "archived_count": 4,
+    "missing_artifacts": [],
+    "entry_speedup": 1.25,
+    "entry_significant": true,
+    "entry_prediction_error": 0.0392,
+    "counter_names": ["device_mem_throughput_pct", "sectors_per_request", "stall_memory"],
+    "has_scaffold_commit": true,
+    "has_signature_block": true
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a confirmed round: predicted 1.30, measured 1.25, so the prediction error is |ln(1.25/1.30)|"
+}

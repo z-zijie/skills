@@ -1,0 +1,14 @@
+{
+  "name": "a real attainment gain is rolled back when the not-implemented rate degrades",
+  "input": {
+    "fixture": "skills/replay-benchmark/tests/fixtures/replay_secondary_regressed.json"
+  },
+  "expected": {
+    "status": "ok",
+    "decision": "rollback",
+    "excludes_zero": true,
+    "secondary_regressed": true
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a change that raised attainment and also raised the not-implemented rate by half"
+}

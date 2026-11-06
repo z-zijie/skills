@@ -1,0 +1,14 @@
+{
+  "name": "a branch carrying two changes is not replayed at all",
+  "input": {
+    "fixture": "skills/replay-benchmark/tests/fixtures/replay_two_changes.json"
+  },
+  "expected": {
+    "status": "human_only",
+    "decision": "human_only",
+    "excludes_zero": null,
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a branch whose summary names two changes: an unattributable replay is worse than none"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "a fourth card is held back with a reason instead of silently dropped",
+  "input": {
+    "cards_file": "skills/propose-hypothesis/tests/fixtures/cards_four.json",
+    "noise_threshold": 1.03
+  },
+  "expected": {
+    "status": "ok",
+    "card_count": 3,
+    "rejected_count": 1,
+    "rejections": [
+      {
+        "transformation": "merge_kernels",
+        "kind": "held_back"
+      }
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a round where four ideas were proposed: three reach the implementer and the fourth is recorded"
+}

@@ -1,0 +1,166 @@
+{
+  "name": "start-refused-without-baseline",
+  "note": "a campaign with no experiment 0 has nothing to measure a gain against and is refused",
+  "script": "scripts/campaign.py",
+  "input": {
+    "mode": "start",
+    "op": "vec_add",
+    "budget": {
+      "experiments": 10
+    },
+    "target_attainment_pct": 85,
+    "noise_threshold": 0.04,
+    "read_ledger": false
+  },
+  "expected": {
+    "budget_guard": {
+      "counts": [
+        "experiments",
+        "device_seconds",
+        "tokens"
+      ],
+      "replay_is_outside_the_campaign_budget": true,
+      "stops_on": "budget_exhausted"
+    },
+    "campaign_id": "CAMPAIGN-vec_add-1",
+    "gates": {
+      "contracts": "human_only",
+      "evaluator_microbench_tolerances_holdout": "human_only",
+      "model_routing": "human_only",
+      "playbooks_skill_strategy_thresholds": "replay_dev_holdout",
+      "rule_status": "mechanical",
+      "verifier_checks": "tighten_only_replay"
+    },
+    "mode": "start",
+    "next": {
+      "instruction": "fix baseline_on_record before any budget is spent",
+      "skill": "optimize-operator",
+      "stage": "preflight"
+    },
+    "op": "vec_add",
+    "preflight": {
+      "checks": [
+        {
+          "check": "operator_exists",
+          "detail": "operators/vec_add/spec.yaml is the operator's contract; onboarding runs first otherwise",
+          "ok": true
+        },
+        {
+          "check": "budget_granted",
+          "detail": "a campaign needs an experiment budget; zero means nothing may be spent",
+          "ok": true
+        },
+        {
+          "check": "target_set",
+          "detail": "the stop condition is a target attainment between 0 and 100",
+          "ok": true
+        },
+        {
+          "check": "noise_floor_known",
+          "detail": "without a measured noise floor no win can be told from run-to-run variation",
+          "ok": true
+        },
+        {
+          "check": "baseline_on_record",
+          "detail": "experiment 0 is the baseline; a campaign that starts from nothing cannot measure a gain",
+          "ok": false
+        },
+        {
+          "check": "spec_parses",
+          "detail": "shapes and a cost model are present for dtype(s) ['fp32']",
+          "ok": true
+        }
+      ],
+      "failed": [
+        "baseline_on_record"
+      ],
+      "op": "vec_add",
+      "passed": false
+    },
+    "ready": false,
+    "refusals": [
+      "preflight failed: baseline_on_record"
+    ],
+    "round_steps": [
+      "collect-profile",
+      "diagnose-bottleneck",
+      "retrieve-knowledge",
+      "propose-hypothesis",
+      "implement-change",
+      "run-evaluator",
+      "inspect-binary",
+      "verify-mechanism",
+      "record-experiment"
+    ],
+    "stage_plan": [
+      {
+        "done_when": "operator, budget and noise floor are all in place",
+        "skill": "optimize-operator",
+        "stage": "preflight"
+      },
+      {
+        "done_when": "baseline measured, profiled, diagnosed and recorded as exp-0000",
+        "skill": "run-evaluator",
+        "stage": "baseline"
+      },
+      {
+        "done_when": "one round of W2, from hypothesis to recorded experiment",
+        "skill": "propose-hypothesis",
+        "stage": "round"
+      },
+      {
+        "done_when": "one campaign move: continue, change_direction, combine or stop",
+        "skill": "plan-campaign",
+        "stage": "decide"
+      },
+      {
+        "done_when": "the campaign report, including a rewrite recommendation",
+        "skill": "report-campaign",
+        "stage": "report"
+      }
+    ],
+    "state": {
+      "attainment_pct": null,
+      "budget": {
+        "device_seconds": null,
+        "experiments": 10,
+        "remaining": 10,
+        "spent_experiments": 0
+      },
+      "op": "vec_add",
+      "progress": {
+        "confirmed": 0,
+        "experiments": 0,
+        "implausible": 0,
+        "not_implemented": 0,
+        "refuted": 0,
+        "rounds": 0
+      },
+      "state": "ready_to_start",
+      "stop_condition": null,
+      "target_attainment_pct": 85.0
+    },
+    "stop_conditions": [
+      "target_attainment_reached",
+      "five_rounds_without_significant_gain",
+      "budget_exhausted",
+      "no_hypothesis_above_noise"
+    ],
+    "write_boundary": {
+      "inner_loop": [
+        "operators/<op>/workspace/**",
+        "ledger/experiments.jsonl"
+      ],
+      "never_by_an_agent": [
+        "evaluator/**",
+        "schemas/**",
+        "benchmark/holdout*",
+        "operators/<op>/spec.yaml"
+      ],
+      "outer_loop": [
+        "kb/proposals/**",
+        "a branch off the scaffold"
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "a two-pass kernel is fused into one pass, the diff stays inside the hot loop, and it imports",
+  "input": {
+    "edits_file": "skills/implement-change/tests/fixtures/edits_fused.json"
+  },
+  "expected": {
+    "status": "ok",
+    "files_changed": [
+      "kernel.py"
+    ],
+    "build_ok": true,
+    "build_skipped": true,
+    "diff_lines_added": 1,
+    "diff_lines_removed": 3,
+    "diff_touches_hot_loop": true,
+    "evidence_entries": 2,
+    "problem_kinds": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from the shipped baseline: two traversals become one, which is the mechanism the card claims, and the module imports without a build step"
+}

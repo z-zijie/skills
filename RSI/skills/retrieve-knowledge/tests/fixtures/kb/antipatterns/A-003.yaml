@@ -1,0 +1,12 @@
+id: A-003
+statement: >
+  Manually unrolling a loop the compiler already unrolled adds instructions and changes nothing.
+scope:
+  hw: [accel-a]
+  tags_all: [mem_saturated, uncoalesced]
+mechanism: >
+  The compiler had already unrolled the hot loop, so the diff produced identical machine code and
+  the counters did not move.
+effect:
+  metric: instruction_count
+  direction: up

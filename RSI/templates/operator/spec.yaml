@@ -1,0 +1,46 @@
+# Operator spec template. Copy this directory to operators/<op>/ and fill it in.
+#
+# Read-only to every agent once it is live: tolerances and shapes are what an agent must not be
+# able to move. The byte and flop formulas feed the roofline, so they have to describe the real
+# traffic, not the convenient one.
+op: <operator-name>
+description: >
+  One sentence on what the operator computes and whether it is bound by device-memory traffic
+  or by compute on this device. A memory-bound operator moves bytes it cannot avoid; a
+  compute-bound one does arithmetic whose count the bound reads directly.
+
+dtype: [fp32]
+
+tolerance:
+  kind: relative_absolute
+  rtol: 1.0e-5
+  atol: 1.0e-6
+
+shapes:
+  typical:
+    - n: 65536
+  edge:
+    - n: 1
+    - n: 7
+    - n: 65537
+  random:
+    count: 2
+    max_dim: 200000
+
+cost_model:
+  # Python arithmetic over the case's shape symbols and size_of(dtype-name).
+  bytes_expr: "3 * numel * size_of('fp32')"
+  flops_expr: "numel"
+
+entry:
+  module: kernel
+  function: <operator-name>
+  reference: reference/kernel
+  baseline: baseline/kernel
+  inputs: 1
+
+# Relative by default: reject setup longer than ten times the measured time, which asks whether
+# setup smuggled in the work. An absolute cap flags honest kernels on a slow interpreter.
+setup_cap_mode: relative
+setup_cap_us: 2000000.0
+speedup_review_cap: 2.0

@@ -1,0 +1,17 @@
+{
+  "name": "not moved: the counter moved inside its own jitter, so the mechanism did not land",
+  "input": {
+    "card": {
+      "id": "H-0002",
+      "predictions": {
+        "counters": [{"metric": "device_mem_throughput_pct", "direction": "down", "expect": "<= 80"}],
+        "speedup": {"expect": 1.2, "low": 1.05, "high": 1.4}
+      }
+    },
+    "before": {"device_mem_throughput_pct": 87.0},
+    "after": {"device_mem_throughput_pct": 86.5},
+    "measured": {"counter_variation": {"device_mem_throughput_pct": {"rel": 0.05}}}
+  },
+  "script": "scripts/compare_counters_case.py",
+  "expected": {"C": "fail"}
+}

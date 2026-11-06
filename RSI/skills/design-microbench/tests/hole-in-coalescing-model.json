@@ -1,0 +1,88 @@
+{
+  "name": "hole-in-coalescing-model",
+  "note": "a stride-dependent transaction granule the model misses justifies extending the coalescing item",
+  "script": "scripts/design.py",
+  "input": {
+    "proposal_id": "P-41",
+    "mechanism": "the device memory transaction granularity widens above a 32-byte element stride, so each request costs more sectors than the model assumes",
+    "metric": "sectors_per_request",
+    "parameter": "sectors_per_request versus stride curve",
+    "unit": "transactions/request",
+    "prediction_errors": [
+      {
+        "exp_id": "exp-0098",
+        "prediction_error": 0.34
+      },
+      {
+        "exp_id": "exp-0142",
+        "prediction_error": 0.41
+      }
+    ],
+    "sweep": {
+      "variable": "element stride in bytes",
+      "values": [
+        "4",
+        "8",
+        "16",
+        "32",
+        "64",
+        "128"
+      ]
+    },
+    "would_settle": "whether sectors per request follows the model's linear stride assumption or steps at a granule"
+  },
+  "expected": {
+    "design": {
+      "counters_observed": [
+        "sectors_per_request"
+      ],
+      "environment_fingerprint_required": true,
+      "expiry": "re-measure after a driver, runtime or compiler change; results carry a date",
+      "extends_suite_item": "coalescing_penalty",
+      "fallback_if_rejected": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "is_new_item": false,
+      "isolates": "one mechanism at a time",
+      "mechanism": "the device memory transaction granularity widens above a 32-byte element stride, so each request costs more sectors than the model assumes",
+      "produces": {
+        "parameter": "sectors_per_request versus stride curve",
+        "unit": "transactions/request",
+        "used_by": "the roofline term and the prediction range"
+      },
+      "repeats": 3,
+      "sweep": {
+        "values": [
+          "4",
+          "8",
+          "16",
+          "32",
+          "64",
+          "128"
+        ],
+        "variable": "element stride in bytes"
+      },
+      "would_settle": "whether sectors per request follows the model's linear stride assumption or steps at a granule"
+    },
+    "human_decision": {
+      "on_approval": "the code lands through the evaluator's owner, then calibrate-hardware runs it",
+      "on_rejection": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "question": "Add this microbenchmark to the frozen evaluator suite?",
+      "why_human": "microbenchmark code is Layer 0: agents read its results and never edit it"
+    },
+    "problems": [],
+    "proposal": {
+      "author": "design-microbench",
+      "evidence": [
+        "exp-0098",
+        "exp-0142"
+      ],
+      "gate": "human_only",
+      "id": "P-41",
+      "kind": "microbench",
+      "rationale": "2 experiment(s) missed their predicted speedup by more than 0.2: exp-0098, exp-0142. The hardware model has a hole around the device memory transaction granularity widens above a 32-byte element stride, so each request costs more sectors than the model assumes.",
+      "status": "needs_human",
+      "target": "evaluator/microbench/suite.py",
+      "title": "Microbenchmark: the device memory transaction granularity widens above a 32-"
+    },
+    "ready_for_human": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "an edit that leaves the source unchanged is not a change at all",
+  "input": {
+    "edits_file": "skills/implement-change/tests/fixtures/edits_noop.json"
+  },
+  "expected": {
+    "status": "cannot_implement",
+    "files_changed": [],
+    "diff_lines_added": 0,
+    "problem_kinds": [
+      "cannot_implement"
+    ]
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a retry that produced the same text: an unchanged file would reach the verifier as an empty mechanism"
+}

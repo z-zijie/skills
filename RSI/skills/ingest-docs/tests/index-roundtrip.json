@@ -1,0 +1,6 @@
+{
+  "name": "index: every documented entry is indexed and nothing unsourced passes the check",
+  "input": {},
+  "script": "scripts/index_case.py",
+  "expected": {"unsourced": []}
+}

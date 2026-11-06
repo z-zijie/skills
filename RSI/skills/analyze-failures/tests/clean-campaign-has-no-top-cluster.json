@@ -1,0 +1,55 @@
+{
+  "name": "clean-campaign-has-no-top-cluster",
+  "note": "a campaign of plain wins reports no cluster, so the outer loop has nothing to edit",
+  "script": "scripts/cluster.py",
+  "input": {
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "prediction_error": 0.05,
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.09,
+        "prediction_error": 0.08,
+        "hypothesis": {
+          "transformation": "tile_scratchpad",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "clusters": [],
+    "entries_seen": 2,
+    "notes": [],
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "rates": {
+      "confirmation_rate": 1.0,
+      "dead_end_transformations": [],
+      "mean_prediction_error": 0.065,
+      "not_implemented_rate": 0.0
+    },
+    "rounds_seen": 2,
+    "top_cluster": null,
+    "unattributed": []
+  }
+}

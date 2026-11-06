@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/verdict.schema.json",
+  "title": "Mechanism verdict",
+  "description": "Verifier output. The verifier sees no timing result and no implementer notes, so this object cannot be biased by the speedup.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["hypothesis_id", "verdict", "checks"],
+  "properties": {
+    "hypothesis_id": {"type": "string"},
+    "op": {"type": "string"},
+    "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "group", "conclusion"],
+        "properties": {
+          "id": {"type": "string", "description": "Check id from strategy/checklist.md, e.g. A1, B3, C2, D4."},
+          "group": {"type": "string", "enum": ["A", "B", "C", "D"], "description": "A change exists, B reached machine code, C counters moved, D superficial forms."},
+          "conclusion": {"type": "string", "enum": ["pass", "fail", "unknown"]},
+          "evidence": {"type": "string", "description": "Where in the diff or the binary summary the evidence is."},
+          "note": {"type": "string"}
+        }
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "For not_implemented: the evidence that is missing. The implementer retries from this."
+    },
+    "counter_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "metric": {"type": "string"},
+          "predicted_direction": {"type": "string", "enum": ["up", "down"]},
+          "before": {"type": ["number", "null"]},
+          "after": {"type": ["number", "null"]},
+          "direction_ok": {"type": "boolean"},
+          "exceeds_noise": {"type": "boolean"},
+          "note": {"type": "string"}
+        }
+      }
+    },
+    "unreliable_metrics_cross_checked": {"type": "array", "items": {"type": "string"}},
+    "created": {"type": "string"},
+    "scaffold_commit": {"type": "string"}
+  }
+}

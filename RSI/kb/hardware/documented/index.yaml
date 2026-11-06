@@ -1,0 +1,57 @@
+topic_index:
+  - topic: coalescing
+    title: "Contiguity, transaction granularity and sectors per request"
+    path: kb/hardware/documented/coalescing.md
+    hw_ids:
+      - any
+    source:
+      - docs/vocabulary.md section 2 (sectors_per_request and its recorded granularity)
+      - _src/rsi-build-plan.md section 11 (coalescing penalty and load width microbenchmarks)
+      - "evaluator/microbench/kernels.py (coalescing_penalty, load_width)"
+      - "Hennessy and Patterson, Computer Architecture: A Quantitative Approach, chapter 2 (memory interleaving and burst transfers)"
+    accessed: 2026-11-05
+  - topic: memory-hierarchy
+    title: The memory hierarchy as four roles
+    path: kb/hardware/documented/memory-hierarchy.md
+    hw_ids:
+      - any
+    source:
+      - docs/vocabulary.md section 1 (canonical names and roles)
+      - "_src/rsi-build-plan.md section 11 (cache hierarchy, bank conflicts, load width)"
+      - "Hennessy and Patterson, Computer Architecture: A Quantitative Approach, chapter 2"
+      - evaluator/microbench/suite.py (which parameter each curve produces)
+    accessed: 2026-11-05
+  - topic: occupancy
+    title: "Occupancy, what limits it, and why more is not automatically faster"
+    path: kb/hardware/documented/occupancy.md
+    hw_ids:
+      - any
+    source:
+      - "docs/vocabulary.md section 2 (occupancy_pct) and section 5 (work_lane, work_group, wave)"
+      - _src/rsi-build-plan.md section 11 (occupancy versus registers microbenchmark)
+      - evaluator/microbench/kernels.py (occupancy_vs_registers)
+      - tooling/rsi/signature.py (occupancy_low and register_pressure thresholds)
+    accessed: 2026-11-05
+  - topic: profiler-metric-pitfalls
+    title: "Counters that lie, and how a verifier cross-checks them"
+    path: kb/hardware/documented/profiler-metric-pitfalls.md
+    hw_ids:
+      - any
+    source:
+      - "_src/rsi-build-plan.md section 10.3 C (\"if a cited counter is listed in the documented layer as known to be unreliable, cross-check with an alternative metric\")"
+      - tooling/rsi/metrics.py (UNRELIABLE_BY_DESIGN)
+      - tooling/rsi/counters.py (unreliable_metrics in the comparison result)
+      - "one device vendor's developer-forum thread on a conflict counter reading higher than expected; the URL is recorded in the device-specific note below"
+    accessed: 2026-11-05
+  - topic: roofline
+    title: The roofline bound and what attainment means
+    path: kb/hardware/documented/roofline.md
+    hw_ids:
+      - any
+    source:
+      - "Williams, Waterman and Patterson, \"Roofline: An Insightful Visual Performance Model for Multicore Architectures\", Communications of the ACM 52(4), 2009"
+      - "_src/rsi-build-plan.md section 4.5 (theoretical bound) and section 11 (bandwidth, peak compute, launch overhead)"
+      - "tooling/rsi/hardware.py (Roofline.bound_us, Roofline.attainment)"
+      - "schemas/signature.schema.json (roofline.bound_us, measured_us, attained_pct, limiting_term)"
+    accessed: 2026-11-05
+unsourced: []

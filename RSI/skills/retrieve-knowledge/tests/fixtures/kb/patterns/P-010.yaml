@@ -1,0 +1,11 @@
+id: P-010
+statement: Wide aligned loads reduce the number of device-memory requests for a contiguous read.
+scope:
+  hw: [accel-a]
+  tags_all: [mem_saturated, uncoalesced]
+mechanism: >
+  A wider load covers several elements per request, so the transaction count per element falls
+  until the request is saturated.
+expected_counters: [sectors_per_request, device_mem_bytes]
+implementation_traps:
+  - the tail elements need a scalar epilogue or the last request straddles a boundary

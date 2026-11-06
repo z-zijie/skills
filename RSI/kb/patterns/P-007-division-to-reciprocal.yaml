@@ -1,0 +1,27 @@
+# Pattern: replace a division in the hot loop with a reciprocal computed once.
+id: P-007
+name: division-to-reciprocal
+statement: >
+  When the hot loop divides by a value that is invariant across the loop, computing the
+  reciprocal once and multiplying lowers instruction_count and raises compute_throughput_pct,
+  in proportion to how expensive the device's divide is relative to a multiply.
+mechanism: >
+  Division is usually implemented as a multi-step sequence or a dedicated narrow pipe, so it
+  retires far fewer results per cycle than a multiply. When the divisor does not change, the
+  expensive part is invariant and can be hoisted; what remains in the loop is a multiply on the
+  wide pipe. The size of the gain is the measured instruction_cost ratio for this device, which
+  is why the prediction must be read from that curve rather than assumed.
+expected_counters: [instruction_count, compute_throughput_pct]
+implementation_traps:
+  - Hoisting the reciprocal but keeping a division in a per-element path that still runs for
+    most elements.
+  - Losing the sign or the zero handling of the original division, which changes results for
+    negative or zero divisors.
+  - Using a reciprocal approximation whose error exceeds the operator's tolerance on the shapes
+    that matter.
+  - Replacing a division by a constant that the compiler had already turned into a multiply, so
+    the instruction count does not move.
+scope_tags: [compute_saturated]
+scope:
+  tags_any: [compute_saturated]
+  classes: [compute_bound, mixed]

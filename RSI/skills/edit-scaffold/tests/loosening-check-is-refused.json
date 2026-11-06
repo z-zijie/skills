@@ -1,0 +1,76 @@
+{
+  "name": "loosening-check-is-refused",
+  "note": "a check that loosens the verifier needs a human, and the refusal names the rule",
+  "script": "scripts/propose.py",
+  "input": {
+    "proposal_id": "P-25",
+    "cluster": {
+      "kind": "not_implemented",
+      "count": 4,
+      "summary": "pad_scratchpad never reached the machine code on 4 attempts",
+      "tags": [
+        "scratchpad_conflict"
+      ],
+      "experiments": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ]
+    },
+    "target": "kb/verifier/checks.md",
+    "change": "Loosen check: any diff touching the load line counts as a wide load."
+  },
+  "expected": {
+    "branch": {
+      "base": "HEAD",
+      "commit_message": "Target not_implemented in kb/verifier/checks.md\n\nCluster: not_implemented (4 experiments)\nProposal: P-25\nGate: tighten_only_replay\n",
+      "files_changed": [
+        "kb/verifier/checks.md"
+      ],
+      "name": "scaffold/P-25-kb-verifier-checks-md"
+    },
+    "change_note": {
+      "expected_effect": "the targeted cluster shrinks without a secondary metric regressing",
+      "one_change": true,
+      "revert": "git revert the merge of P-25; the branch touches one file",
+      "what_changed": "Loosen check: any diff touching the load line counts as a wide load.",
+      "what_did_not_change": "nothing outside kb/verifier/checks.md",
+      "why_this_cluster": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in kb/verifier/checks.md."
+    },
+    "proposal": {
+      "author": "edit-scaffold",
+      "diff": "Loosen check: any diff touching the load line counts as a wide load.",
+      "evidence": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ],
+      "gate": "tighten_only_replay",
+      "id": "P-25",
+      "kind": "verifier_check",
+      "rationale": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in kb/verifier/checks.md.",
+      "status": "rejected",
+      "target": "kb/verifier/checks.md",
+      "title": "Target not_implemented in kb/verifier/checks.md"
+    },
+    "ready_for_replay": false,
+    "refusals": [
+      "verifier checks tighten only; mark tightens_only or send it to a human"
+    ],
+    "replay": {
+      "decision_rule": "merge when the primary metric improves on dev with a confidence interval that excludes zero, holdout does not regress, and no secondary metric gets clearly worse",
+      "experiments_per_operator": 10,
+      "from_checkpoint": true,
+      "gate": "tighten_only_replay",
+      "holdout_visible_to": "replay_judge",
+      "repeats": 3,
+      "screening": "two_stage_screen",
+      "stage_1_offline_ledger": true,
+      "stage_1_operators": [],
+      "stage_2_operators": []
+    },
+    "target_kind": "verifier_check"
+  }
+}

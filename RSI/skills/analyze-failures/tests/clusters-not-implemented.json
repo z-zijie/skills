@@ -1,0 +1,88 @@
+{
+  "name": "clusters-not-implemented",
+  "note": "two attempts never reached the machine code, which is a card-clarity problem and not evidence",
+  "script": "scripts/cluster.py",
+  "input": {
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "not_implemented",
+        "significant": null,
+        "speedup": null,
+        "prediction_error": null,
+        "hypothesis": {
+          "transformation": "pad_scratchpad",
+          "signature_tags": [
+            "scratchpad_conflict"
+          ]
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "verdict": "not_implemented",
+        "significant": null,
+        "speedup": null,
+        "prediction_error": null,
+        "hypothesis": {
+          "transformation": "pad_scratchpad",
+          "signature_tags": [
+            "scratchpad_conflict"
+          ]
+        }
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.21,
+        "prediction_error": 0.06,
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "clusters": [
+      {
+        "count": 2,
+        "experiments": [
+          "exp-0001",
+          "exp-0002"
+        ],
+        "kind": "not_implemented",
+        "share": 0.6667,
+        "summary": "2 attempt(s) never reached the machine code: pad_scratchpad",
+        "tags": [
+          "scratchpad_conflict"
+        ],
+        "transformations": [
+          "pad_scratchpad"
+        ]
+      }
+    ],
+    "entries_seen": 3,
+    "notes": [
+      "not-implemented attempts are an implementer or card-clarity problem, not evidence against the mechanism; fix the card before changing the playbook"
+    ],
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "rates": {
+      "confirmation_rate": 1.0,
+      "dead_end_transformations": [],
+      "mean_prediction_error": 0.06,
+      "not_implemented_rate": 0.6667
+    },
+    "rounds_seen": 1,
+    "top_cluster": "not_implemented",
+    "unattributed": []
+  }
+}

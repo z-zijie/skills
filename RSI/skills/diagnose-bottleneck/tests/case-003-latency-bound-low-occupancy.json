@@ -1,0 +1,13 @@
+{
+  "name": "low utilization plus low occupancy is latency_bound and reaches the occupancy playbook",
+  "input": {"profile_file": "skills/diagnose-bottleneck/tests/fixtures/profile_latency_bound.json", "measured_us": 16.0},
+  "expected": {
+    "status": "ok",
+    "class": "latency_bound",
+    "tags": ["occupancy_low", "launch_dominated"],
+    "primary_bottleneck": "low-occupancy",
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a small-shape profile: neither utilization near peak, 9% occupancy and a launch cost that dominates the measured time"
+}

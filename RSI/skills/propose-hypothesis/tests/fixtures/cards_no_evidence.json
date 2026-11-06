@@ -1,0 +1,32 @@
+{
+  "cards": [
+    {
+      "id": "H-0011",
+      "op": "vec_add",
+      "parent": "best@exp-0003",
+      "signature_tags": [
+        "mem_saturated",
+        "uncoalesced"
+      ],
+      "transformation": "half_precision",
+      "mechanism": "Computing in half precision halves bytes moved and doubles the arithmetic rate per byte.",
+      "predictions": {
+        "counters": [
+          {
+            "metric": "device_mem_bytes",
+            "direction": "down"
+          }
+        ],
+        "speedup": {
+          "expect": 1.4,
+          "low": 1.2,
+          "high": 1.7
+        }
+      },
+      "evidence_of_implementation": [],
+      "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+      "based_on": [],
+      "created": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

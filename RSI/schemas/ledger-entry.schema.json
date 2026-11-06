@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/ledger-entry.schema.json",
+  "title": "Experiment ledger entry",
+  "description": "Append-only. Every entry records the scaffold commit that was live, so any later gain can be attributed to a scaffold change.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["exp_id", "op", "hw_id", "env_fingerprint", "scaffold_commit", "parent", "hypothesis", "correctness", "verdict"],
+  "properties": {
+    "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+    "op": {"type": "string", "minLength": 1},
+    "hw_id": {"type": "string", "minLength": 1},
+    "env_fingerprint": {"type": "string", "minLength": 1},
+    "scaffold_commit": {"type": "string", "minLength": 1},
+    "parent": {"type": "string", "minLength": 1},
+    "created": {"type": "string"},
+    "signature": {"type": "object", "description": "Bottleneck signature before the experiment; see signature.schema.json."},
+    "hypothesis": {"type": "object", "description": "Full hypothesis card; see hypothesis.schema.json."},
+    "diff_ref": {"type": "string"},
+    "binary_ref": {"type": "string"},
+    "profile_ref": {"type": "string"},
+    "correctness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "failing_cases": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "timing_before": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "median_us": {"type": ["number", "null"]},
+        "ci_low_us": {"type": ["number", "null"]},
+        "ci_high_us": {"type": ["number", "null"]},
+        "samples": {"type": "integer"}
+      }
+    },
+    "timing_after": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "median_us": {"type": ["number", "null"]},
+        "ci_low_us": {"type": ["number", "null"]},
+        "ci_high_us": {"type": ["number", "null"]},
+        "samples": {"type": "integer"}
+      }
+    },
+    "counters_before": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "counters_after": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+    "verifier_notes": {"type": ["string", "object"]},
+    "speedup": {"type": ["number", "null"]},
+    "significant": {"type": ["boolean", "null"]},
+    "implausible": {"type": "boolean", "description": "Speedup above the review cap; excluded from evidence until a human reviews it."},
+    "promoted": {"type": "boolean"},
+    "prediction_error": {"type": ["number", "null"]},
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tokens": {"type": "integer", "minimum": 0},
+        "device_seconds": {"type": "number", "minimum": 0},
+        "implementation_retries": {"type": "integer", "minimum": 0}
+      }
+    },
+    "evaluator_signature": {"type": "string", "description": "Signature block of the evaluator result this entry was built from."},
+    "result_ref": {"type": "string"}
+  }
+}

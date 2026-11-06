@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/optimize-operator/input.schema.json",
+  "title": "optimize-operator input",
+  "description": "A request to start, resume or inspect one operator's campaign: the operator, the budget a human granted, and the stop condition. No kernel code and no hypothesis is supplied; the campaign produces both.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "mode"],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["start", "resume", "status"],
+      "description": "start opens a campaign after preflight, resume re-enters an open one, status reports without changing anything."
+    },
+    "campaign_id": {"type": "string"},
+    "op": {"type": "string", "minLength": 1},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "experiments": {"type": "integer", "minimum": 0, "description": "Experiments this campaign may spend; zero refuses the start."},
+        "device_seconds": {"type": "number", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "spent_experiments": {"type": "integer", "minimum": 0}
+      }
+    },
+    "target_attainment_pct": {"type": "number", "minimum": 0, "maximum": 100, "description": "The campaign's stop target; 85 is the plan's suggested starting value."},
+    "noise_threshold": {"type": "number", "minimum": 0, "description": "Measured A/A noise floor. Unknown is a preflight failure, not a zero."},
+    "baseline_exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+    "baseline_recorded": {"type": "boolean"},
+    "attainment_pct": {"type": ["number", "null"], "minimum": 0},
+    "last_round_gained": {"type": "boolean", "description": "Whether the most recent round cleared the noise floor; false plus five rounds triggers the stop."},
+    "no_hypothesis_above_noise": {"type": "boolean", "description": "Set by the orchestrator when no open route prices above the noise floor."},
+    "read_ledger": {"type": "boolean", "description": "False keeps the run pure over its input, which is how the regression cases replay without a ledger."}
+  }
+}

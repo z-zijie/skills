@@ -1,0 +1,24 @@
+{
+  "name": "a narrow-load baseline yields a plain instruction mix and a derived launch geometry",
+  "input": {
+    "disassembly_file": "skills/inspect-binary/tests/fixtures/baseline.dump.txt",
+    "work_group": 64,
+    "lane_count": 1048576
+  },
+  "expected": {
+    "status": "ok",
+    "adapter": "generic-text",
+    "instruction_total": 9,
+    "instruction_mix": {"branch": 1, "compute": 2, "load_narrow": 4, "store": 2},
+    "wide_loads": 0,
+    "barriers": 1,
+    "registers_per_lane": 32,
+    "scratchpad_bytes_per_workgroup": 0,
+    "spill_bytes": 0,
+    "work_groups": 16384,
+    "launch_source": "dump",
+    "missing": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a baseline dump whose loop reads one element per request: no wide load appears, so a claim of widening has something to be checked against"
+}

@@ -1,0 +1,37 @@
+{
+  "cards": [
+    {
+      "id": "H-0010",
+      "op": "vec_add",
+      "parent": "best@exp-0003",
+      "signature_tags": [
+        "mem_saturated",
+        "uncoalesced"
+      ],
+      "transformation": "bank_padding",
+      "mechanism": "Padding the scratchpad rows removes bank conflicts so the tiled scheme stops serialising.",
+      "predictions": {
+        "counters": [
+          {
+            "metric": "smem_bank_conflict_count",
+            "direction": "down"
+          }
+        ],
+        "speedup": {
+          "expect": 1.2,
+          "low": 1.08,
+          "high": 1.35
+        }
+      },
+      "evidence_of_implementation": [
+        "in the diff, the hot loop issues one wide load per lane instead of one narrow load per element",
+        "in the disassembly, the overweighted wide-load class rises while the narrow-load class falls"
+      ],
+      "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+      "based_on": [
+        "P-011"
+      ],
+      "created": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

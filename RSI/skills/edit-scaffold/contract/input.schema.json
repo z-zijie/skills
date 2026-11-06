@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/edit-scaffold/input.schema.json",
+  "title": "edit-scaffold input",
+  "description": "One failure cluster plus the single change proposed against it. Exactly one target file and one change block: two changes in one replay cannot be attributed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cluster", "change"],
+  "properties": {
+    "proposal_id": {"type": "string", "pattern": "^P-[0-9]+$"},
+    "cluster": {
+      "type": "object",
+      "description": "The cluster from analyze-failures this change targets. Quote its fields; do not re-cluster here.",
+      "additionalProperties": false,
+      "required": ["kind", "experiments"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["not_implemented", "large_prediction_error", "dead_end", "wrong_diagnosis",
+                   "unexplained_speedup", "correctness", "implausible"]
+        },
+        "count": {"type": "integer", "minimum": 1},
+        "summary": {"type": "string"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "experiments": {"type": "array", "minItems": 2, "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"}}
+      }
+    },
+    "target": {
+      "type": "string",
+      "description": "The one file the change touches: a playbook, a skill's strategy file, a pattern, a threshold file, or a tool script."
+    },
+    "change_kind": {
+      "type": "string",
+      "enum": ["playbook", "skill_strategy", "pattern", "threshold", "verifier_check", "script", "model_routing", "contract"],
+      "description": "Inferred from the target path when omitted; naming contract, evaluator, spec or tolerance is refused."
+    },
+    "change": {"type": "string", "minLength": 20, "description": "The proposed text or diff. The new wording, not a description of it."},
+    "title": {"type": "string"},
+    "expected_effect": {"type": "string"},
+    "what_did_not_change": {"type": "string"},
+    "tightens_only": {
+      "type": "boolean",
+      "description": "Required for a verifier check. A check that loosens needs a human, and the build plan allows tightening only."
+    },
+    "same_change_already_rolled_back": {
+      "type": "boolean",
+      "description": "True when the changelog records this exact change as rolled back; it is then refused rather than retried."
+    },
+    "offline_replay_possible": {
+      "type": "boolean",
+      "description": "True for diagnosis, retrieval and ranking changes, which can be screened against ledger history without device time."
+    },
+    "screen_operators": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string"},
+      "description": "The two or three cheap dev operators for stage-one screening."
+    },
+    "full_operators": {"type": "array", "items": {"type": "string"}},
+    "experiments_per_operator": {"type": "integer", "minimum": 1},
+    "repeats": {"type": "integer", "minimum": 3},
+    "base_commit": {"type": "string"},
+    "playbook": {"type": "string", "description": "Playbook name to default the target to, when the cluster's tags name one."}
+  }
+}

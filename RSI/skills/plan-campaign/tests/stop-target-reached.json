@@ -1,0 +1,63 @@
+{
+  "name": "stop-target-reached",
+  "note": "attainment is already at target, so a further experiment cannot pay for itself",
+  "script": "scripts/decide.py",
+  "input": {
+    "op": "vec_add",
+    "noise_threshold": 0.04,
+    "target_attainment_pct": 85,
+    "attainment_pct": 88.2,
+    "budget": {
+      "experiments": 10,
+      "spent_experiments": 3
+    },
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.44,
+        "prediction_error": 0.04,
+        "parent": "baseline",
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "scope_of_change": "load width only"
+        }
+      }
+    ],
+    "open_routes": [
+      {
+        "transformation": "aos_to_soa",
+        "predicted_speedup": 1.1
+      }
+    ]
+  },
+  "expected": {
+    "action": "stop",
+    "attainment_pct": 88.2,
+    "budget": {
+      "experiments": 10,
+      "remaining": 7,
+      "spent_experiments": 3
+    },
+    "evidence": [
+      "exp-0001"
+    ],
+    "needs_algorithm_rewrite": false,
+    "next": {
+      "combine": [],
+      "parent": null,
+      "predicted_speedup": null,
+      "rediagnose_first": false,
+      "transformation": null
+    },
+    "op": "vec_add",
+    "prediction_error_watch": [],
+    "reason": "attainment 88.2% has reached the 85.0% target",
+    "routes_above_noise": 1,
+    "stop_reason": "target_reached",
+    "streak_without_gain": 0,
+    "target_attainment_pct": 85.0
+  }
+}

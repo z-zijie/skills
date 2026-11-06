@@ -1,0 +1,59 @@
+{
+  "name": "wrong-diagnosis-when-mechanism-lands-and-nothing-moves",
+  "note": "confirmed mechanism with no gain says the signature is wrong, not the transformation",
+  "script": "scripts/cluster.py",
+  "input": {
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": false,
+        "speedup": 1.01,
+        "prediction_error": 0.12,
+        "hypothesis": {
+          "transformation": "unroll_loop",
+          "signature_tags": [
+            "mem_saturated"
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "clusters": [
+      {
+        "count": 1,
+        "experiments": [
+          "exp-0001"
+        ],
+        "kind": "wrong_diagnosis",
+        "share": 1.0,
+        "summary": "1 confirmed mechanism(s) with no gain: unroll_loop",
+        "tags": [
+          "mem_saturated"
+        ],
+        "transformations": [
+          "unroll_loop"
+        ]
+      }
+    ],
+    "entries_seen": 1,
+    "notes": [
+      "confirmed mechanisms that did not speed the kernel point at the signature, so check signature thresholds before adding rules"
+    ],
+    "op": "vec_add",
+    "prediction_error_hole": 0.2,
+    "rates": {
+      "confirmation_rate": 1.0,
+      "dead_end_transformations": [],
+      "mean_prediction_error": 0.12,
+      "not_implemented_rate": 0.0
+    },
+    "rounds_seen": 1,
+    "top_cluster": "wrong_diagnosis",
+    "unattributed": []
+  }
+}

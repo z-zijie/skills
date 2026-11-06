@@ -1,0 +1,20 @@
+{
+  "name": "confirmed: the named counter moved in the predicted direction by more than its jitter",
+  "input": {
+    "card": {
+      "id": "H-0001",
+      "predictions": {
+        "counters": [
+          {"metric": "sectors_per_request", "direction": "down", "expect": "<= 1.5"},
+          {"metric": "device_mem_throughput_pct", "direction": "up"}
+        ],
+        "speedup": {"expect": 1.25, "low": 1.1, "high": 1.45}
+      }
+    },
+    "before": {"sectors_per_request": 3.8, "device_mem_throughput_pct": 87.0},
+    "after": {"sectors_per_request": 1.2, "device_mem_throughput_pct": 94.0},
+    "measured": {"counter_variation": {"sectors_per_request": {"rel": 0.05}, "device_mem_throughput_pct": {"rel": 0.03}}}
+  },
+  "script": "scripts/compare_counters_case.py",
+  "expected": {"C": "pass"}
+}

@@ -1,0 +1,25 @@
+{
+  "op": "vec_add",
+  "hw_id": "accel-a",
+  "class": "memory_bound",
+  "tags": [
+    "mem_saturated",
+    "uncoalesced",
+    "memory_stall_high"
+  ],
+  "metrics": {
+    "device_mem_throughput_pct": 87.0,
+    "compute_throughput_pct": 31.0,
+    "occupancy_pct": 62.0,
+    "sectors_per_request": 3.8,
+    "stall_memory": 0.58
+  },
+  "roofline": {
+    "bound_us": 212.0,
+    "measured_us": 388.0,
+    "attained_pct": 54.6,
+    "limiting_term": "device_mem"
+  },
+  "primary_bottleneck": "mem-cache-miss",
+  "notes": ""
+}

@@ -1,0 +1,69 @@
+{
+  "name": "one-experiment-cluster-is-refused",
+  "note": "one bad round is noise, so a single-experiment cluster cannot justify a scaffold change",
+  "script": "scripts/propose.py",
+  "input": {
+    "proposal_id": "P-26",
+    "cluster": {
+      "kind": "dead_end",
+      "count": 1,
+      "tags": [
+        "mem_saturated"
+      ],
+      "experiments": [
+        "exp-0301"
+      ]
+    },
+    "target": "playbooks/mem-dram-saturated.md",
+    "change": "Move fewer_registers below wide loads in the try order for this signature."
+  },
+  "expected": {
+    "branch": {
+      "base": "HEAD",
+      "commit_message": "Target dead_end in playbooks/mem-dram-saturated.md\n\nCluster: dead_end (1 experiments)\nProposal: P-26\nGate: replay_dev_holdout\n",
+      "files_changed": [
+        "playbooks/mem-dram-saturated.md"
+      ],
+      "name": "scaffold/P-26-playbooks-mem-dram-saturated-md"
+    },
+    "change_note": {
+      "expected_effect": "the targeted cluster shrinks without a secondary metric regressing",
+      "one_change": true,
+      "revert": "git revert the merge of P-26; the branch touches one file",
+      "what_changed": "Move fewer_registers below wide loads in the try order for this signature.",
+      "what_did_not_change": "nothing outside playbooks/mem-dram-saturated.md",
+      "why_this_cluster": "Failure cluster dead_end (1 experiments, tags mem_saturated):  This change targets it in playbooks/mem-dram-saturated.md."
+    },
+    "proposal": {
+      "author": "edit-scaffold",
+      "diff": "Move fewer_registers below wide loads in the try order for this signature.",
+      "evidence": [
+        "exp-0301"
+      ],
+      "gate": "replay_dev_holdout",
+      "id": "P-26",
+      "kind": "playbook",
+      "rationale": "Failure cluster dead_end (1 experiments, tags mem_saturated):  This change targets it in playbooks/mem-dram-saturated.md.",
+      "status": "rejected",
+      "target": "playbooks/mem-dram-saturated.md",
+      "title": "Target dead_end in playbooks/mem-dram-saturated.md"
+    },
+    "ready_for_replay": false,
+    "refusals": [
+      "cluster has fewer than two experiments: not a pattern yet"
+    ],
+    "replay": {
+      "decision_rule": "merge when the primary metric improves on dev with a confidence interval that excludes zero, holdout does not regress, and no secondary metric gets clearly worse",
+      "experiments_per_operator": 10,
+      "from_checkpoint": true,
+      "gate": "replay_dev_holdout",
+      "holdout_visible_to": "replay_judge",
+      "repeats": 3,
+      "screening": "two_stage_screen",
+      "stage_1_offline_ledger": false,
+      "stage_1_operators": [],
+      "stage_2_operators": []
+    },
+    "target_kind": "playbook"
+  }
+}

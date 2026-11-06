@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/inspect-binary/input.schema.json",
+  "title": "inspect-binary input",
+  "description": "A compiled artefact and the means to disassemble it. The toolchain arrives as an adapter file, never as a hardcoded command.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact"],
+  "properties": {
+    "artifact": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Compiled object, library or executable produced by the build."
+    },
+    "disassembly_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A saved text dump. When present the adapter's disassembly command is not run."
+    },
+    "adapter_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Device adapter declaring the disassembly command and the symbol patterns. Defaults to the shipped generic-text adapter."
+    },
+    "op": {"type": "string", "minLength": 1},
+    "hw_id": {"type": "string", "minLength": 1},
+    "variant": {
+      "type": "string",
+      "enum": ["before", "after"],
+      "description": "Which side of a change this summary describes; the verifier compares the two."
+    },
+    "work_group": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Work-group size the kernel was launched with, in work lanes."
+    },
+    "lane_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Problem size in work lanes, used to derive the launch geometry."
+    },
+    "scratchpad_capacity_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional device limit, so a summary can note that a work-group nearly fills it."
+    },
+    "root": {"type": "string", "minLength": 1}
+  }
+}

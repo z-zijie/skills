@@ -1,0 +1,76 @@
+name: RSI checks
+
+# The scaffold is only worth what its contracts are worth, so the contracts are checked on every
+# change. Nothing here needs an accelerator: the whole point of the reference backend is that the
+# machinery is verifiable before a device is involved.
+
+on:
+  push:
+    paths:
+      - "RSI/**"
+      - ".github/workflows/rsi-checks.yml"
+  pull_request:
+    paths:
+      - "RSI/**"
+      - ".github/workflows/rsi-checks.yml"
+
+jobs:
+  checks:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-latest is Ubuntu 26.04, where setup-python has no 3.9 build. The framework claims
+        # 3.9 compatibility because that is what the target machines run, so the floor is checked
+        # on a runner image that still provides it, and the current version on the default image.
+        include:
+          - python-version: "3.9"
+            os: ubuntu-24.04
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Every contract, statistic and state transition
+        working-directory: RSI
+        run: python3 tests/run_all.py
+
+      - name: Every skill's own regression cases
+        working-directory: RSI
+        run: |
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "tooling")
+          from rsi import skills
+
+          problems = []
+          for path in skills.discover():
+              report = skills.replay_tests(path.name)
+              if report["failed"]:
+                  problems.append(f"{path.name}: {report['failed']}")
+          if problems:
+              print("\n".join(problems))
+              raise SystemExit(1)
+          print("skill regression cases pass")
+          PY
+
+      - name: The documented layer has no unsourced entry
+        working-directory: RSI
+        run: python3 skills/ingest-docs/scripts/index_documented.py --check
+
+      - name: The knowledge base is internally consistent
+        working-directory: RSI
+        run: python3 tools/rsi-cli kb-audit
+
+      - name: The evaluator still catches every deliberately cheating kernel
+        working-directory: RSI
+        run: python3 tools/rsi-cli redteam --op vec_add
+
+      - name: The whole loop runs on the reference backend
+        working-directory: RSI
+        run: python3 tools/demo.py --no-tests

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/analyze-failures/input.schema.json",
+  "title": "analyze-failures input",
+  "description": "The ledger slice to cluster. An entry is the subset of schemas/ledger-entry.schema.json the clustering reads; the shape is inlined because contracts may not reference another file. A campaign report usually supplies one operator, a periodic run supplies several.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "op": {"type": "string", "description": "Restricts the run to one operator. Omit to cluster the whole window."},
+    "entries": {
+      "type": "array",
+      "description": "Ledger entries, oldest first. Read-only: this skill appends nothing.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exp_id", "verdict"],
+        "properties": {
+          "exp_id": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+          "op": {"type": "string", "minLength": 1},
+          "verdict": {"type": "string", "enum": ["confirmed", "refuted", "not_implemented"]},
+          "significant": {"type": ["boolean", "null"]},
+          "speedup": {"type": ["number", "null"]},
+          "prediction_error": {"type": ["number", "null"], "minimum": 0},
+          "implausible": {"type": "boolean"},
+          "correctness": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "passed": {"type": "boolean"},
+              "failing_cases": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "signature": {
+            "type": "object",
+            "properties": {"tags": {"type": "array", "items": {"type": "string"}}}
+          },
+          "hypothesis": {
+            "type": "object",
+            "properties": {
+              "transformation": {"type": "string", "minLength": 1},
+              "signature_tags": {"type": "array", "items": {"type": "string"}},
+              "mechanism": {"type": "string"}
+            }
+          },
+          "verifier_notes": {"type": ["string", "object"]}
+        }
+      }
+    },
+    "prediction_error_hole": {
+      "type": "number",
+      "minimum": 0,
+      "description": "|log measured/predicted| above which the hardware model has a hole; defaults to the shared value in tooling/rsi/knowledge.py."
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "since_exp": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+        "operators": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "name": "no-hole-means-no-measurement",
+  "note": "a model that predicted well is not wrong, so a new measurement is refused",
+  "script": "scripts/design.py",
+  "input": {
+    "proposal_id": "P-42",
+    "mechanism": "scratchpad bank conflicts follow the stride modulo the bank count",
+    "metric": "scratchpad_conflict_ratio",
+    "parameter": "conflict ratio versus stride",
+    "prediction_errors": [
+      {
+        "exp_id": "exp-0201",
+        "prediction_error": 0.04
+      }
+    ]
+  },
+  "expected": {
+    "design": {
+      "counters_observed": [
+        "scratchpad_conflict_ratio"
+      ],
+      "environment_fingerprint_required": true,
+      "expiry": "re-measure after a driver, runtime or compiler change; results carry a date",
+      "extends_suite_item": "bank_conflicts",
+      "fallback_if_rejected": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "is_new_item": false,
+      "isolates": "one mechanism at a time",
+      "mechanism": "scratchpad bank conflicts follow the stride modulo the bank count",
+      "produces": {
+        "parameter": "conflict ratio versus stride",
+        "unit": "",
+        "used_by": "the roofline term and the prediction range"
+      },
+      "repeats": 3,
+      "sweep": {
+        "values": [],
+        "variable": "the one dimension the mechanism depends on"
+      },
+      "would_settle": "whether the mechanism's effect is as large as the model assumes"
+    },
+    "human_decision": {
+      "on_approval": "the code lands through the evaluator's owner, then calibrate-hardware runs it",
+      "on_rejection": "keep the prediction range on the affected rules wide and put them under review, which is honest but keeps the hole open",
+      "question": "Add this microbenchmark to the frozen evaluator suite?",
+      "why_human": "microbenchmark code is Layer 0: agents read its results and never edit it"
+    },
+    "problems": [
+      "no prediction error exceeds the hole threshold 0.2: the model is not wrong here, so a new measurement is not justified"
+    ],
+    "proposal": {
+      "author": "design-microbench",
+      "evidence": [],
+      "gate": "human_only",
+      "id": "P-42",
+      "kind": "microbench",
+      "rationale": "0 experiment(s) missed their predicted speedup by more than 0.2: . The hardware model has a hole around scratchpad bank conflicts follow the stride modulo the bank count.",
+      "status": "needs_human",
+      "target": "evaluator/microbench/suite.py",
+      "title": "Microbenchmark: scratchpad bank conflicts follow the stride modulo the bank "
+    },
+    "ready_for_human": false
+  }
+}

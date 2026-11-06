@@ -1,0 +1,25 @@
+# Pattern: trade instruction count for fewer loop-control instructions.
+id: P-009
+name: loop-unrolling
+statement: >
+  When the trip count is known and the loop body is short, unrolling by a small factor that
+  divides the trip count lowers the per-element share of loop-control instructions and exposes
+  independent work to the scheduler, lowering instruction_count per element.
+mechanism: >
+  Each iteration pays index arithmetic, a compare and a branch that do no useful work. Replicating
+  the body k times amortises that overhead over k elements and, more importantly, gives the
+  scheduler k independent chains to interleave, which is what fills the gap when a single chain
+  stalls on a memory result. Past the point where the replicated body exceeds the register budget
+  the scheduler starts spilling and the gain reverses.
+expected_counters: [instruction_count, registers_per_lane, stall_memory]
+implementation_traps:
+  - Unrolling a loop the compiler had already unrolled, so the emitted code is identical.
+  - An unroll factor that does not divide the trip count and a remainder path that runs the
+    original loop, which can make the common shape slower.
+  - Unrolling until registers per lane cross the pressure threshold, which lowers residency and
+    can cost more than the loop control saved.
+  - Unrolling only the outermost loop, whose body already dominates the control cost.
+scope_tags: [compute_saturated, memory_stall_high]
+scope:
+  tags_any: [compute_saturated, memory_stall_high]
+  classes: [compute_bound, latency_bound]

@@ -1,0 +1,26 @@
+# Pattern: keep the hot loop in the precision the operator asked for.
+id: P-008
+name: avoid-implicit-double-precision
+statement: >
+  When a kernel written for a narrow dtype promotes intermediates to a wider one through
+  literals, helper calls or transcendental functions, forcing the intermediates back to the
+  operator's dtype lowers instruction_count and raises compute_throughput_pct, provided the
+  tolerance still holds.
+mechanism: >
+  A wider dtype processes fewer elements per instruction, occupies twice the register space per
+  value and can route to a slower pipe. An implicit promotion therefore silently doubles the
+  work per element and halves residency at the same time. Removing the promotion puts the loop
+  back on the pipe whose measured peak the roofline used, which is also the only way attainment
+  against that peak is a meaningful number.
+expected_counters: [instruction_count, compute_throughput_pct, registers_per_lane]
+implementation_traps:
+  - Casting only the final store, leaving every intermediate computation promoted.
+  - Removing the promotion where the operator's tolerance was measured with it, so the kernel is
+    faster and no longer correct at the required precision.
+  - A transcendental call that promotes internally regardless of the argument type, so the
+    disassembly is unchanged.
+  - Changing the accumulator only while the per-element multiply still runs wide.
+scope_tags: [compute_saturated, register_pressure]
+scope:
+  tags_any: [compute_saturated, register_pressure]
+  classes: [compute_bound, mixed]

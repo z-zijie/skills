@@ -1,0 +1,50 @@
+# Model routing for every skill. Tiers are roles, not products: a deployment maps
+# strong/mid/cheap to whatever models it runs, and swapping one is a scaffold change.
+#
+# Starting point only. Calibrate the IMPLEMENTER's tier with the not-implemented rate and
+# upgrade it first when that rate stays high: the coordination model made little difference in
+# the published ablations, while the executor's capability mattered more.
+#
+# Editing this file is a scaffold change: replay it like any other, and get human approval
+# because it changes cost directly.
+
+tiers:
+  strong:
+    description: judgement, hypothesis generation, mechanism verification, distillation
+  mid:
+    description: documentation ingestion, auditing, correction capture
+  cheap:
+    description: code editing and retrieval, where a wrong answer is cheap and visible
+  script:
+    description: deterministic code; no model is involved at all
+
+# Minimum implementer quality signal. A rate at or above this means the implementer tier
+# should rise before anything else is changed.
+implementer_upgrade_threshold: 0.30
+
+skills:
+  orchestrate-campaign: {tier: script}
+  run-evaluator:        {tier: script}
+  collect-profile:      {tier: script}
+  record-experiment:    {tier: script}
+  inspect-binary:       {tier: script}
+  calibrate-hardware:   {tier: script}
+  replay-benchmark:     {tier: script}
+
+  diagnose-bottleneck:  {tier: mid, fallback: strong}
+  retrieve-knowledge:   {tier: cheap}
+  propose-hypothesis:   {tier: strong, retries: 1}
+  implement-change:     {tier: cheap, retries: 2}
+  verify-mechanism:     {tier: strong, isolated_context: true}
+  plan-campaign:        {tier: strong}
+
+  distill-rules:        {tier: strong}
+  analyze-failures:     {tier: strong}
+  audit-knowledge:      {tier: mid}
+  edit-scaffold:        {tier: strong}
+  design-microbench:    {tier: strong, requires_approval: true}
+  capture-correction:   {tier: mid}
+  register-conjecture:  {tier: mid}
+  report-campaign:      {tier: cheap}
+  ingest-docs:          {tier: mid}
+  optimize-operator:    {tier: mid}

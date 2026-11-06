@@ -1,0 +1,13 @@
+{
+  "name": "an evaluator result with no signature block is refused and nothing is written",
+  "input": {"result_file": "skills/record-experiment/tests/fixtures/result_unsigned.json"},
+  "expected": {
+    "status": "refused_unsigned",
+    "problem_kinds": ["signature"],
+    "ledger_lines": 0,
+    "archived_count": 0,
+    "exp_id": null
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a hand-written result file: schema-valid, correctly shaped, and refused because it cannot be proven to come from the evaluator"
+}

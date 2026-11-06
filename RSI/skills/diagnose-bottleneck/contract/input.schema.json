@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/diagnose-bottleneck/input.schema.json",
+  "title": "diagnose-bottleneck input",
+  "description": "A normalized profile, a timing number and the operator's cost model. Thresholds come from the measured layer for this hardware id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "op",
+    "profile"
+  ],
+  "properties": {
+    "op": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hw_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "type": "object",
+      "description": "schemas/profile.schema.json.",
+      "required": [
+        "metrics",
+        "unavailable"
+      ],
+      "properties": {
+        "op": {
+          "type": "string"
+        },
+        "candidate": {
+          "type": "string"
+        },
+        "hw_id": {
+          "type": "string"
+        },
+        "env_fingerprint": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "transaction_granularity_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "unavailable": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "raw_report": {
+          "type": "string"
+        }
+      }
+    },
+    "profile_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "measured_us": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Candidate time for the shape below, from the evaluator's timing run."
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "Case the timing refers to; defaults to the spec's first typical shape."
+    },
+    "dtype": {
+      "type": "string",
+      "description": "Defaults to the spec's first dtype."
+    },
+    "spec": {
+      "type": "object",
+      "description": "schemas/operator-spec.schema.json."
+    },
+    "spec_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "Threshold block for this hardware id; defaults to kb/hardware/measured/<hw_id>.yaml."
+    },
+    "thresholds_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extra_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Structural tags that no counter produces, e.g. plateau, decided by the campaign state."
+    },
+    "notes": {
+      "type": "string"
+    },
+    "measured_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Pin the measured hardware parameters to a file instead of kb/hardware/measured/<hw_id>.yaml; used when a campaign is replayed against the calibration snapshot it ran under."
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "name": "contract-edit-is-refused",
+  "note": "a contract change is human-only, so the proposal is rejected instead of sent to replay",
+  "script": "scripts/propose.py",
+  "input": {
+    "proposal_id": "P-22",
+    "cluster": {
+      "kind": "not_implemented",
+      "count": 4,
+      "summary": "pad_scratchpad never reached the machine code on 4 attempts",
+      "tags": [
+        "scratchpad_conflict"
+      ],
+      "experiments": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ]
+    },
+    "target": "skills/verify-mechanism/contract/input.schema.json",
+    "change": "Allow the verifier to see the sealed timing result."
+  },
+  "expected": {
+    "branch": {
+      "base": "HEAD",
+      "commit_message": "Target not_implemented in skills/verify-mechanism/contract/input.schema.json\n\nCluster: not_implemented (4 experiments)\nProposal: P-22\nGate: human_only\n",
+      "files_changed": [
+        "skills/verify-mechanism/contract/input.schema.json"
+      ],
+      "name": "scaffold/P-22-skills-verify-mechanism-contract-input-schema-json"
+    },
+    "change_note": {
+      "expected_effect": "the targeted cluster shrinks without a secondary metric regressing",
+      "one_change": true,
+      "revert": "git revert the merge of P-22; the branch touches one file",
+      "what_changed": "Allow the verifier to see the sealed timing result.",
+      "what_did_not_change": "nothing outside skills/verify-mechanism/contract/input.schema.json",
+      "why_this_cluster": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in skills/verify-mechanism/contract/input.schema.json."
+    },
+    "proposal": {
+      "author": "edit-scaffold",
+      "diff": "Allow the verifier to see the sealed timing result.",
+      "evidence": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ],
+      "gate": "human_only",
+      "id": "P-22",
+      "kind": "skill_strategy",
+      "rationale": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in skills/verify-mechanism/contract/input.schema.json.",
+      "status": "rejected",
+      "target": "skills/verify-mechanism/contract/input.schema.json",
+      "title": "Target not_implemented in skills/verify-mechanism/contract/input.schema.json"
+    },
+    "ready_for_replay": false,
+    "refusals": [
+      "contract is human-only: the outer loop may not propose it",
+      "skills/verify-mechanism/contract/input.schema.json is outside the outer loop's write boundary"
+    ],
+    "replay": {
+      "decision_rule": "merge when the primary metric improves on dev with a confidence interval that excludes zero, holdout does not regress, and no secondary metric gets clearly worse",
+      "experiments_per_operator": 10,
+      "from_checkpoint": true,
+      "gate": "human_only",
+      "holdout_visible_to": "replay_judge",
+      "repeats": 3,
+      "screening": "two_stage_screen",
+      "stage_1_offline_ledger": false,
+      "stage_1_operators": [],
+      "stage_2_operators": []
+    },
+    "target_kind": "contract"
+  }
+}

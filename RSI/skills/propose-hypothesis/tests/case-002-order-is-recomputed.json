@@ -1,0 +1,23 @@
+{
+  "name": "the same cards supplied in reverse come back in the same order, so ranking is not the input order",
+  "input": {
+    "cards_file": "skills/propose-hypothesis/tests/fixtures/cards_out_of_order.json",
+    "noise_threshold": 1.03
+  },
+  "expected": {
+    "status": "ok",
+    "card_ids": [
+      "H-0001",
+      "H-0002",
+      "H-0003"
+    ],
+    "priorities": [
+      1,
+      2,
+      3
+    ],
+    "card_count": 3
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from the same three cards presented lowest-payoff first: a deterministic ranking is what lets a replay compare two scaffolds on the same proposals"
+}

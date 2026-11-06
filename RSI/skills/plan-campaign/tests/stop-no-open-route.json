@@ -1,0 +1,76 @@
+{
+  "name": "stop-no-open-route",
+  "note": "every open route predicts a speedup inside the noise band, so the playbook is exhausted",
+  "script": "scripts/decide.py",
+  "input": {
+    "op": "vec_add",
+    "noise_threshold": 0.04,
+    "target_attainment_pct": 85,
+    "attainment_pct": 58.0,
+    "budget": {
+      "experiments": 10,
+      "spent_experiments": 4
+    },
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.2,
+        "prediction_error": 0.06,
+        "parent": "baseline",
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "scope_of_change": "load width only"
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "prediction_error": 0.11,
+        "parent": "best@exp-0001",
+        "hypothesis": {
+          "transformation": "pad_scratchpad",
+          "scope_of_change": "scratchpad padding only"
+        }
+      }
+    ],
+    "open_routes": [
+      {
+        "transformation": "aos_to_soa",
+        "predicted_speedup": 1.01
+      }
+    ]
+  },
+  "expected": {
+    "action": "stop",
+    "attainment_pct": 58.0,
+    "budget": {
+      "experiments": 10,
+      "remaining": 6,
+      "spent_experiments": 4
+    },
+    "evidence": [
+      "exp-0002"
+    ],
+    "needs_algorithm_rewrite": true,
+    "next": {
+      "combine": [],
+      "parent": null,
+      "predicted_speedup": null,
+      "rediagnose_first": false,
+      "transformation": null
+    },
+    "op": "vec_add",
+    "prediction_error_watch": [],
+    "reason": "no open route predicts a speedup above the noise floor; the remaining gap is not addressable by the current playbook",
+    "routes_above_noise": 0,
+    "stop_reason": "no_open_route",
+    "streak_without_gain": 1,
+    "target_attainment_pct": 85.0
+  }
+}

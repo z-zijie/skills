@@ -1,0 +1,17 @@
+# Knowledge-base or scaffold proposal template.
+#
+# Nothing enters kb/rules, kb/patterns, kb/antipatterns, skills/ or playbooks/ except through a
+# proposal and a gate. The gate is decided by the kind, not by the proposer's confidence.
+id: P-<number>
+kind: <rule|pattern|antipattern|playbook|skill_strategy|threshold|verifier_check|microbench|model_routing|contract>
+title: <one line>
+rationale: >
+  Why this change, and what failure it addresses. A proposal that does not name the failure it
+  targets is a preference, not an improvement.
+target: <path or store this would change>
+diff: |
+  <the change, if it is small enough to inline>
+evidence: [<exp ids>, <replay report id>]
+gate: <human_only|replay_dev_holdout|tighten_only_replay|offline_ledger_replay|unit_tests_plus_replay|mechanical>
+status: draft
+author: <skill or role that produced it>

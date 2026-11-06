@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/capture-correction/output.schema.json",
+  "title": "capture-correction output",
+  "description": "The proposal the correction becomes, the replay that judged a new check, and the reasons any part was refused. The proposal matches schemas/proposal.schema.json (shape inlined).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["proposal", "classification", "problems", "ready"],
+  "properties": {
+    "classification": {
+      "type": "string",
+      "enum": ["verifier_check", "antipattern", "playbook", "evaluator_loophole"]
+    },
+    "proposal": {
+      "type": "object",
+      "description": "A proposal as defined by schemas/proposal.schema.json.",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "rationale", "target", "status", "gate"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^P-[0-9]+$"},
+        "kind": {"type": "string", "enum": ["rule", "pattern", "antipattern", "playbook", "skill_strategy", "threshold", "verifier_check", "microbench", "model_routing", "contract"]},
+        "title": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 20},
+        "target": {"type": "string", "minLength": 1},
+        "evidence": {"type": "array", "items": {"type": "string"}},
+        "status": {"type": "string", "enum": ["draft", "replay_pending", "merged", "rolled_back", "rejected", "needs_human"]},
+        "gate": {"type": "string", "enum": ["human_only", "replay_dev_holdout", "tighten_only_replay", "offline_ledger_replay", "unit_tests_plus_replay", "mechanical"]},
+        "author": {"type": "string"}
+      }
+    },
+    "replay": {
+      "type": ["object", "null"],
+      "description": "Present for a verifier check: what the check caught, what it wrongly flagged, and whether it passed.",
+      "additionalProperties": false,
+      "properties": {
+        "caught": {"type": "array", "items": {"type": "string"}},
+        "flagged_rightly_confirmed": {"type": "array", "items": {"type": "string"}},
+        "could_not_evaluate": {"type": "array", "items": {"type": "string"}},
+        "missed_expected": {"type": "array", "items": {"type": "string"}},
+        "passes": {"type": "boolean"}
+      }
+    },
+    "check": {
+      "type": ["object", "null"],
+      "description": "The check card that would be added to the verifier, when the correction was accepted as one.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "predicate": {"type": "string"},
+        "metric": {"type": ["string", "null"]},
+        "band": {"type": ["number", "null"]},
+        "direction": {"type": ["string", "null"]},
+        "contains": {"type": ["string", "null"]},
+        "field": {"type": ["string", "null"]},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "statement": {"type": "string"},
+        "from_experiment": {"type": "string"},
+        "kind": {"type": "string"}
+      }
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "ready": {"type": "boolean"},
+    "goal": {"type": "string", "description": "The workflow's objective, carried so the report can restate it."}
+  }
+}

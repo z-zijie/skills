@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/diagnose-bottleneck/output.schema.json",
+  "title": "diagnose-bottleneck output",
+  "description": "The bottleneck signature plus what the diagnosis rested on. `signature` is the object schemas/signature.schema.json defines; its shape is inlined because contracts may not reference another file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "signature", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "provisional", "unavailable", "schema_invalid"],
+      "description": "provisional means the signature rests on attainment and structural tags because the utilization counters were unavailable."
+    },
+    "signature": {
+      "type": ["object", "null"],
+      "required": ["op", "hw_id", "class", "tags", "metrics", "roofline"],
+      "properties": {
+        "op": {"type": "string", "minLength": 1},
+        "hw_id": {"type": "string", "minLength": 1},
+        "env_fingerprint": {"type": "string"},
+        "class": {"type": "string", "enum": ["memory_bound", "compute_bound", "latency_bound", "mixed"]},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "metrics": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "roofline": {
+          "type": "object",
+          "required": ["bound_us", "measured_us", "attained_pct"],
+          "properties": {
+            "bound_us": {"type": "number", "exclusiveMinimum": 0},
+            "measured_us": {"type": "number", "exclusiveMinimum": 0},
+            "attained_pct": {"type": "number", "minimum": 0},
+            "limiting_term": {"type": "string", "enum": ["device_mem", "compute", "launch"]},
+            "assumptions": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "primary_bottleneck": {"type": "string", "minLength": 1},
+        "notes": {"type": "string"}
+      }
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "items": {"type": "string"}},
+    "based_on": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metrics_used": {"type": "array", "items": {"type": "string"}},
+        "metrics_missing": {"type": "array", "items": {"type": "string"}},
+        "thresholds_source": {"type": "string"},
+        "limiting_term": {"type": "string"}
+      }
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attained_pct": {"type": "number"},
+        "target_pct": {"type": "number"},
+        "gap_points": {"type": "number"},
+        "at_target": {"type": "boolean"}
+      }
+    }
+  }
+}

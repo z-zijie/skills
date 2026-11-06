@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/calibrate-hardware/output.schema.json",
+  "title": "calibrate-hardware output",
+  "description": "The merged measured parameters, what moved, and the thresholds derived from them. Every entry carries the environment fingerprint and date that produced it, because a measured parameter expires.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "hw_id", "measured", "moved", "thresholds", "skipped", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "dry_run", "unavailable", "schema_invalid"]
+    },
+    "hw_id": {"type": ["string", "null"]},
+    "measured": {
+      "type": ["object", "null"],
+      "description": "The merged kb/hardware/measured/<hw_id>.yaml document.",
+      "properties": {
+        "hw_id": {"type": "string"},
+        "hw_class": {"type": "string"},
+        "env_fingerprint": {"type": "string", "minLength": 1},
+        "measured_at": {"type": "string", "minLength": 1},
+        "calibration_suite": {"type": "string"},
+        "peak_bandwidth_gbps": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "peak_flops": {"type": ["object", "null"], "additionalProperties": {"type": ["number", "null"]}},
+        "noise_floor": {
+          "type": ["object", "null"],
+          "properties": {
+            "threshold": {"type": ["number", "null"], "minimum": 1},
+            "relative_spread": {"type": ["number", "null"], "minimum": 0},
+            "measured_at": {"type": "string"}
+          }
+        },
+        "launch": {
+          "type": ["object", "null"],
+          "properties": {"overhead_us": {"type": ["number", "null"], "minimum": 0}}
+        },
+        "thresholds": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "under_review": {"type": "boolean"},
+        "under_review_reason": {"type": "string"},
+        "history": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "moved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["parameter", "before", "after"],
+        "properties": {
+          "parameter": {"type": "string"},
+          "before": {"type": ["number", "null"]},
+          "after": {"type": ["number", "null"]},
+          "relative_change": {"type": "number", "minimum": 0},
+          "threshold": {"type": "number", "minimum": 0}
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": {"type": "number"},
+      "description": "Signature thresholds for this hardware id, derived from the measured curves."
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "reason"],
+        "properties": {
+          "name": {"type": "string"},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "items": {"type": "string"}},
+    "report_ref": {"type": "string"}
+  }
+}

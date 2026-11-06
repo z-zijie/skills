@@ -1,0 +1,6 @@
+# Operators the outer loop can see. One per line. A human decides what goes here (W1).
+#
+# The holdout split lives in holdout.txt, which no agent may read; it is only visible to the
+# replay judge. Rotate the holdout set regularly — every ten merges is a reasonable start — and
+# fold retired operators into this file.
+vec_add

@@ -1,0 +1,155 @@
+{
+  "name": "no-check-is-anti-pattern",
+  "note": "a refuted mechanism with no verifier angle is filed as an anti-pattern under the mechanical gate",
+  "script": "scripts/capture.py",
+  "input": {
+    "proposal_id": "P-34",
+    "experiment_id": "exp-0133",
+    "correction_note": "Under a cache-bound signature this transformation was refuted; it should be filed as an anti-pattern rather than retried.",
+    "classification": "antipattern",
+    "check": {},
+    "ledger": [
+      {
+        "exp_id": "exp-0098",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.22,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.8
+        },
+        "counters_after": {
+          "sectors_per_request": 1.1
+        }
+      },
+      {
+        "exp_id": "exp-0121",
+        "op": "layernorm_fwd",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.2
+        },
+        "counters_after": {
+          "sectors_per_request": 1.2
+        }
+      },
+      {
+        "exp_id": "exp-0133",
+        "op": "layernorm_fwd",
+        "verdict": "refuted",
+        "significant": false,
+        "speedup": 1.0,
+        "hypothesis": {
+          "transformation": "aos_to_soa",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "hot loop indexes fields separately"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 1.2
+        },
+        "counters_after": {
+          "sectors_per_request": 1.19
+        }
+      },
+      {
+        "exp_id": "exp-0142",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.31,
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "signature_tags": [
+            "uncoalesced"
+          ],
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          },
+          "evidence_of_implementation": [
+            "loads are wider in the disassembly"
+          ]
+        },
+        "counters_before": {
+          "sectors_per_request": 3.8
+        },
+        "counters_after": {
+          "sectors_per_request": 3.79
+        }
+      }
+    ]
+  },
+  "expected": {
+    "check": null,
+    "classification": "antipattern",
+    "goal": "each kind of human correction is needed only once",
+    "problems": [],
+    "proposal": {
+      "author": "capture-correction",
+      "evidence": [
+        "exp-0133"
+      ],
+      "gate": "mechanical",
+      "id": "P-34",
+      "kind": "antipattern",
+      "rationale": "Human correction on exp-0133: Under a cache-bound signature this transformation was refuted; it should be filed as an anti-pattern rather than retried.",
+      "status": "draft",
+      "target": "kb/antipatterns/",
+      "title": "Correction from exp-0133"
+    },
+    "ready": true,
+    "replay": null
+  }
+}

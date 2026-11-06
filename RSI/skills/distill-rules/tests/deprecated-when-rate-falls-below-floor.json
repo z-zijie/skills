@@ -1,0 +1,125 @@
+{
+  "name": "deprecated-when-rate-falls-below-floor",
+  "note": "a rule confirmed once and refuted twice has a rate under 0.4 and is retired rather than proposed",
+  "script": "scripts/distill.py",
+  "input": {
+    "today": "2026-11-05",
+    "next_rule_id": 44,
+    "entries": [
+      {
+        "exp_id": "exp-0501",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "confirmed",
+        "speedup": 1.15,
+        "prediction_error": 0.06,
+        "signature": {
+          "class": "compute_bound",
+          "tags": [
+            "compute_saturated"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "unroll_loop",
+          "signature_tags": [
+            "compute_saturated"
+          ],
+          "mechanism": "unroll_loop changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0502",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "refuted",
+        "speedup": 1.0,
+        "prediction_error": 0.19,
+        "signature": {
+          "class": "compute_bound",
+          "tags": [
+            "compute_saturated"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "unroll_loop",
+          "signature_tags": [
+            "compute_saturated"
+          ],
+          "mechanism": "unroll_loop changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "exp_id": "exp-0503",
+        "op": "vec_add",
+        "hw_id": "accel-a",
+        "verdict": "refuted",
+        "speedup": 1.01,
+        "prediction_error": 0.21,
+        "signature": {
+          "class": "compute_bound",
+          "tags": [
+            "compute_saturated"
+          ]
+        },
+        "hypothesis": {
+          "transformation": "unroll_loop",
+          "signature_tags": [
+            "compute_saturated"
+          ],
+          "mechanism": "unroll_loop changes the access pattern so the limiter moves",
+          "predictions": {
+            "counters": [
+              {
+                "metric": "sectors_per_request",
+                "direction": "down"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "expected": {
+    "counts": {
+      "candidate": 0,
+      "established": 0,
+      "proposed": 0,
+      "under_review": 0
+    },
+    "lifecycle_thresholds": {
+      "deprecated_below": 0.4,
+      "min_confirm_rate": 0.7,
+      "min_confirmations": 3,
+      "min_operators": 2,
+      "prediction_error_hole": 0.2
+    },
+    "proposals": [],
+    "skipped": [
+      {
+        "experiments": [
+          "exp-0501",
+          "exp-0502",
+          "exp-0503"
+        ],
+        "reason": "life cycle says deprecated: confirmation rate 0.33 is below 0.40",
+        "transformation": "unroll_loop"
+      }
+    ]
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/plan-campaign/output.schema.json",
+  "title": "plan-campaign output",
+  "description": "One campaign move plus the evidence behind it. The orchestrator runs the move; this skill never starts an experiment itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["op", "action", "reason", "evidence", "next", "streak_without_gain"],
+  "properties": {
+    "op": {"type": "string", "minLength": 1},
+    "action": {
+      "type": "string",
+      "enum": ["continue", "change_direction", "combine", "stop"],
+      "description": "continue keeps the current direction, change_direction re-diagnoses and picks another route, combine implements two confirmed changes as one card, stop ends the campaign."
+    },
+    "reason": {"type": "string", "minLength": 20},
+    "evidence": {"type": "array", "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"}},
+    "next": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["combine", "rediagnose_first"],
+      "properties": {
+        "transformation": {"type": ["string", "null"]},
+        "parent": {"type": ["string", "null"], "description": "Kernel version the next round starts from, for hypothesis.schema.json `parent`."},
+        "combine": {"type": "array", "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"}, "maxItems": 2},
+        "predicted_speedup": {"type": ["number", "null"]},
+        "rediagnose_first": {"type": "boolean"}
+      }
+    },
+    "attainment_pct": {"type": ["number", "null"]},
+    "target_attainment_pct": {"type": "number", "minimum": 0},
+    "streak_without_gain": {"type": "integer", "minimum": 0},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "experiments": {"type": "integer", "minimum": 0},
+        "spent_experiments": {"type": "integer", "minimum": 0},
+        "remaining": {"type": "integer", "minimum": 0}
+      }
+    },
+    "stop_reason": {
+      "type": ["string", "null"],
+      "enum": [null, "target_reached", "budget_exhausted", "no_gain_in_five_rounds", "no_open_route"]
+    },
+    "routes_above_noise": {"type": "integer", "minimum": 0},
+    "prediction_error_watch": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+      "description": "Recent experiments whose prediction error exceeds the hole threshold; the orchestrator queues design-microbench for these."
+    },
+    "needs_algorithm_rewrite": {
+      "type": "boolean",
+      "description": "The campaign is stopping far from the bound, so the report must say an algorithm-level rewrite is required."
+    }
+  }
+}

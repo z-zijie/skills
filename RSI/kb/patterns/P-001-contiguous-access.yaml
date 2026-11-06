@@ -1,0 +1,28 @@
+# Pattern: layout change that makes an interleaved field contiguous.
+id: P-001
+name: contiguous-access
+statement: >
+  When a kernel reads one field at a time from an interleaved (array-of-structures) layout and
+  sectors_per_request stays above the contiguity threshold, splitting it into one contiguous
+  array per field (structure-of-arrays) makes each traversal contiguous and lowers
+  sectors_per_request for the same useful bytes.
+mechanism: >
+  The device serves a request in fixed-size transactions, and every transaction that carries a
+  useful byte is paid for in full. Fields interleaved in one array put consecutive lanes one
+  structure-width apart, so each transaction delivers one field and discards the rest. One array
+  per field puts consecutive lanes on consecutive addresses, so one transaction serves all of
+  them, and the memory path stops spending transactions on bytes nobody reads.
+expected_counters: [sectors_per_request, device_mem_throughput_pct, device_mem_bytes]
+implementation_traps:
+  - Renaming the container while the traversal still steps by the structure stride, so the
+    access pattern and the counter are unchanged.
+  - Paying the split inside the timed region, which moves the cost from the kernel into the
+    measurement instead of removing it.
+  - Splitting into arrays whose length is padded to a wide boundary, which reintroduces a
+    transaction of waste at every tile edge.
+  - Splitting only the hottest field, leaving the second-most-read field interleaved and still
+    above the threshold.
+scope_tags: [uncoalesced]
+scope:
+  tags_any: [uncoalesced]
+  classes: [memory_bound, latency_bound, mixed]

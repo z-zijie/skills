@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/implement-change/input.schema.json",
+  "title": "implement-change input",
+  "description": "One hypothesis card, the workspace it applies to, and either the previous failure or nothing. The implementer receives no timing result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "card",
+    "workspace"
+  ],
+  "properties": {
+    "card": {
+      "type": "object",
+      "description": "schemas/hypothesis.schema.json.",
+      "required": [
+        "id",
+        "op",
+        "parent",
+        "signature_tags",
+        "transformation",
+        "mechanism",
+        "predictions",
+        "evidence_of_implementation",
+        "scope_of_change"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^H-[0-9]+$"
+        },
+        "op": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signature_tags": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "transformation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mechanism": {
+          "type": "string",
+          "minLength": 20
+        },
+        "predictions": {
+          "type": "object"
+        },
+        "evidence_of_implementation": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope_of_change": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk": {
+          "type": "string"
+        }
+      }
+    },
+    "workspace": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Directory the implementer may write: operators/<op>/workspace."
+    },
+    "entry": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kernel module to edit, relative to the workspace."
+    },
+    "parent_code": {
+      "type": "string",
+      "description": "The source the change starts from."
+    },
+    "parent_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "build": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "argv that compiles the kernel; when absent the module is imported instead."
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Why this is a retry. At most twice per failure kind.",
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "failing_cases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "previous_diff": {
+          "type": "string"
+        }
+      }
+    },
+    "timeout_s": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "edits": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The proposed change as exact replacements. The model supplies them; the script applies them literally so an edit that no longer matches the file is caught rather than silently skipped.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "old",
+          "new"
+        ],
+        "properties": {
+          "old": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact text to locate; it must occur once."
+          },
+          "new": {
+            "type": "string",
+            "description": "Replacement text. Empty deletes the block."
+          },
+          "note": {
+            "type": "string",
+            "description": "Which part of the mechanism this replacement implements."
+          }
+        }
+      }
+    }
+  }
+}

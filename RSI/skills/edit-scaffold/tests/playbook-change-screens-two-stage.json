@@ -1,0 +1,94 @@
+{
+  "name": "playbook-change-screens-two-stage",
+  "note": "a playbook edit is gated on dev plus holdout replay with a fixed budget and three repeats",
+  "script": "scripts/propose.py",
+  "input": {
+    "proposal_id": "P-21",
+    "cluster": {
+      "kind": "not_implemented",
+      "count": 4,
+      "summary": "pad_scratchpad never reached the machine code on 4 attempts",
+      "tags": [
+        "scratchpad_conflict"
+      ],
+      "experiments": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ]
+    },
+    "target": "playbooks/smem-conflict.md",
+    "change": "Add a confirm-first line: the scratchpad access must sit inside the hot loop before padding is attempted.",
+    "screen_operators": [
+      "vec_add",
+      "layernorm_fwd"
+    ],
+    "full_operators": [
+      "vec_add",
+      "layernorm_fwd",
+      "reduce_lastdim",
+      "softmax_fwd"
+    ],
+    "experiments_per_operator": 10,
+    "repeats": 3
+  },
+  "expected": {
+    "branch": {
+      "base": "HEAD",
+      "commit_message": "Target not_implemented in playbooks/smem-conflict.md\n\nCluster: not_implemented (4 experiments)\nProposal: P-21\nGate: replay_dev_holdout\n",
+      "files_changed": [
+        "playbooks/smem-conflict.md"
+      ],
+      "name": "scaffold/P-21-playbooks-smem-conflict-md"
+    },
+    "change_note": {
+      "expected_effect": "the targeted cluster shrinks without a secondary metric regressing",
+      "one_change": true,
+      "revert": "git revert the merge of P-21; the branch touches one file",
+      "what_changed": "Add a confirm-first line: the scratchpad access must sit inside the hot loop before padding is attempted.",
+      "what_did_not_change": "nothing outside playbooks/smem-conflict.md",
+      "why_this_cluster": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in playbooks/smem-conflict.md."
+    },
+    "proposal": {
+      "author": "edit-scaffold",
+      "diff": "Add a confirm-first line: the scratchpad access must sit inside the hot loop before padding is attempted.",
+      "evidence": [
+        "exp-0201",
+        "exp-0202",
+        "exp-0210",
+        "exp-0211"
+      ],
+      "gate": "replay_dev_holdout",
+      "id": "P-21",
+      "kind": "playbook",
+      "rationale": "Failure cluster not_implemented (4 experiments, tags scratchpad_conflict): pad_scratchpad never reached the machine code on 4 attempts This change targets it in playbooks/smem-conflict.md.",
+      "status": "draft",
+      "target": "playbooks/smem-conflict.md",
+      "title": "Target not_implemented in playbooks/smem-conflict.md"
+    },
+    "ready_for_replay": true,
+    "refusals": [],
+    "replay": {
+      "decision_rule": "merge when the primary metric improves on dev with a confidence interval that excludes zero, holdout does not regress, and no secondary metric gets clearly worse",
+      "experiments_per_operator": 10,
+      "from_checkpoint": true,
+      "gate": "replay_dev_holdout",
+      "holdout_visible_to": "replay_judge",
+      "repeats": 3,
+      "screening": "two_stage_screen",
+      "stage_1_offline_ledger": false,
+      "stage_1_operators": [
+        "vec_add",
+        "layernorm_fwd"
+      ],
+      "stage_2_operators": [
+        "vec_add",
+        "layernorm_fwd",
+        "reduce_lastdim",
+        "softmax_fwd"
+      ]
+    },
+    "target_kind": "playbook"
+  }
+}

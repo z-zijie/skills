@@ -1,0 +1,13 @@
+{
+  "name": "saturated compute with low memory traffic is compute_bound and reaches the compute playbook",
+  "input": {"profile_file": "skills/diagnose-bottleneck/tests/fixtures/profile_compute_bound.json", "measured_us": 16.0},
+  "expected": {
+    "status": "ok",
+    "class": "compute_bound",
+    "tags": ["compute_saturated"],
+    "primary_bottleneck": "compute-bound",
+    "problems": []
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a compute-bound profile: 91% compute utilization, 22% device-memory utilization, ideal contiguity"
+}

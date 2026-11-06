@@ -1,0 +1,27 @@
+# Pattern: walk the data in the order the memory path prefers.
+id: P-005
+name: reorder-traversal-for-locality
+statement: >
+  When the loop nest visits a multi-dimensional region in an order that leaves each tile before
+  its neighbours are consumed, reordering the traversal so that concurrent lanes touch
+  neighbouring addresses raises cache_hit_pct and lowers sectors_per_request without changing
+  the algorithm.
+mechanism: >
+  Which bytes are in flight at any instant is decided by the traversal order, not by the layout.
+  A row-major walk over a column-major consumer keeps a whole column set resident at once; a
+  tiled walk keeps a small square resident and reuses it from onchip_cache before it is evicted.
+  The number of device_mem transactions for the same total bytes therefore depends on the order,
+  which is why a pure reordering can move a counter that no layout change touched.
+expected_counters: [cache_hit_pct, sectors_per_request, device_mem_bytes]
+implementation_traps:
+  - Swapping loop indices while the index arithmetic still computes the old linear address, so
+    the pattern is unchanged and only the source order moved.
+  - A tile small enough to fit on chip but iterated in an order that revisits each tile boundary,
+    which reloads the halo on every step.
+  - Reordering that changes floating-point accumulation order without the spec's tolerance being
+    checked after the change.
+  - Reordering the outer loops only, leaving the innermost stride the one that misses.
+scope_tags: [cache_hit_low, uncoalesced]
+scope:
+  tags_any: [cache_hit_low, uncoalesced]
+  classes: [memory_bound, latency_bound]

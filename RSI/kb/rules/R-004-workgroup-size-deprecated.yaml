@@ -1,0 +1,40 @@
+# Rule card — life cycle state: deprecated.
+# EXAMPLE DATA. Experiment ids are illustrative, not present in the ledger. The card is kept
+# in rules/ with status deprecated so the life cycle has a worked example of every state; its
+# anti-pattern counterpart is kb/antipatterns/A-002-workgroup-size-tuning.yaml.
+example: true  # seed card: shows the shape, carries no evidence
+id: R-004
+statement: >
+  Under a memory-bound signature with mem_saturated, reducing the work_group size to raise
+  occupancy_pct was expected to lower stall_memory and shorten the kernel; the evidence refutes
+  it, and the transformation is retained here only to show the deprecated state.
+mechanism: >
+  The original reasoning was that smaller groups fit more readily into the residency budget, so
+  more of them could be resident at once and more independent requests would be in flight. The
+  refutations show that when the memory path is already saturated, additional concurrent
+  requests queue instead of overlapping, and the smaller group loses the coalescing and reuse
+  that the larger group had.
+expected_counters: [occupancy_pct, stall_memory, device_mem_throughput_pct]
+implementation_traps:
+  - Changing the group size without recomputing the grid extent, so coverage changes.
+  - Reading a rise in occupancy_pct as a win when the utilisation counters did not move.
+scope:
+  hw: [accel-a]
+  tags_all: [mem_saturated]
+  classes: [memory_bound]
+effect:
+  metric: occupancy_pct
+  direction: up
+  speedup_median: 0.97
+  range: [0.88, 1.02]
+evidence:
+  confirmed: [example-exp-0031]
+  refuted: [example-exp-0032, example-exp-0033, example-exp-0034, example-exp-0035]
+confirm_rate: 0.20
+mean_prediction_error: 0.16
+status: deprecated
+last_verified: 2026-10-24
+counter_example_note: >
+  Confirmation rate 0.20 is below the 0.40 deprecation floor. The single confirmation, example-exp-0031,
+  was a shape whose working set fit on chip, which is a different signature from the one this
+  card claimed. Do not resurrect this without a signature that is genuinely latency-bound.

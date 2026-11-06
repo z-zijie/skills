@@ -1,0 +1,27 @@
+# Pattern: stop moving bytes that are already in hand.
+id: P-003
+name: remove-redundant-device-mem-traffic
+statement: >
+  When the same bytes are read from or written to device_mem more than once in a kernel with no
+  intervening reuse, keeping them in registers or in scratchpad lowers device_mem_bytes without
+  changing the algorithm or the result.
+mechanism: >
+  Every trip to device_mem costs bandwidth and latency that no amount of instruction scheduling
+  can hide once the bandwidth term is the limiting term. A value already produced or already
+  fetched is still in the machine; re-fetching it pays the full cost again for information the
+  kernel already had. Removing the second trip therefore lowers the byte count, which lowers the
+  memory term of the bound itself, not just the time against a fixed bound.
+expected_counters: [device_mem_bytes, device_mem_throughput_pct, cache_hit_pct]
+implementation_traps:
+  - Caching a value that is only re-read on a cold path, which adds live state and lowers
+    residency without removing a trip.
+  - Staging a tile in scratchpad when each element is consumed once, so the copy adds traffic
+    rather than removing it.
+  - A redundant read the compiler had already eliminated, so the disassembly before and after is
+    identical and nothing moved.
+  - Removing a write that some lanes were relying on, which is a correctness change disguised as
+    a traffic change.
+scope_tags: [mem_saturated, memory_stall_high, cache_hit_low]
+scope:
+  tags_any: [mem_saturated, memory_stall_high, cache_hit_low]
+  classes: [memory_bound, mixed]

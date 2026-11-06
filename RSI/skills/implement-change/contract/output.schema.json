@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/implement-change/output.schema.json",
+  "title": "implement-change output",
+  "description": "One diff for one card, plus whether it built. The timing result is not part of this object and the implementer never sees one.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "diff", "files_changed", "build", "problems", "notes"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "build_failed", "cannot_implement", "scope_violation"]
+    },
+    "diff": {"type": ["string", "null"], "description": "Unified diff against parent_code."},
+    "files_changed": {"type": "array", "items": {"type": "string"}},
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok"],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "command": {"type": "array", "items": {"type": "string"}},
+        "output": {"type": "string"},
+        "skipped": {"type": "boolean"}
+      }
+    },
+    "evidence_map": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement", "where"],
+        "properties": {
+          "statement": {"type": "string"},
+          "where": {"type": "string", "description": "Where in the diff or the build output the statement is satisfied."}
+        }
+      },
+      "description": "One entry per line of the card's evidence_of_implementation, so the verifier can check coverage."
+    },
+    "problems": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

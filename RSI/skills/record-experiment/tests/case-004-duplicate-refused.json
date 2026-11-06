@@ -1,0 +1,16 @@
+{
+  "name": "re-recording an existing experiment id is refused and the ledger keeps its lines",
+  "input": {
+    "result_file": "skills/record-experiment/tests/fixtures/result_signed.json",
+    "exp_id": "exp-0002",
+    "seed_ledger": ["exp-0001", "exp-0002"]
+  },
+  "expected": {
+    "status": "refused_duplicate",
+    "problem_kinds": ["duplicate"],
+    "ledger_lines": 2,
+    "exp_id": "exp-0002"
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from an id collision: the append-only rule is what stops a re-run from overwriting history"
+}

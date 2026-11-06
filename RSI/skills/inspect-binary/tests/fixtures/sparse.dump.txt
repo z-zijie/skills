@@ -1,0 +1,5 @@
+; a dump from a toolchain that reports fewer facts
+FN vec_add
+  0x00: LD.B64 R1, [P0+0]
+  0x04: ADD.F32 R2, R1, R1
+  0x08: ST.B64 [P1+0], R2

@@ -1,0 +1,145 @@
+{
+  "name": "campaign-stopped-far-from-bound",
+  "note": "a campaign that spent its budget at 71.5% must say the remaining gap needs an algorithm-level rewrite",
+  "script": "scripts/report.py",
+  "input": {
+    "report_id": "REPORT-vec_add-1",
+    "today": "2026-11-05",
+    "report_kind": "campaign",
+    "op": "vec_add",
+    "attainment_pct": 71.5,
+    "baseline_attainment_pct": 48.0,
+    "target_attainment_pct": 85,
+    "stop_reason": "budget_exhausted",
+    "open_routes": [
+      "aos_to_soa under mem_saturated",
+      "reorder traversal for strided shapes"
+    ],
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "prediction_error": 0.05,
+        "hypothesis": {
+          "transformation": "wide_loads"
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.09,
+        "prediction_error": 0.08,
+        "hypothesis": {
+          "transformation": "tile_scratchpad"
+        }
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "confirmed",
+        "significant": false,
+        "speedup": 1.01,
+        "prediction_error": 0.12,
+        "hypothesis": {
+          "transformation": "unroll_loop"
+        }
+      },
+      {
+        "exp_id": "exp-0004",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "refuted",
+        "significant": true,
+        "speedup": 1.14,
+        "prediction_error": 0.35,
+        "hypothesis": {
+          "transformation": "reorder_traversal"
+        }
+      },
+      {
+        "exp_id": "exp-0005",
+        "op": "vec_add",
+        "scaffold_commit": "abc123",
+        "verdict": "not_implemented",
+        "significant": null,
+        "speedup": null,
+        "prediction_error": null,
+        "hypothesis": {
+          "transformation": "pad_scratchpad"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "created": "2026-11-05",
+    "generated_from": {
+      "ledger_entries": 5,
+      "source": "ledger/experiments.jsonl"
+    },
+    "id": "REPORT-vec_add-1",
+    "kind": "campaign",
+    "report": {
+      "confirmed_changes": [
+        {
+          "exp_id": "exp-0001",
+          "prediction_error": 0.05,
+          "speedup": 1.18,
+          "transformation": "wide_loads"
+        },
+        {
+          "exp_id": "exp-0002",
+          "prediction_error": 0.08,
+          "speedup": 1.09,
+          "transformation": "tile_scratchpad"
+        }
+      ],
+      "efficiency": {
+        "experiments_to_target": 3,
+        "log_speedup_per_experiment": 0.0629,
+        "mean_prediction_error": 0.15
+      },
+      "headline": {
+        "attainment_pct": 71.5,
+        "baseline_attainment_pct": 48.0,
+        "experiments": 5,
+        "gain_points": 23.5,
+        "gap_points": 13.5,
+        "rounds": 4,
+        "stop_reason": "budget_exhausted",
+        "target_attainment_pct": 85.0,
+        "total_speedup": 1.2862
+      },
+      "kind": "campaign",
+      "needs_algorithm_rewrite": true,
+      "op": "vec_add",
+      "remaining_opportunities": [
+        "aos_to_soa under mem_saturated",
+        "reorder traversal for strided shapes"
+      ],
+      "unexplained_observations": [
+        {
+          "exp_id": "exp-0004",
+          "note": "faster without the predicted mechanism; the real cause is unknown",
+          "speedup": 1.14,
+          "transformation": "reorder_traversal"
+        }
+      ],
+      "verdict": "stopped away from the bound: the remaining gap needs an algorithm-level rewrite, not another tactic from the current playbook",
+      "wrong_diagnoses": [
+        {
+          "exp_id": "exp-0003",
+          "note": "mechanism confirmed, no gain: the signature pointed at the wrong limiter",
+          "transformation": "unroll_loop"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+# Pattern: reduce across a scheduling group before reducing across memory.
+id: P-019
+name: group-level-reduction
+statement: >
+  When a reduction stages every partial result through scratchpad or device_mem and then
+  synchronises, folding the values within each scheduling group first lowers
+  scratchpad_throughput_pct, stall_barrier and device_mem_bytes while keeping the same result
+  order guarantees the operator needs.
+mechanism: >
+  A reduction has a tree of depth log of the element count. Staging every leaf through
+  device_mem pays a full trip per leaf; folding within a group first turns many leaves into one
+  value with on-chip exchanges, so the number of values that ever reach the slow levels is divided
+  by the group width, and the number of barriers falls by the same factor. The arithmetic is
+  unchanged; what changes is how many times the machine walks down the hierarchy.
+expected_counters: [scratchpad_throughput_pct, stall_barrier, device_mem_bytes]
+implementation_traps:
+  - Folding within the group but still staging every group's partial result through device_mem,
+    which is the intended shape; the trap is doing it and then re-reading all partials from
+    device_mem in a second kernel that could have been merged.
+  - Assuming the group-level fold preserves a deterministic reduction order the operator's
+    tolerance relies on; check the spec before changing association.
+  - A group width that does not divide the reduction extent, with a remainder path that
+    reintroduces the per-element staging.
+  - Folding on a device where the exchange within a group is itself expensive, so the saved
+    device_mem trips are replaced by an equal cost on chip.
+scope_tags: [scratchpad_conflict, memory_stall_high]
+scope:
+  tags_any: [scratchpad_conflict, memory_stall_high]
+  classes: [memory_bound, latency_bound, mixed]

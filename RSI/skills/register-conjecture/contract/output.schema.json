@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/register-conjecture/output.schema.json",
+  "title": "register-conjecture output",
+  "description": "The quarantined conjecture card, a minimal experiment plan that could settle it, and the outcome table that decides later whether it was promoted, refuted or left open.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "conjecture",
+    "plan",
+    "problems",
+    "ready"
+  ],
+  "properties": {
+    "conjecture": {
+      "type": "object",
+      "description": "The card written under kb/conjectures/. Status is always conjecture on entry.",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "statement",
+        "scope",
+        "status",
+        "expected_observation",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^C-[0-9]+$"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 20
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hw"
+          ],
+          "properties": {
+            "hw": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            },
+            "tags_all": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "status": {
+          "type": "string",
+          "const": "conjecture"
+        },
+        "created": {
+          "type": "string"
+        },
+        "expected_observation": {
+          "type": "string",
+          "description": "What would be observed if the conjecture were true. The input requires ten characters; a shorter one is carried here so a refusal still validates, and `problems` names it."
+        },
+        "metric": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "const": "human"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conjecture_id",
+        "primary_kind",
+        "experiments",
+        "outcome_table",
+        "limits"
+      ],
+      "properties": {
+        "conjecture_id": {
+          "type": "string",
+          "pattern": "^C-[0-9]+$"
+        },
+        "op": {
+          "type": "string"
+        },
+        "primary_kind": {
+          "type": "string",
+          "enum": [
+            "microbench",
+            "campaign",
+            "roofline"
+          ]
+        },
+        "max_experiments": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "experiments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "count",
+              "why_minimal",
+              "repeats"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "microbench",
+                  "campaign",
+                  "roofline"
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "why_minimal": {
+                "type": "string",
+                "minLength": 10
+              },
+              "cases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "repeats": {
+                "type": "integer",
+                "minimum": 3
+              },
+              "budget_experiments": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3
+              },
+              "microbench": {
+                "type": "string"
+              },
+              "reuse_ledger": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "outcome_table": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "promoted",
+            "refuted",
+            "open"
+          ],
+          "properties": {
+            "promoted": {
+              "type": "string",
+              "minLength": 10
+            },
+            "refuted": {
+              "type": "string",
+              "minLength": 10
+            },
+            "open": {
+              "type": "string",
+              "minLength": 10
+            }
+          }
+        },
+        "promotion_path": {
+          "type": "string"
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "counts_as_evidence",
+            "may_be_used_for_verification",
+            "may_inspire_hypotheses"
+          ],
+          "properties": {
+            "counts_as_evidence": {
+              "type": "boolean",
+              "const": false
+            },
+            "may_be_used_for_verification": {
+              "type": "boolean",
+              "const": false
+            },
+            "may_inspire_hypotheses": {
+              "type": "boolean",
+              "const": true
+            }
+          }
+        }
+      }
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

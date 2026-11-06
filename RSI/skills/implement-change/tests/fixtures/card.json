@@ -1,0 +1,40 @@
+{
+  "id": "H-0007",
+  "op": "vec_add",
+  "parent": "best@exp-0003",
+  "signature_tags": [
+    "mem_saturated",
+    "uncoalesced"
+  ],
+  "transformation": "widen_loads",
+  "mechanism": "Narrow per-element loads issue one device-memory transaction per element; widening the access makes each request span a full transaction, so sectors per request falls toward one.",
+  "predictions": {
+    "counters": [
+      {
+        "metric": "sectors_per_request",
+        "direction": "down",
+        "expect": "<= 1.5"
+      },
+      {
+        "metric": "stall_memory",
+        "direction": "down"
+      }
+    ],
+    "speedup": {
+      "expect": 1.3,
+      "low": 1.1,
+      "high": 1.5
+    }
+  },
+  "evidence_of_implementation": [
+    "in the diff, the hot loop loads four contiguous elements per iteration",
+    "in the disassembly, the load width doubles compared with the baseline"
+  ],
+  "scope_of_change": "indexing and load width only; the algorithm is unchanged",
+  "based_on": [
+    "R-031"
+  ],
+  "risk": "tail elements need a scalar epilogue",
+  "priority": 1,
+  "created": "2026-01-01T00:00:00Z"
+}

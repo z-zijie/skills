@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/skills/register-conjecture/input.schema.json",
+  "title": "register-conjecture input",
+  "description": "One human conjecture, the signature it applies to, and the observation that would settle it. A conjecture without an expected observation cannot be tested and is refused.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["conjecture", "expected_observation"],
+  "properties": {
+    "conjecture_id": {"type": "string", "pattern": "^C-[0-9]+$"},
+    "conjecture": {
+      "type": "string",
+      "minLength": 20,
+      "description": "The claim in one sentence, stated so a reader can disagree with it."
+    },
+    "expected_observation": {
+      "type": "string",
+      "minLength": 10,
+      "description": "What would be observed if the conjecture is true. Without this the conjecture is a wish."
+    },
+    "op": {"type": "string", "description": "Operator the conjecture is about; empty for a device-wide claim."},
+    "hw_id": {"type": "string"},
+    "signature_tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Tags from docs/vocabulary.md section 3, or a signature class, or plateau."
+    },
+    "metric": {
+      "type": "string",
+      "description": "Canonical metric the conjecture predicts to move. One of tooling/rsi/metrics.py."
+    },
+    "microbench": {"type": "string", "description": "Microbenchmark that isolates the mechanism, when one exists."},
+    "related_experiments": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {"type": "string", "pattern": "^exp-[0-9]{4,}$"},
+      "description": "Past experiments that may already answer the conjecture; checking them is cheaper than new device time."
+    },
+    "budget_experiments": {"type": "integer", "minimum": 1, "maximum": 3},
+    "repeats": {"type": "integer", "minimum": 3},
+    "today": {"type": "string"}
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rsi/proposal.schema.json",
+  "title": "Knowledge-base or scaffold proposal",
+  "description": "The only way a knowledge-base or scaffold change enters the system. Nothing is edited in place during the inner loop.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "title", "rationale", "target", "status"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^P-[0-9]+$"},
+    "kind": {
+      "type": "string",
+      "enum": ["rule", "pattern", "antipattern", "playbook", "skill_strategy", "threshold", "verifier_check", "microbench", "model_routing", "contract"]
+    },
+    "title": {"type": "string", "minLength": 1},
+    "rationale": {"type": "string", "minLength": 20},
+    "target": {"type": "string", "description": "Path or store this proposal would change."},
+    "diff": {"type": "string"},
+    "evidence": {"type": "array", "items": {"type": "string"}, "description": "Experiment ids or replay report ids."},
+    "status": {"type": "string", "enum": ["draft", "replay_pending", "merged", "rolled_back", "rejected", "needs_human"]},
+    "gate": {"type": "string", "enum": ["human_only", "replay_dev_holdout", "tighten_only_replay", "offline_ledger_replay", "unit_tests_plus_replay", "mechanical"]},
+    "replay_report_ref": {"type": "string"},
+    "created": {"type": "string"},
+    "author": {"type": "string", "description": "Skill or role that produced it."}
+  }
+}

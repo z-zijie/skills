@@ -1,0 +1,90 @@
+{
+  "name": "combine-two-confirmed",
+  "note": "the last round did not clear the noise floor, so combine the two independent wins",
+  "script": "scripts/decide.py",
+  "input": {
+    "op": "vec_add",
+    "noise_threshold": 0.04,
+    "target_attainment_pct": 85,
+    "attainment_pct": 74.0,
+    "budget": {
+      "experiments": 12,
+      "spent_experiments": 4
+    },
+    "entries": [
+      {
+        "exp_id": "exp-0001",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.18,
+        "prediction_error": 0.05,
+        "parent": "baseline",
+        "hypothesis": {
+          "transformation": "wide_loads",
+          "scope_of_change": "load width only"
+        }
+      },
+      {
+        "exp_id": "exp-0002",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": true,
+        "speedup": 1.09,
+        "prediction_error": 0.08,
+        "parent": "best@exp-0001",
+        "hypothesis": {
+          "transformation": "tile_scratchpad",
+          "scope_of_change": "tiling and scratchpad reuse"
+        }
+      },
+      {
+        "exp_id": "exp-0003",
+        "op": "vec_add",
+        "verdict": "confirmed",
+        "significant": false,
+        "speedup": 1.01,
+        "prediction_error": 0.21,
+        "parent": "best@exp-0002",
+        "hypothesis": {
+          "transformation": "reorder_traversal",
+          "scope_of_change": "loop order only"
+        }
+      }
+    ],
+    "open_routes": []
+  },
+  "expected": {
+    "action": "combine",
+    "attainment_pct": 74.0,
+    "budget": {
+      "experiments": 12,
+      "remaining": 8,
+      "spent_experiments": 4
+    },
+    "evidence": [
+      "exp-0001",
+      "exp-0002"
+    ],
+    "needs_algorithm_rewrite": false,
+    "next": {
+      "combine": [
+        "exp-0001",
+        "exp-0002"
+      ],
+      "parent": "best",
+      "predicted_speedup": 1.2862,
+      "rediagnose_first": false,
+      "transformation": "wide_loads+tile_scratchpad"
+    },
+    "op": "vec_add",
+    "prediction_error_watch": [
+      "exp-0003"
+    ],
+    "reason": "no single direction is gaining; two confirmed, significant and independent changes are available and their product clears the noise floor",
+    "routes_above_noise": 0,
+    "stop_reason": null,
+    "streak_without_gain": 1,
+    "target_attainment_pct": 85.0
+  }
+}

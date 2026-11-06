@@ -1,0 +1,28 @@
+# Pattern: compute two adjacent operators in one pass.
+id: P-016
+name: fuse-neighbouring-operators
+statement: >
+  When two adjacent operators in the graph each read and write the same large intermediate,
+  computing them in one pass keeps the intermediate in registers or on-chip, lowering
+  device_mem_bytes by one intermediate round trip and lowering launch_overhead_us by one launch.
+mechanism: >
+  The cost model counts an operator boundary as a full write and a full read of whatever flows
+  across it. If the second operator consumes the first's output elementwise, the value is
+  already in a register when the second needs it, so the boundary's two trips disappear and the
+  memory term of the bound shrinks accordingly. This is the only transformation in the catalogue
+  that lowers the bound rather than moving the kernel closer to it, which is why it belongs to
+  the plateau playbook as well as to the memory ones.
+expected_counters: [device_mem_bytes, launch_overhead_us, device_mem_throughput_pct]
+implementation_traps:
+  - Fusing the launches but materialising the intermediate in device_mem anyway, which changes
+    nothing the counters can see.
+  - Fusing operators whose consumer needs a different tiling, so one of the two runs with an
+    access pattern it does not want.
+  - Fusing across a reduction, where the intermediate's full extent is needed before the consumer
+    can start.
+  - A fused kernel that no longer fits the register budget, so the intermediate spills and the
+    traffic returns by a different route.
+scope_tags: [mem_saturated, launch_dominated, cache_hit_low]
+scope:
+  tags_any: [mem_saturated, launch_dominated]
+  classes: [memory_bound, latency_bound, mixed]

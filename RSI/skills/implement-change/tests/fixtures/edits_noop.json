@@ -1,0 +1,8 @@
+{
+  "edits": [
+    {
+      "old": "def vec_add(inputs, out, case, dtype):",
+      "new": "def vec_add(inputs, out, case, dtype):"
+    }
+  ]
+}

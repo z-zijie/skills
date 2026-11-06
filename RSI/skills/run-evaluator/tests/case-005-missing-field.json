@@ -1,0 +1,16 @@
+{
+  "name": "a signed object missing a required field is schema_invalid",
+  "input": {
+    "result_file": "skills/run-evaluator/tests/fixtures/result_missing_field.json",
+    "signing_key": "regression-key-not-a-secret"
+  },
+  "expected": {
+    "status": "schema_invalid",
+    "failed_checks": [
+      "schema"
+    ],
+    "blocking_schema_errors": 1
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a result whose correctness block lacks cases_run, which is blocking. The timing summaries it also carries are now part of result.schema.json, so they are no longer drift: the schema was extended to describe what the evaluator really emits."
+}

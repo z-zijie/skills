@@ -1,0 +1,14 @@
+{
+  "name": "a result edited after signing is refused",
+  "input": {
+    "result_file": "skills/run-evaluator/tests/fixtures/result_tampered.json",
+    "signing_key": "regression-key-not-a-secret"
+  },
+  "expected": {
+    "status": "signature_invalid",
+    "failed_checks": ["signature"],
+    "blocking_schema_errors": 0
+  },
+  "script": "scripts/replay_case.py",
+  "source": "labelled from a hand-edited result: candidate_us and speedup changed, signature block left as it was"
+}

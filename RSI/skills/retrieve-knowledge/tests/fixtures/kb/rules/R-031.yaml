@@ -1,0 +1,27 @@
+id: R-031
+statement: >
+  When device-memory bandwidth is saturated and transactions per request exceed two, converting the
+  layout from interleaved to planar lowers transactions per request and speeds the kernel up.
+scope:
+  hw: [accel-a]
+  tags_all: [mem_saturated, uncoalesced]
+  elem_bytes: "<= 32"
+effect:
+  metric: sectors_per_request
+  direction: down
+  speedup_median: 1.22
+  range: [1.08, 1.41]
+evidence:
+  confirmed: [exp-0098, exp-0121, exp-0142]
+  refuted: [exp-0133]
+confirm_rate: 0.75
+mean_prediction_error: 0.09
+status: established
+last_verified: 2026-11-01
+mechanism: >
+  Interleaved records make each work-lane request span several transactions. A planar layout makes
+  consecutive lanes touch consecutive addresses, so one request covers one transaction.
+expected_counters: [sectors_per_request, device_mem_throughput_pct]
+counter_example_note: >
+  exp-0133 used 64-byte elements; after the layout change they straddled transaction boundaries and
+  nothing improved.
