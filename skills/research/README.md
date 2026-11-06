@@ -17,7 +17,9 @@ question ─→ survey ─→ harness(冻结) ─→ logbook(初始化)
                           report(成文) ─→ reflect(复盘)
 ```
 
-[autoresearch](autoresearch/SKILL.md) 是唯一的人工入口（总控编排），其余十个是被编排的纪律原语，也可单用。
+[autoresearch](autoresearch/SKILL.md) 是唯一的人工入口（总控编排），其余十一个是被编排的纪律原语，也可单用。
+
+[iteration](../iteration/SKILL.md) 不属于这条流程的任何一个阶段，它是 harness 在 Ascend NPU 上的专用实现：单 kernel 的"测量→优化"闭环。研究要优化的是 kernel 时，测量口径与消融纪律走它；研究要回答的是别的机制时，用 harness 的通用版。
 
 ## 效率模型
 
@@ -34,6 +36,7 @@ question ─→ survey ─→ harness(冻结) ─→ logbook(初始化)
 | [question](question/SKILL.md) | 立题：可证伪谓词、范围、预算、停止规则 |
 | [survey](survey/SKILL.md) | 调研：一手来源，带引用的四栏纪要 |
 | [harness](harness/SKILL.md) | 实验基建：指标、测量、噪声底、冻结、回归门 |
+| [iteration](../iteration/SKILL.md) | Ascend NPU 单 kernel 迭代：直调 bench、刷 L2、重复取中位数、逐条消融 |
 | [logbook](logbook/SKILL.md) | 台账：一实验一行，预注册，跨轮记忆与恢复 |
 | [hypothesize](hypothesize/SKILL.md) | 假设：机制句、候选池（宽进严出）、前提攻击 |
 | [experiment](experiment/SKILL.md) | 实验：一改一测、实验即提交、崩溃政策 |
@@ -60,6 +63,7 @@ question ─→ survey ─→ harness(冻结) ─→ logbook(初始化)
 
 ## 依赖（不随系列捆绑）
 
+- **iteration**（本仓库顶层，与 research 并列）：harness 阶段要为 Ascend kernel 搭测量时指向它；它的直调 bench 就是 harness 所说的"一条命令出指标"的落地形态。
 - **create-tool**（本仓库顶层）：harness 的测量脚本、experiment 的抽取工具、reflect 的层级 3、autoresearch 的工具化经济都指向它。造工具是通用纪律，不属于 research 域，故只引用不复制，避免同名冲突与两份漂移。
 - 只装 research 系列时自带降级：各锚点句写明了工具的形状（单文件、一条命令、一行答案），步骤照常执行。
 - 要完整体验，一并安装：`npx skills add https://gitcode.com/zhangzijie/skills.git -s create-tool`。
