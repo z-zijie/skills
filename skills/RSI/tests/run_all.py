@@ -1,6 +1,6 @@
 """Run every test without a device.
 
-    python3 RSI/tests/run_all.py
+    python3 skills/RSI/tests/run_all.py
 
 The suite exists so the scaffold can be checked on any machine, including one with no
 accelerator and no profiler. What it proves:

@@ -7,11 +7,11 @@ name: RSI checks
 on:
   push:
     paths:
-      - "RSI/**"
+      - "skills/RSI/**"
       - ".github/workflows/rsi-checks.yml"
   pull_request:
     paths:
-      - "RSI/**"
+      - "skills/RSI/**"
       - ".github/workflows/rsi-checks.yml"
 
 jobs:
@@ -37,11 +37,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Every contract, statistic and state transition
-        working-directory: RSI
+        working-directory: skills/RSI
         run: python3 tests/run_all.py
 
       - name: Every skill's own regression cases
-        working-directory: RSI
+        working-directory: skills/RSI
         run: |
           python3 - <<'PY'
           import sys
@@ -60,17 +60,17 @@ jobs:
           PY
 
       - name: The documented layer has no unsourced entry
-        working-directory: RSI
+        working-directory: skills/RSI
         run: python3 skills/ingest-docs/scripts/index_documented.py --check
 
       - name: The knowledge base is internally consistent
-        working-directory: RSI
+        working-directory: skills/RSI
         run: python3 tools/rsi-cli kb-audit
 
       - name: The evaluator still catches every deliberately cheating kernel
-        working-directory: RSI
+        working-directory: skills/RSI
         run: python3 tools/rsi-cli redteam --op vec_add
 
       - name: The whole loop runs on the reference backend
-        working-directory: RSI
+        working-directory: skills/RSI
         run: python3 tools/demo.py --no-tests
