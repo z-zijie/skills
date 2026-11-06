@@ -48,7 +48,7 @@ breaks one is not a local change.
 ## Layout
 
 ```
-skills/RSI/
+RSI/
 ├── evaluator/          Layer 0: frozen. Call the CLI, never read or edit its source
 │   ├── oracle/         correctness: reference, sentinels, canaries, random shapes
 │   ├── harness/        timing: warm-up, interleaving, bootstrap, the win rule
@@ -73,7 +73,7 @@ skills/RSI/
 ## Quick start
 
 ```sh
-cd skills/RSI
+cd RSI
 
 # 1. What does this machine have?
 tools/rsi-cli doctor

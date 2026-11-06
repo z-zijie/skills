@@ -1,6 +1,6 @@
 """JSON Schema validation for the subset RSI's contracts use.
 
-The contracts in ``skills/RSI/schemas/`` are the frozen interface between skills: a step's output
+The contracts in ``RSI/schemas/`` are the frozen interface between skills: a step's output
 must pass schema validation before the next step starts, and a failed validation retries in
 place rather than passing bad data downstream. That makes the validator load-bearing, so it
 is dependency-free and reports every failure with a path.

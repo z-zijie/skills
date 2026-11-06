@@ -4,7 +4,7 @@ From a bare clone to a working loop, in the order that matters. Each step ends w
 you can check; skip one and the later steps measure nothing.
 
 ```sh
-cd skills/RSI
+cd RSI
 ```
 
 ## 1. Does this machine have what the framework needs?
