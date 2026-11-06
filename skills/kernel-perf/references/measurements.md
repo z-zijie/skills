@@ -292,6 +292,49 @@ collector as well as the decoder:
 the raw file is 25 MB for a 4 us kernel -- almost all of it zero padding, which
 is worth knowing before keeping captures around.
 
+### Collection stability: 3 of 10 identical captures lost the stream
+
+Ten consecutive identical KDA collections (`kimi_delta_attn_lite_prepare_k`,
+1C2V, `msprof op --aic-metrics=PipeTimeline,PipeUtilization --warm-up=2`):
+
+| Outcome | Count |
+|---|---:|
+| raw stream present, decoded to samples | 7 |
+| **exit 0, `OpBasicInfo.csv` written, no `timeline.bin.0`** | **3** |
+
+The three failures are silent: rc=0, `[INFO] Profiling running finished. All
+task success.`, `[INFO] Save profiling data with metric [PipeUtilization]
+success.`, and a `visualize_data.bin` 10 776-10 808 bytes instead of 14 076-14 384.
+They carry no `0x02` (trace) record and no stream, so nothing in the capture
+records that anything went wrong.
+
+Re-running the identical command recovered the stream 2 of 2 times, so
+`--with-timeline` now retries (`--waveform-retries`, default 2) and, if the
+budget is exhausted, the report says so in section 15 instead of omitting the
+section. This is the one place where "no waveform" must never be left to read
+like "no waveform requested".
+
+### KDA stability across the 7 complete captures
+
+`kimi_delta_attn_lite_prepare_k`, 1C2V mix kernel, 1650 MHz. Every run sampled
+the same shape: 3 cores, 5 windows. Shares are the mean of per-core means.
+
+| Pipe | Mean % | SD | CV | Min | Max |
+|---|---:|---:|---:|---:|---:|
+| VECTOR | 60.84 | 0.71 | 1.2% | 59.75 | 61.63 |
+| SCALAR | 17.74 | 0.67 | 3.8% | 17.19 | 18.71 |
+| MTE3 | 15.97 | 0.41 | 2.6% | 15.13 | 16.31 |
+| CUBE | 5.52 | 0.09 | 1.6% | 5.35 | 5.59 |
+| FIXP | 4.22 | 0.07 | 1.6% | 4.16 | 4.35 |
+| MTE2 | 3.14 | 0.10 | 3.3% | 3.05 | 3.33 |
+| MTE1 | 2.27 | 0.04 | 1.6% | 2.20 | 2.30 |
+
+The **serial-vs-overlapped verdict for MTE2 vs VECTOR was "Never overlap" in all
+7 captures** -- identical to the character, not merely close. So the percentages
+move by a few percent between runs while the qualitative conclusion does not:
+repeat a capture for the shares, but a single capture is enough to trust the
+ordering verdict.
+
 ### vector_add, first sampling group
 
 | Pipe | Share | Idle (mean) | Worst core idle |

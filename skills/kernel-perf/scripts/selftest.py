@@ -893,6 +893,109 @@ def test_pipeline_waveform() -> None:
         check("matching pipe trace is VERIFIED",
               PW.verify(root)["verdict"] == "VERIFIED",
               str(PW.verify(root).get("verdict")))
+        # --- an intermittently dropped stream is reported, not hidden ------
+        # Regression: `msprof op` exits 0 and writes a complete-looking capture
+        # with every parsed artefact and no raw stream (3 of 10 consecutive KDA
+        # collections came back that way). Before this, the waveform section
+        # simply vanished, which reads exactly like "no waveform was requested".
+        stream = root / "dump/timeline.bin.0"
+        keep = stream.read_bytes()
+        stream.unlink()
+        requested = Path(tempfile.mkdtemp(prefix="kp-waveform-miss-"))
+        try:
+            (requested / "pass1_pipetimeline").mkdir()
+            (requested / "pass1_pipetimeline" / "OPPROF_x").mkdir()
+            cap = requested / "pass1_pipetimeline" / "OPPROF_x"
+            reason = KP._explain_missing_waveform(cap)
+            check("a dropped stream is explained", "timeline.bin.0" in reason,
+                  reason)
+            check("the explanation names the retry",
+                  "re-run" in reason.lower() or "re-collect" in reason.lower(),
+                  reason)
+            check("the explanation cites the measured rate",
+                  "10" in reason, reason)
+            # Not requested at all: silence, because the report must not nag
+            # about a layer nobody asked for.
+            quiet = Path(tempfile.mkdtemp(prefix="kp-waveform-quiet-"))
+            try:
+                (quiet / "OPPROF_y").mkdir()
+                check("an unrequested stream stays silent",
+                      KP._explain_missing_waveform(quiet / "OPPROF_y") == "",
+                      KP._explain_missing_waveform(quiet / "OPPROF_y"))
+            finally:
+                shutil.rmtree(quiet, ignore_errors=True)
+        finally:
+            shutil.rmtree(requested, ignore_errors=True)
+        stream.write_bytes(keep)
+        check("the stream is back after restore", PW.locate_timeline(root) is not None)
+
+        # --- the retry loop re-collects until the stream appears -----------
+        attempts = {"n": 0}
+        real_once = KP._run_msopprof_once
+        real_locate = PW.locate_timeline
+        try:
+            def fake_once(**kwargs):
+                attempts["n"] += 1
+                out = Path(kwargs["out_dir"])
+                cap = out / f"OPPROF_{attempts['n']}"
+                (cap / "dump").mkdir(parents=True, exist_ok=True)
+                (cap / "OpBasicInfo.csv").write_text("Op Name=x\n")
+                if attempts["n"] >= 3:
+                    (cap / "dump" / "timeline.bin.0").write_bytes(b"\x00" * 16)
+                return 0, "fake", cap
+
+            KP._run_msopprof_once = fake_once  # type: ignore[assignment]
+            retry_out = Path(tempfile.mkdtemp(prefix="kp-waveform-retry-"))
+            try:
+                rc, log, got = KP.run_msopprof(
+                    home=Path("/nonexistent"), app=["true"], out_dir=retry_out,
+                    metrics=["PipeTimeline"], warmup=0, launch_count=1,
+                    kernel=None, replay_mode="kernel", timeout=10,
+                    waveform_retries=2,
+                )
+                check("retry re-collects until the stream appears",
+                      attempts["n"] == 3, str(attempts["n"]))
+                check("retry returns the successful capture",
+                      got is not None and real_locate(got) is not None,
+                      str(got))
+                check("retry records why it re-ran", "re-collecting" in log, log[-120:])
+            finally:
+                KP._run_msopprof_once = real_once  # type: ignore[assignment]
+                shutil.rmtree(retry_out, ignore_errors=True)
+
+            # Exhausting the budget must stop, not loop for ever, and must say
+            # so instead of returning a capture that looks fine.
+            attempts["n"] = 0
+            try:
+                def always_empty(**kwargs):
+                    attempts["n"] += 1
+                    cap = Path(kwargs["out_dir"]) / f"OPPROF_{attempts['n']}"
+                    (cap / "dump").mkdir(parents=True, exist_ok=True)
+                    (cap / "OpBasicInfo.csv").write_text("Op Name=x\n")
+                    return 0, "fake", cap
+
+                KP._run_msopprof_once = always_empty  # type: ignore[assignment]
+                budget_out = Path(tempfile.mkdtemp(prefix="kp-waveform-budget-"))
+                try:
+                    rc, log, got = KP.run_msopprof(
+                        home=Path("/nonexistent"), app=["true"], out_dir=budget_out,
+                        metrics=["PipeTimeline"], warmup=0, launch_count=1,
+                        kernel=None, replay_mode="kernel", timeout=10,
+                        waveform_retries=2,
+                    )
+                    check("an exhausted budget stops at 1+N attempts",
+                          attempts["n"] == 3, str(attempts["n"]))
+                    check("an exhausted budget admits the failure",
+                          "giving up on the raw stream" in log, log[-160:])
+                    check("an exhausted budget still returns the capture",
+                          got is not None, str(got))
+                finally:
+                    KP._run_msopprof_once = real_once  # type: ignore[assignment]
+                    shutil.rmtree(budget_out, ignore_errors=True)
+            finally:
+                KP._run_msopprof_once = real_once  # type: ignore[assignment]
+        finally:
+            KP._run_msopprof_once = real_once  # type: ignore[assignment]
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
