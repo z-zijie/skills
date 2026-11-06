@@ -196,10 +196,9 @@ The same trace also drives **PC-vs-cycle icache-miss diagnosis** (the primary te
   `OpBasicInfo.csv` and every parsed CSV, and contained no `timeline.bin.0` at
   all. Nothing in the capture records the loss. `--with-timeline` therefore
   confirms the stream exists before accepting a collection, re-runs when it does
-  not (`--waveform-retries`, default 2), and when the budget runs out the
-  report says the waveform was
-  not collected rather than omitting section 15. Never read a missing section as
-  "this kernel has no waveform".
+  not (`--waveform-retries`, default 2), and when the budget runs out the report
+  says the waveform was not collected rather than omitting section 15. Never
+  read a missing section as "this kernel has no waveform".
 - **Application-level `msprof` (non-`op`) is unusable on this host**: the bundled Python's `_ctypes` does not match the interpreter, so capture data cannot be parsed. Kernel-level analysis is unaffected.
 - **`biprof` is not an on-device tool**: it is a `cannsim` simulator package requiring `plotly`, which is not installed. `msprof op` is itself a wrapper over `msopprof`.
 
