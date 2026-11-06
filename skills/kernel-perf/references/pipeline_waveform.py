@@ -237,7 +237,7 @@ def decode_groups(record: Record) -> List[Group]:
     effect. Reading it the other way -- mask and duration from the same token --
     still produces plausible-looking timelines, but it shifts every interval by
     one and disagrees with the vendor's ``trace.json``; the pairing below is the
-    one that reproduces it exactly (94/94 core-pipe interval sets across four
+    one that reproduces it exactly (142/142 core-pipe interval sets across five
     captures, both AIV and AIC -- see ``--verify``).
 
     A ``0x0dxx`` counter block ends the current group, and the tokens after it

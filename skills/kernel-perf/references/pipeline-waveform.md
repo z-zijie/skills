@@ -144,12 +144,19 @@ Measured on CANN 9.3.0 / Ascend950PR_9579 / dav-3510, 1650 MHz:
 
 | Capture | Kernel | Records | Checks | Result |
 |---|---|---:|---:|---|
-| `pt` | `add_kernel`, 56 blocks, vector | 12 | 48 | pass |
-| `pt2` | `add_kernel`, 56 blocks, vector | 4 | 16 | pass |
-| `mm` | `MatmulKernel`, 28 blocks, cube | 6 | 20 | pass |
-| `mm2` | `MatmulKernel`, 28 blocks, cube | 6 | 10 | pass |
+| vector_add | `add_kernel`, 56 blocks, AIV | 12 | 48 | pass |
+| vector_add (2nd run) | `add_kernel`, 56 blocks, AIV | 4 | 16 | pass |
+| matmul 1024 | `MatmulKernel`, 28 blocks, AIC | 6 | 20 | pass |
+| matmul 128 | `MatmulKernel`, 28 blocks, AIC | 6 | 10 | pass |
+| end-to-end (fresh) | `add_kernel` via `profile --with-timeline` | 12 | 48 | pass |
 
-94/94 checks. Both core kinds, both a tiny and a long kernel.
+142/142 checks. Both core kinds, small and large kernels, including one captured
+by the new collector itself rather than by hand.
+
+The check is only worth what a failure it can catch is worth, so it was tested
+both ways: given a `trace.json` that disagrees with the decode it fails (2
+failures on a two-interval fixture), and given the matching one it passes. A
+plain mirror of the decoder would pass both.
 
 A third check is possible against `PipeUtilization.csv`, which the profiler
 produces through a different path. On the vector kernel it agrees to the CSV's

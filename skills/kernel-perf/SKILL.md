@@ -107,8 +107,8 @@ double-buffered matmul.
 > decoder reads the raw stream and keeps integer cycles.
 
 The decode is verified by `--verify`, which requires an exact interval-for-
-interval match against `trace.json` for the same run: 94/94 checks across four
-captures, both AIV and AIC. The container format, timing convention and pipe bit
+interval match against `trace.json` for the same run: 142/142 checks across five
+captures, both AIV and AIC, including one captured by the collector itself. The container format, timing convention and pipe bit
 assignment are documented in `references/pipeline-waveform.md`, including the one
 non-obvious rule -- a token's mask pairs with the *next* token's duration.
 

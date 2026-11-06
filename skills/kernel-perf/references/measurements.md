@@ -276,16 +276,19 @@ The threshold is an absolute 0.05 us rather than a multiple of event duration: i
 `trace.json`. The decoder in `references/pipeline_waveform.py` reads the raw
 stream; `--verify` checks it against the vendor's own `trace.json` for the run.
 
-Four captures, CANN 9.3.0, Ascend950PR_9579, 1650 MHz:
+Five captures, CANN 9.3.0, Ascend950PR_9579, 1650 MHz. The last row is a fresh
+collection made by `kernel_perf.py profile --with-timeline`, so it exercises the
+collector as well as the decoder:
 
 | Capture | Kernel | Records | Verify checks | Result |
 |---|---|---:|---:|---|
-| `pt` | `add_kernel`, 56 blocks, vector | 12 | 48 | pass |
-| `pt2` | `add_kernel`, 56 blocks, vector | 4 | 16 | pass |
-| `mm` | `MatmulKernel`, 28 blocks, cube | 6 | 20 | pass |
-| `mm2` | `MatmulKernel`, 28 blocks, cube | 6 | 10 | pass |
+| vector_add | `add_kernel`, 56 blocks, AIV | 12 | 48 | pass |
+| vector_add (2nd) | `add_kernel`, 56 blocks, AIV | 4 | 16 | pass |
+| matmul 1024 | `MatmulKernel`, 28 blocks, AIC | 6 | 20 | pass |
+| matmul 128 | `MatmulKernel`, 28 blocks, AIC | 6 | 10 | pass |
+| end-to-end | `add_kernel` via the collector | 12 | 48 | pass |
 
-94/94 exact interval matches. The container is a fixed 524290-word stride, and
+142/142 exact interval matches. The container is a fixed 524290-word stride, and
 the raw file is 25 MB for a 4 us kernel -- almost all of it zero padding, which
 is worth knowing before keeping captures around.
 
