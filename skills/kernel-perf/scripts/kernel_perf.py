@@ -665,12 +665,31 @@ def _explain_missing_waveform(root: Path,
     # PipeTimeline simply has no waveform, and the report should stay quiet
     # about a layer nobody asked for. Only say "missing" when there is evidence
     # that a PipeTimeline pass actually ran.
-    if not _pipetimeline_was_requested(root):
+    marker = _read_waveform_marker(root)
+    if marker is None and not _pipetimeline_was_requested(root):
         return ""
+    attempted = ""
+    if marker and marker.get("attempts"):
+        attempted = (" The collector re-ran it %d time%s and never got a stream."
+                     % (marker["attempts"],
+                        "" if marker["attempts"] == 1 else "s"))
     return ("No `dump/timeline.bin.0` in this capture, although a PipeTimeline "
-            "pass ran. `msprof op` intermittently exits successfully while "
-            "writing no raw stream (measured: 3 of 10 consecutive identical KDA "
-            "collections). Re-run with `--with-timeline`, which retries.")
+            "pass ran.%s `msprof op` intermittently exits successfully while "
+            "writing no raw stream (measured: 3 of 10 identical KDA collections "
+            "came back this way). Re-run with `--with-timeline`, which retries."
+            % attempted)
+
+
+def _read_waveform_marker(root: Path) -> Optional[Dict[str, Any]]:
+    """The note `_mark_waveform_requested` left, if this capture has one."""
+    for candidate in (root, root.parent, root.parent.parent):
+        marker = candidate / "waveform_requested.json"
+        try:
+            if marker.is_file():
+                return json.loads(marker.read_text(errors="replace"))
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def _pipetimeline_was_requested(root: Path) -> bool:
@@ -2001,7 +2020,31 @@ def run_msopprof(home: Path, app: List[str], out_dir: Path,
               f"(a known intermittent failure of `msprof op`); "
               f"re-collecting, attempt {attempt + 1}...", file=sys.stderr)
         logs.append(f"[harness] no raw stream in {root}; re-collecting\n")
+    if "PipeTimeline" in metrics:
+        # Record the intent on the capture itself. Without it, a later
+        # `analyze` cannot tell "we asked for a waveform and the collector
+        # dropped it" from "nobody asked", because the vendor's log names only
+        # the CSV metric it saved and never mentions PipeTimeline.
+        _mark_waveform_requested(root if root is not None else out_dir,
+                                 attempts=attempt + 1,
+                                 recovered=PW is not None and root is not None
+                                 and PW.locate_timeline(root) is not None)
     return rc, "".join(logs), root
+
+
+def _mark_waveform_requested(root: Path, attempts: int,
+                             recovered: bool) -> None:
+    """Leave a note in the capture saying a PipeTimeline pass ran."""
+    try:
+        (root / "waveform_requested.json").write_text(json.dumps({
+            "metric": "PipeTimeline",
+            "attempts": attempts,
+            "stream_written": bool(recovered),
+        }, indent=2))
+    except OSError:
+        # Best-effort: without the marker the report stays quiet about a
+        # missing stream, which is the pre-existing behaviour.
+        pass
 
 
 def _run_msopprof_once(home: Path, app: List[str], out_dir: Path,

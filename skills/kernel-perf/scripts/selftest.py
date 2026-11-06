@@ -914,6 +914,19 @@ def test_pipeline_waveform() -> None:
                   reason)
             check("the explanation cites the measured rate",
                   "10" in reason, reason)
+
+            # A bare `msprof op` capture records no intent anywhere the
+            # profiler writes, so the collector marks it explicitly. Without
+            # that marker a real 3-in-10 failure read as "nobody asked".
+            import json as _json2
+            (cap / "waveform_requested.json").write_text(_json2.dumps({
+                "metric": "PipeTimeline", "attempts": 3, "stream_written": False,
+            }))
+            marked = KP._explain_missing_waveform(cap)
+            check("an explicitly requested stream is explained even with no "
+                  "log", "timeline.bin.0" in marked, marked)
+            check("the marker's attempt count is reported",
+                  "3 times" in marked, marked)
             # Not requested at all: silence, because the report must not nag
             # about a layer nobody asked for.
             quiet = Path(tempfile.mkdtemp(prefix="kp-waveform-quiet-"))
