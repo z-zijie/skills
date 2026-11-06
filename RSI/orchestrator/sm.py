@@ -320,6 +320,26 @@ def advance(campaign: Campaign, outcome: Dict[str, Any]) -> Dict[str, Any]:
     raise CampaignError(f"no transition from state {state!r}")
 
 
+def unresolved_directions(campaign: Campaign) -> List[str]:
+    """The directions on record that may not be called exhausted yet.
+
+    The campaign stores a closure record after every failed experiment and the summarised rows
+    after a revisit plan, so both shapes are read here: a record carries `evidence` and
+    `points_tried`, a row carries the `retirable` verdict the plan already computed.
+    """
+    found: List[str] = []
+    for item in campaign.closures:
+        if not isinstance(item, dict):
+            continue
+        direction = str(item.get("direction") or "")
+        retirable = item.get("retirable")
+        if retirable is None:
+            retirable = closures.is_retirable(item)
+        if not retirable and direction and direction not in found:
+            found.append(direction)
+    return found
+
+
 def record_revisit(campaign: Campaign, outcome: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Consume ``revisit-closures``' plan and decide whether the campaign owes a reopen.
 
@@ -340,8 +360,7 @@ def record_revisit(campaign: Campaign, outcome: Optional[Dict[str, Any]] = None)
     campaign.reopen_retry = str(reopen.get("retry")) if isinstance(reopen, dict) else None
     campaign.history.append({"state": "revisit", "decision": decision,
                              "reopen": campaign.reopen_direction,
-                             "open": [row.get("direction") for row in campaign.closures
-                                      if row.get("retirable") is False]})
+                             "open": unresolved_directions(campaign)})
     if decision == "reopen" and campaign.reopen_direction:
         campaign.state = "hypothesize"
         campaign.note = (f"reopening {campaign.reopen_direction} ({campaign.reopen_retry}): the "
@@ -366,8 +385,9 @@ def apply_plan(campaign: Campaign, decision: str, outcome: Optional[Dict[str, An
         # continues) or answers the question once, so a capped closure cannot loop here forever.
         campaign.revisit_checked = True
         campaign.state = "revisit"
-        campaign.note = (f"stop proposed with {len(campaign.closures)} closure(s): check whether "
-                         "any of them was ever really tried before reporting the playbook exhausted")
+        campaign.note = (f"stop proposed: {len(unresolved_directions(campaign))} direction(s) on "
+                         "record are not settled; check whether they were ever really tried before "
+                         "reporting the playbook exhausted")
         return next_step(campaign)
     if decision in {"stop_target", "stop_plateau", "stop_budget", "stop"}:
         campaign.state = "report"
@@ -398,10 +418,8 @@ def apply_plan(campaign: Campaign, decision: str, outcome: Optional[Dict[str, An
 
 def stop_conditions(campaign: Campaign) -> Dict[str, Any]:
     """Every stop condition, evaluated together, so a plan decision is auditable."""
-    unresolved = [row.get("direction") for row in campaign.closures
-                  if row.get("retirable") is False]
     return {
-        "unresolved_closures": unresolved,
+        "unresolved_closures": unresolved_directions(campaign),
         "target_reached": (
             campaign.current_attainment_pct is not None
             and campaign.current_attainment_pct >= campaign.target_attainment_pct
