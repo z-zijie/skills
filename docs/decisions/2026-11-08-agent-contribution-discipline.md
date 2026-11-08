@@ -13,7 +13,7 @@ Adopt the discipline described in [`docs/agent-contribution-discipline.md`](../a
 - The repo has `AGENTS.md` (root) plus `RSI/AGENTS.md` and `skills/AGENTS.md`; `CLAUDE.md` is a symlink.
 - Every PR fills `.github/PULL_REQUEST_TEMPLATE.md` (Motivation / Scope / Changes / Testing / AI Usage / Checklist).
 - `PR policy` runs from the default branch, reads only API data, and checks sections, Issue references (external authors), the AI declaration, Scope, and protected paths.
-- `RSI checks / checks passed` is an aggregate required check; RSI paths run the full scaffold checks, other PRs succeed quickly.
+- `checks passed` (the `RSI checks` workflow) is an aggregate required check; RSI paths run the full scaffold checks, other PRs succeed quickly.
 - `CODEOWNERS` requires owner review for policy, docs, skills, and the frozen RSI surfaces.
 - `docs/review-checklist.md` and `docs/decisions/` provide the review entry point and durable decision records.
 

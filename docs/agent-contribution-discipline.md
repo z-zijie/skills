@@ -2,7 +2,7 @@
 
 > **调研对象**：`deepseek-ai/deepseek-harness`，`master` @ `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`（2026-11-04，MIT）。
 > **调研时间**：2026-11-08。
-> **落地状态**：本 PR 已把 v0 规则落地为仓库文件（见 4.2），并加入 `PR policy` 检查与 `RSI checks / checks passed` 聚合检查；标签和分支保护需要仓库所有者手动开启（见 `docs/maintainer-setup.md`）。
+> **落地状态**：本 PR 已把 v0 规则落地为仓库文件（见 4.2），并加入 `PR policy` 检查与 `checks passed` 聚合检查；标签和分支保护需要仓库所有者手动开启（见 `docs/maintainer-setup.md`）。
 > **引用约定**：文中 `deepseek-harness:<path>` 指该仓库内路径；结论基于上述快照，上游规则可能继续变化。
 
 ## 0. 先看结论
@@ -233,7 +233,7 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 | `.github/ISSUE_TEMPLATE/{bug,feature,task}.md` + `config.yml` | 三类 Issue 模板；关闭空白 Issue |
 | `.github/CODEOWNERS` | 默认 owner；`.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`docs/`、`RSI/evaluator/`、`RSI/schemas/`、`skills/` 由 owner review |
 | `.github/workflows/pr-policy.yml` | `PR policy`：从 base 分支运行、只读 API，校验模板段落、Issue 引用、AI 声明、Scope、受保护路径、宽改提示 |
-| `.github/workflows/rsi-checks.yml` | 新增 `changes` + `checks passed` 聚合检查；`RSI checks / checks passed` 可在分支保护里作为 required check，docs-only PR 也会成功 |
+| `.github/workflows/rsi-checks.yml` | 新增 `changes` + `checks passed` 聚合检查；`checks passed`（`RSI checks` workflow）可在分支保护里作为 required check，docs-only PR 也会成功 |
 | `docs/review-checklist.md` | Reviewer 对照表 |
 | `docs/decisions/README.md` | 决策记录格式与写作条件 |
 | `docs/decisions/2026-11-08-agent-contribution-discipline.md` | 本决策的记录，也是决策记录格式的示范 |
@@ -256,7 +256,7 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 ### 4.4 仍需人工完成的仓库设置
 
 - **标签**：`kind/*`、`area/*`、`p0`–`p3`、`needs-*`、`accepted`、`external`、`stale`。创建命令见 `docs/maintainer-setup.md`。
-- **分支保护**：要求 PR、1 个 owner approval、CODEOWNERS review、stale approval dismissal、`PR policy / policy` 和 `RSI checks / checks passed`、禁止 force push。步骤见 `docs/maintainer-setup.md`。
+- **分支保护**：要求 PR、1 个 owner approval、CODEOWNERS review、stale approval dismissal、`policy`（`PR policy` workflow）和 `checks passed`（`RSI checks` workflow）、禁止 force push。步骤见 `docs/maintainer-setup.md`。
 - 这两项是仓库设置，不能由本 PR 的代码完成；Agent 也不会替你改仓库设置。
 
 ### 4.5 仍未覆盖的缺口
@@ -271,7 +271,7 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 1. **外部作者强制 Issue，owner 与 owner 的 agent 豁免。** 外部贡献必须先有 accepted Issue；`z-zijie` 和 `zijie-super-agent` 不要求 Issue 引用，也不因受保护路径直接失败。原因是前者是纪律的目标对象，后者是维护者自己的日常通道；如果 owner 也被 Issue 卡住，纪律会先卡住维护者。模板段落、Scope 和 AI 声明对所有人都必填。
 2. **`PR policy` 用 `pull_request_target` + 只读 API。** 它从默认分支运行，只读 PR body 和 changed files，不 checkout/执行 PR 代码。这样外部 PR 不能通过修改 workflow 绕过检查；代价是 policy 变更要合并进默认分支才生效——这正是想要的。
 3. **受保护路径用“硬拦 + CODEOWNERS 双保险”。** `PR policy` 对外部作者的 `.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`RSI/evaluator/`、`RSI/schemas/` 直接失败；CODEOWNERS 在任何情况下都要求 owner review。两种机制覆盖不同层面：前者是自动闸门，后者是人工责任。
-4. **`RSI checks` 改成聚合 check。** 原来的 workflow 只在 RSI 路径变化时触发；如果把它直接设为 required check，docs-only PR 会永远等不到它。新增的 `checks passed` job 让所有 PR 都能得到一个确定的 check 结果：RSI 改动必须通过完整检查，非 RSI 改动快速成功。`PR policy / policy` 也是所有非 draft PR 都会运行。
+4. **`RSI checks` 改成聚合 check。** 原来的 workflow 只在 RSI 路径变化时触发；如果把它直接设为 required check，docs-only PR 会永远等不到它。新增的 `checks passed` job 让所有 PR 都能得到一个确定的 check 结果：RSI 改动必须通过完整检查，非 RSI 改动快速成功。`PR policy` 的 `policy` job 也是所有非 draft PR 都会运行。
 5. **不引入加权审批、Project 生命周期、i18n 配对、per-file 100% coverage。** 这些是 deepseek-harness 在团队和 monorepo 规模下的解；本仓库是单人维护，引入后维护成本大于收益。具体见第 7 节。
 6. **不配置 auto-merge。** 每个 PR 由人合并；Agent（包括 `zijie-super-agent`）不得合并自己的 PR。
 
@@ -291,7 +291,7 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 - 外部 PR 平均变更文件数 / 触碰的顶层目录数。
 - Reviewer 为搞清楚 scope/evidence 而追问的次数。
 - 同一 PR 的返工轮次。
-- `PR policy` / `RSI checks / checks passed` 的失败原因分布（用于调整阈值）。
+- `policy` / `checks passed` 的失败原因分布（用于调整阈值）。
 
 ## 7. 不建议照搬的部分
 
@@ -335,7 +335,7 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 ## 9. 后续路线
 
 1. **v0（已完成）**：`CONTRIBUTING.md`、根/RSI/skills `AGENTS.md`、PR/Issue 模板、CODEOWNERS、PR 模板、review checklist、决策记录、维护者设置文档。
-2. **v1（部分完成）**：`PR policy` 与 `RSI checks / checks passed` 已加入；剩余：`change-scope`、skills 层自动校验、文档链接 gate、PR policy 的“声明范围 vs 实际路径”严格比对。
+2. **v1（部分完成）**：`PR policy` 与 `checks passed` 已加入；剩余：`change-scope`、skills 层自动校验、文档链接 gate、PR policy 的“声明范围 vs 实际路径”严格比对。
 3. **v2（按需）**：加权审批/所有权、Project 生命周期、i18n 配对、docs 预算。只有在贡献流量和 maintainer 数量支持时才做。
 
 需要讨论的三个决策点：

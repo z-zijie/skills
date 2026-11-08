@@ -44,8 +44,8 @@ GitHub → Settings → Branches → Add branch protection rule：
 - **Require status checks to pass before merging**：开启
   - Require branches to be up to date before merging：开启
   - Required checks：
-    - `PR policy / policy`
-    - `RSI checks / checks passed`
+    - `policy`（来自 `PR policy` workflow；GitHub UI 可能显示为 `PR policy / policy`）
+    - `checks passed`（来自 `RSI checks` workflow；GitHub UI 可能显示为 `RSI checks / checks passed`）
 - **Require conversation resolution before merging**：开启
 - **Do not allow bypassing the above settings**：按需（勾选后 owner 也不能绕过）
 - **Restrict force pushes**：开启（或选择 Block force pushes）
@@ -69,7 +69,7 @@ GitHub → Settings → Branches → Add branch protection rule：
 
 依次开三个测试 PR：
 
-1. 只改 `docs/`：`PR policy` 与 `RSI checks / checks passed` 都通过。
+1. 只改 `docs/`：`policy` 与 `checks passed` 都通过。
 2. 删掉模板里的 `## Testing`：`PR policy` 失败并指出缺少段落。
 3. 用非 trusted 账号改 `.github/`：`PR policy` 失败并列出受保护路径。
 
