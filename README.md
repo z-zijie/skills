@@ -10,7 +10,7 @@ npx skills add https://github.com/z-zijie/skills.git
 
 ## Contributing
 
-外部贡献请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并遵守 [AGENTS.md](AGENTS.md) 的 Agent 协作规则。这套纪律的调研、设计与落地记录在 [docs/agent-contribution-discipline.md](docs/agent-contribution-discipline.md)。
+外部贡献请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并遵守 [AGENTS.md](AGENTS.md) 的 Agent 协作规则。这套纪律的设计与维护说明在 [docs/agent-contribution-discipline.md](docs/agent-contribution-discipline.md)。
 
 ## License
 
