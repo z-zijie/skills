@@ -223,7 +223,19 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 - `RSI/` 内部已经有很强的纪律：`RSI/docs/permissions.md` 规定谁能写什么并代码化执行；`RSI/docs/guarantees.md`、`verification.md`、`anti-cheating.md` 把可验证性和反作弊写清楚；`RSI/docs/AUTHORING.md` 是 skill/playbook 的写作约束；CI 每次改动跑契约、统计、状态机、redteam、reference backend demo。
 - 缺口不在"内部工程纪律"，而在**仓库层的贡献入口**：没有 `CONTRIBUTING.md`、没有根 `AGENTS.md`、没有 PR 模板、没有 Issue 模板、没有 CODEOWNERS、没有标签体系、没有 PR 政策检查。外部 Agent 进入仓库时拿不到任何"该怎么贡献"的指令。
 
-### 4.2 差距矩阵
+### 4.2 已有对应物：RSI 已经解决了什么
+
+本仓库不是从零开始。`RSI/` 内部已经有一套与 deepseek-harness 同构的纪律，缺的是把它们提升到仓库层，并覆盖 `skills/` 和外部贡献：
+
+| deepseek-harness 机制 | 本仓库已有对应物 | 还需要补什么 |
+|---|---|---|
+| 冻结 evaluator / 可信策略 | `RSI/docs/permissions.md` 的写入边界；evaluator 只读；CI 每次跑契约与 redteam | 把边界提升到仓库层（CODEOWNERS + 分支保护），让外部 PR 也受约束 |
+| 证据分级 / negative controls | `RSI/docs/verification.md`、`anti-cheating.md`；`tests/run_all.py`；redteam | 把"真实入口/反例/可复现"也写进 skills 层的贡献要求 |
+| Agent Notes / 决策记录 | RSI 的 `docs/{guarantees,closures,disagreement-log,...}.md` 和 `_src/rsi-build-plan.md` | 建仓库级 `docs/decisions/`，供非 RSI 改动使用 |
+| AGENTS.md 分层 | `RSI/docs/AUTHORING.md` + `RSI/docs/README.md` 的"该读哪份"索引 | 根 `AGENTS.md`、`RSI/AGENTS.md`、`skills/AGENTS.md` 三份入口 |
+| 窄钩子 + 全 CI | `rsi-checks.yml` 覆盖 RSI 契约、统计、状态机、redteam | PR 模板/政策检查 + 聚合 check；skills 层的最小验证命令 |
+
+### 4.3 差距矩阵
 
 | 层 | deepseek-harness | 本仓库现状 | 缺口 |
 |---|---|---|---|
@@ -235,7 +247,7 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 | 证据 | 分层测试 + snapshot + negative controls | RSI 有；skills 层没有统一要求 | 外部 skill 修改缺证据门槛 |
 | 决策记录 | Agent Notes + 格式 gate | RSI 有 docs，仓库级无位置 | 外部改动没有"决策写在哪"的答案 |
 
-### 4.3 本仓库的特殊风险
+### 4.4 本仓库的特殊风险
 
 1. **`skills/` 本身是可执行策略**：一个 skill 的 `SKILL.md` 会改变后续 Agent 的行为。外部 Agent 改 skill 等于改产品行为，不能当普通文档改动 review。
 2. **`RSI/evaluator/` 是冻结层**：`RSI/docs/permissions.md` 明确 evaluator 只能调 CLI，不能改；外部 PR 如果碰 evaluator，整个测量基线都要重跑。这条边界应在仓库层再声明一次，并让 CODEOWNERS/分支保护兜底。
