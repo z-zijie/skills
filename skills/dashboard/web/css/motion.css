@@ -1,0 +1,136 @@
+/* =========================================================================
+   motion.css — ambient loops, draw-in helpers, pause hooks, reduced motion.
+   Timing/easing tokens live in tokens.css and follow brief §4.10:
+   ease-out(.16,1,.3,1) entrances · ease-in(.6,0,.9,.35) exits ·
+   ease-state(.65,0,.35,1) reorder · ease-panel(.2,.8,.2,1) drawer.
+   Entrances and interactions are driven by WAAPI in motion.js; this file
+   owns only the continuous/ambient layers and the global fallbacks.
+   ========================================================================= */
+
+/* ---------- ambient loops (2.6–3.2s, never linear on spatial motion) ---------- */
+@keyframes dot-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.4;
+  }
+  70%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes end-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.55);
+    opacity: 0.55;
+  }
+}
+
+@keyframes node-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.38;
+  }
+  80%,
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+/* SVG line draw-in: JS sets --dash-length then adds .is-drawing. */
+@keyframes draw-line {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.draw-path {
+  stroke-dasharray: var(--dash-length, 0);
+  stroke-dashoffset: var(--dash-length, 0);
+}
+
+.draw-path.is-drawing {
+  animation: draw-line var(--dur-draw) var(--ease-out) forwards;
+}
+
+/* area/opacity rise used with the line draw */
+.fade-rise {
+  opacity: 0;
+}
+
+.fade-rise.is-drawing {
+  animation: fade-rise var(--dur-draw) var(--ease-out) forwards;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- Board <-> Topology cross-fade (View Transitions API) ---------- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-flip);
+  animation-timing-function: var(--ease-state);
+}
+
+/* ---------- freeze ambient loops while the tab is hidden ---------- */
+body.is-paused *,
+body.is-paused *::before,
+body.is-paused *::after {
+  animation-play-state: paused !important;
+}
+
+/* ---------- stale data: dim, never flash ---------- */
+body[data-stale="true"] .metrics,
+body[data-stale="true"] .board,
+body[data-stale="true"] .rail-list {
+  opacity: 0.55;
+  transition: opacity var(--dur-draw) var(--ease-state);
+}
+
+body[data-stale="true"] .statusbar {
+  color: var(--warn);
+}
+
+/* ---------- entrance: JS sets per-element delays; classes are inert here ---------- */
+.is-entering {
+  will-change: opacity, transform;
+}
+
+/* ---------- reduced motion: keep every function, remove movement ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .live-dot::after,
+  .mode-dot::after,
+  .dot.status-running::after,
+  .spark.is-running .spark-end,
+  .tree-pulse,
+  .topo-node .session-pulse {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+}
