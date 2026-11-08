@@ -1,0 +1,17 @@
+# Default owner
+*                       @z-zijie
+
+# Policy and agent instructions: owner only
+/.github/               @z-zijie
+/AGENTS.md              @z-zijie
+/CLAUDE.md              @z-zijie
+/CONTRIBUTING.md        @z-zijie
+/docs/                  @z-zijie
+
+# RSI frozen layer and contracts
+/RSI/evaluator/         @z-zijie
+/RSI/schemas/           @z-zijie
+/RSI/docs/              @z-zijie
+
+# Skills are executable policy
+/skills/                @z-zijie
