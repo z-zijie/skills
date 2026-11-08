@@ -280,12 +280,13 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 目标：**让模板里的承诺可验证，让"散弹"自动暴露。**
 
 1. **PR 政策检查**（草案 6.6）：`pull_request_target` + GitHub API，只读 PR body 和 changed files，**不 checkout/执行 PR 代码**。检查：
-   - 四段结构是否齐全；
+   - 四段 + Scope 是否齐全；
    - 是否链接 Issue；
    - 是否填了 AI Usage 块；
    - 是否有 `Declared scope` / `Out of scope`；
-   - 外部作者的变更路径是否超出声明范围、是否碰了受保护路径、是否一次改了过多文件/过多 area（先 warning，再考虑 fail）。
+   - 对非 owner 作者：受保护路径直接 fail；文件数/area 数超过阈值先 warning，观察后再决定是否 fail。
    - 注意：如果是"必须通过"的 required check，它自身也必须从 base 分支运行，且 action 固定到 SHA。
+   - "声明范围 vs 实际路径"的严格比对需要机器可读的格式（例如 `Declared scope: skills/kernel-perf/**, RSI/tools/**`），可以作为下一步；先做"存在声明 + 受保护路径 + 宽改提示"。
 2. **`scripts/change-scope`**：可以是 Python/Node 的轻量版（deepseek-harness 的实现是 MIT，可参考或直接移植，保留版权声明）。本地在 push 前跑一次，review 时也可以贴到 PR；v1 先不做强制。
 3. **聚合 check**：把现有 `rsi-checks` 和新的 `PR policy` 汇总成一个 `checks passed` job，供分支保护只要求一个名字，后续加检查不用改分支保护。
 4. **决策记录位置**：建 `docs/decisions/`，一决策一文件（`yyyy-mm-dd-topic.md`，Problem / Decision / Alternatives considered / Consequences）；机械/局部修改豁免。不要一开始就搞 `proposed/implemented/rejected/archived` 四态迁移，先能写、能搜即可。
@@ -558,7 +559,7 @@ jobs:
             });
             const paths = files.map((f) => f.filename);
             const protectedPaths = paths.filter((p) =>
-              /^(\.github\/|AGENTS\.md$|CONTRIBUTING\.md$|RSI\/evaluator\/)/.test(p)
+              /^(\.github\/|AGENTS\.md$|CONTRIBUTING\.md$|RSI\/(evaluator|schemas)\/)/.test(p)
             );
             if (!isOwner && protectedPaths.length > 0) {
               problems.push(`protected paths touched: ${protectedPaths.join(", ")}`);
@@ -578,7 +579,7 @@ jobs:
 
 使用注意：
 
-- 生产上把 `actions/github-script@v7` 固定到 commit SHA（deepseek-harness 的所有 action 都这样做）。
+- 生产上把 `actions/github-script@v7` 固定到 commit SHA（status-writing 类 job 尤其应如此；deepseek-harness 的 approval publisher 就是这样做的）。
 - 这个 check 自身如果作为 required check，其代码来自默认分支（`pull_request_target` 的语义），外部 PR 改不了它；但 **owner 自己改政策** 时它仍会运行旧版本，这是有意的保护。
 - `files.length > 20` 和 `areas.size > 3` 只是启发式；先 warning 或只对 `external` 标签生效，观察一段时间再决定是否 fail。
 - 如果以后引入更多检查，把它们汇总到一个 `checks passed` job，分支保护只要求那个名字。
