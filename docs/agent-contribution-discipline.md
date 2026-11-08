@@ -1,29 +1,27 @@
-# Agent 协作的贡献纪律：deepseek-harness 调研与本仓库落地方案
+# Agent 协作的贡献纪律：deepseek-harness 调研与本仓库落地
 
 > **调研对象**：`deepseek-ai/deepseek-harness`，`master` @ `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`（2026-11-04，MIT）。
 > **调研时间**：2026-11-08。
-> **目的**：整理该仓库的贡献规则中与 Agent 协作有关的部分，回答两个问题：外部贡献者的 Agent 为什么会散弹式修改？怎样把这类修改挡在 Review 之前？并给出可直接在 `z-zijie/skills` 落地的方案。
-> **引用约定**：文中 `deepseek-harness:<path>` 指该仓库内路径；所有结论基于上述快照，上游规则可能继续变化。
+> **落地状态**：本 PR 已把 v0 规则落地为仓库文件（见 4.2），并加入 `PR policy` 检查与 `RSI checks / checks passed` 聚合检查；标签和分支保护需要仓库所有者手动开启（见 `docs/maintainer-setup.md`）。
+> **引用约定**：文中 `deepseek-harness:<path>` 指该仓库内路径；结论基于上述快照，上游规则可能继续变化。
 
 ## 0. 先看结论
 
 deepseek-harness 的做法可以压缩成一句话：**先管入口，再让 PR 自证，最后用可信的自动化做 Review 门槛；指令本身分层、按需加载。**
 
-三个最值得先抄的机制：
+三个最值得抄的机制：
 
-| 机制 | 直接效果 | 本仓库是否值得立刻采用 |
+| 机制 | 直接效果 | 本仓库状态 |
 |---|---|---|
-| **入口管控**：外部贡献从 Issue 开始；没有 accepted Issue 的 PR 直接关闭（deepseek-harness 当前甚至完全不接受外部 PR） | 散弹式 PR 不进入 Review 队列，维护者不必先读代码再判断"想干什么" | **是**。这是性价比最高的动作 |
-| **PR 自证**：模板 + 仓库内 skill 规定 Motivation / Changes / Testing / AI Usage，要求 Issue 链接、测试设计、证据和 AI 参与度申报（本仓库建议再加一个 Scope 段） | Reviewer 不用追问"改了什么、为什么、测了什么、谁做的决策" | **是** |
-| **可信自动化 + 路径所有权**：策略检查从默认分支运行，PR 不能修改自己的规则；关键路径必须由 owner review | 外部 Agent 无法通过改 CI 来让自己的 PR 过关；关键区域不会被陌生 Agent 顺带改掉 | **部分采用**（先做 CODEOWNERS + 分支保护，再做策略工作流） |
+| **入口管控**：外部贡献从 Issue 开始；没有 accepted Issue 的 PR 直接关闭（deepseek-harness 当前甚至完全不接受外部 PR） | 散弹式 PR 不进入 Review 队列，维护者不必先读代码再判断"想干什么" | **已落地**：`CONTRIBUTING.md` + Issue 模板 + `PR policy`（外部作者强制 Issue 引用）；标签和分支保护待手动开启 |
+| **PR 自证**：模板 + 仓库内 skill 规定 Motivation / Changes / Testing / AI Usage，要求 Issue 链接、测试设计、证据和 AI 参与度申报（本仓库加了 Scope 段） | Reviewer 不用追问"改了什么、为什么、测了什么、谁做的决策" | **已落地**：PR 模板 + AI Usage + `docs/review-checklist.md` |
+| **可信自动化 + 路径所有权**：策略检查从默认分支运行，PR 不能修改自己的规则；关键路径必须由 owner review | 外部 Agent 无法通过改 CI 来让自己的 PR 过关；关键区域不会被陌生 Agent 顺带改掉 | **部分落地**：CODEOWNERS + `PR policy` 从 base 分支运行；分支保护待手动开启；加权审批未采用 |
 
-三条判断，供取舍：
+三条判断：
 
-1. **deepseek-harness 是 monorepo + 内部团队**，它的规则密度、32 个 workflow、加权审批体系不适合原样搬进个人仓库。本报告第 7 节列出不建议照搬的部分。
-2. **规则要能被 Agent 读到**：外部 Agent 不会读你的 wiki 或聊天记录，但会读根目录 `AGENTS.md`、`CLAUDE.md`、PR 模板、Issue 模板和 CI 失败信息。纪律要写在这些位置。
-3. **规则要能被机器执行**：只写在文档里的规则是建议，会随 Agent 的发挥而失效；能在 PR 上自动失败的规则才是纪律。
-
-本文建议的落地顺序是 **v0（一天）→ v1（一周）→ v2（多人后再考虑）**，见第 5 节。
+1. deepseek-harness 是 monorepo + 内部团队，它的规则密度、32 个 workflow、加权审批体系不适合原样搬进个人仓库；本仓库采用它的**机制形状**，不采用它的**规模**。
+2. **规则要能被 Agent 读到**：外部 Agent 不会读你的 wiki 或聊天记录，但会读根目录 `AGENTS.md`、`CLAUDE.md`、PR 模板、Issue 模板和 CI 失败信息。纪律要写在这些位置——本 PR 已写入。
+3. **规则要能被机器执行**：只写在文档里的规则是建议，会随 Agent 的发挥而失效；能在 PR 上自动失败的规则才是纪律。本 PR 落地了两个可作为 required check 的检查。
 
 ## 1. 调研范围与方法
 
@@ -55,7 +53,7 @@ deepseek-harness 的做法可以压缩成一句话：**先管入口，再让 PR 
 - `CONTRIBUTING.md` 明确写着：**当前无法接受外部 Pull Request**。外部参与渠道是 GitHub Discussions、生态插件（`dsh-plugin` topic）、博客/教程和答疑。中英文版本通过 `.i18n.yaml` 记录配对，并有翻译配对 gate。
 - 这不是"懒"，而是一种入口策略：在维护团队很小的阶段，**把贡献分成"可接收的输入"和"不可接收的代码"**，避免用 Review 时间来替外部 Agent 做范围裁剪。
 - 对内，Issue 是 PR 的前置条件：
-  - **Issue 模板**只有三种：Bug（Summary / Reproduction / Current behavior / Expected behavior / Environment）、Feature（Motivation / Behavior）、Task（Summary / Deliverables）。字段少而具体，强制写清"问题"和"预期"。
+  - **Issue 模板**只有三种：Bug（Summary / Reproduction / Current behavior / Expected behavior / Environment）、Feature（Motivation / Behavior）、Task（Summary / Deliverables）。字段少而具体，引导写清"问题"和"预期"。
   - **`Issue policy` 是 required check**（`issue-policy.yml`）：非 draft、人类作者、且有 review request 或已提交 review 的 PR，必须：
     - 至少引用一个**同仓库 Issue**：`Fixes #N` / `Closes #N` / `Resolves #N` / `Refs #N` 都行，但 HTML 注释、代码块、行内代码里的引用不算，PR 编号也不算；
     - 恰好一个 `kind/*` 标签；
@@ -136,7 +134,7 @@ AI Usage 的级别与含义（来自 `dsh-pr-description`，规范版本 0.1.2�
 - 流程性指令（分支、工作顺序、何时 commit/push、何时开 PR）不算任何阶段的人类参与。
 - "review 评审处理"行在还没有处理任何评论时保持 `n/a`，即使有评论或评论在 merge 后到达。
 
-**重要限定**：在仓库内可见的实现中，AI Usage 由 PR 模板和 skill 约束；`.github/issue-management/policy.test.mjs` 会检查模板与 skill 是否符合 AI-DECLARATION 规范版本，但 **PR 正文本身没有可见的 CI 校验**。这是"声明 + 社会约束"，不是机器强制。对本仓库来说，这反而是一个可以做得更轻或更严的选择点。
+**重要限定**：在 deepseek-harness 仓库内可见的实现中，AI Usage 由 PR 模板和 skill 约束；`.github/issue-management/policy.test.mjs` 会检查模板与 skill 是否符合 AI-DECLARATION 规范版本，但 **PR 正文本身没有可见的 CI 校验**。这是"声明 + 社会约束"，不是机器强制。本仓库的 `PR policy` 只校验 AI 声明块和段落是否存在，不校验内容真实性；真实性由 reviewer 判断。
 
 ### 2.5 评审层：谁必须看、什么算过
 
@@ -171,7 +169,7 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
   - `pre-merge-commit`：同一套 staged 配对检查与 archived notes 校验；
   - `pre-push`：只跑 `pnpm run typecheck`。
   - `docs/development.md` 明确：钩子**故意不跑**测试、快照、文档检查、构建和 hygiene；贡献者自己跑一次与改动相关的检查；CI 拥有 exhaustive coverage、built-artifact smoke 和 Node 兼容矩阵。
-- **CI 分层**：`ci.yml` 是 PR-only 的大杂烩（static、coverage、lint、benchmarks、snapshots+artifacts、Node 兼容等）；Windows 在 `ci-windows.yml`、Python 在 `ci-python.yml`，各自有 verdict job：`all checks passed`、`windows checks passed`、`python checks passed`；`ci-master.yml` 只在 master push 上跑 master-only 的平台/自托管检查。workflow 数量 32 个，但职责分离得很清楚：PR 只跑 PR 需要的，master 只跑 master 需要的。
+- **CI 分层**：`ci.yml` 是 PR-only 的 CI（static、coverage、lint、benchmarks、snapshots+artifacts、Node 兼容等）；Windows 在 `ci-windows.yml`、Python 在 `ci-python.yml`，各自有 verdict job：`all checks passed`、`windows checks passed`、`python checks passed`；`ci-master.yml` 只在 master push 上跑 master-only 的平台/自托管检查。workflow 数量 32 个，但职责分离得很清楚：PR 只跑 PR 需要的，master 只跑 master 需要的。
 - **测试策略**（`docs/testing.md`）：
   - 分层：unit / coverage gate / real-API e2e / owner-local expected / benchmark / snapshot / web browser snapshot；
   - coverage gate 是 `test:coverage`（不是 `test`），对 `packages/*/*/src` 做 per-file 100%；
@@ -213,404 +211,87 @@ deepseek-harness 没有用"必须 N 个 approve"这种朴素规则，而是用�
 | Agent Notes + 文档 gate | 决策理由写一次；文档不膨胀 | 不用反复重开设计讨论；文档 review 有边界 |
 | 标签 + Issue 生命周期 | 状态机可读 | 维护者不用手工做看板 |
 
-## 4. 本仓库现状与差距
+## 4. 本仓库的落地
 
-### 4.1 现状
+### 4.1 落地前
 
 - 仓库：`z-zijie/skills`，public，默认分支 `main`；0 star / 0 fork；内容为 `skills/`（8 个可安装 skill）+ `RSI/`（自改进 kernel 优化脚手架）+ `.github/workflows/rsi-checks.yml`。
 - README 是中文，安装方式为 `npx skills add https://github.com/z-zijie/skills.git`；`skills/` 里已有 `writing-for-agents`，说明对"给 Agent 写文档"本身有方法论。
-- PR 历史基本由 `zijie-super-agent` / `z-zijie` 提交，尚无外部贡献流量；CI 只对 `RSI/**` 和相关 workflow 变更触发（`rsi-checks.yml`）。
+- PR 历史基本由 `zijie-super-agent` / `z-zijie` 提交，尚无外部贡献流量；CI 只对 `RSI/**` 和相关 workflow 变更触发。
 - `RSI/` 内部已经有很强的纪律：`RSI/docs/permissions.md` 规定谁能写什么并代码化执行；`RSI/docs/guarantees.md`、`verification.md`、`anti-cheating.md` 把可验证性和反作弊写清楚；`RSI/docs/AUTHORING.md` 是 skill/playbook 的写作约束；CI 每次改动跑契约、统计、状态机、redteam、reference backend demo。
-- 缺口不在"内部工程纪律"，而在**仓库层的贡献入口**：没有 `CONTRIBUTING.md`、没有根 `AGENTS.md`、没有 PR 模板、没有 Issue 模板、没有 CODEOWNERS、没有标签体系、没有 PR 政策检查。外部 Agent 进入仓库时拿不到任何"该怎么贡献"的指令。
+- 缺口不在"内部工程纪律"，而在**仓库层的贡献入口**：没有 `CONTRIBUTING.md`、没有根 `AGENTS.md`、没有 PR/Issue 模板、没有 CODEOWNERS、没有标签体系、没有 PR 政策检查。外部 Agent 进入仓库时拿不到任何"该怎么贡献"的指令。
 
-### 4.2 已有对应物：RSI 已经解决了什么
+### 4.2 本 PR 落地的文件
+
+| 文件 | 作用 |
+|---|---|
+| `CONTRIBUTING.md` | 入口规则：Issue-first、接受/不接受、AI 参与声明、证据要求、PR 要求、受保护路径、Review/关闭规则 |
+| `AGENTS.md` + `CLAUDE.md` | 根 Agent standing orders；`CLAUDE.md` 是 `AGENTS.md` 的符号链接 |
+| `RSI/AGENTS.md` | RSI 子树规则：冻结 evaluator、写入边界、canonical vocabulary、测试命令 |
+| `skills/AGENTS.md` | skills 子树规则：skill 是可执行策略、frontmatter/触发描述、脚本验证、output contract |
+| `.github/PULL_REQUEST_TEMPLATE.md` | Motivation / Scope / Changes / Testing / AI Usage / Checklist |
+| `.github/ISSUE_TEMPLATE/{bug,feature,task}.md` + `config.yml` | 三类 Issue 模板；关闭空白 Issue |
+| `.github/CODEOWNERS` | 默认 owner；`.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`docs/`、`RSI/evaluator/`、`RSI/schemas/`、`skills/` 由 owner review |
+| `.github/workflows/pr-policy.yml` | `PR policy`：从 base 分支运行、只读 API，校验模板段落、Issue 引用、AI 声明、Scope、受保护路径、宽改提示 |
+| `.github/workflows/rsi-checks.yml` | 新增 `changes` + `checks passed` 聚合检查；`RSI checks / checks passed` 可在分支保护里作为 required check，docs-only PR 也会成功 |
+| `docs/review-checklist.md` | Reviewer 对照表 |
+| `docs/decisions/README.md` | 决策记录格式与写作条件 |
+| `docs/decisions/2026-11-08-agent-contribution-discipline.md` | 本决策的记录，也是决策记录格式的示范 |
+| `docs/maintainer-setup.md` | 标签、分支保护、required checks 的手动设置步骤 |
+| `README.md` | 增加 Contributing 入口链接 |
+| `docs/agent-contribution-discipline.md` | 本报告：调研、设计依据、边界与后续 |
+
+### 4.3 RSI 已经解决了什么
 
 本仓库不是从零开始。`RSI/` 内部已经有一套与 deepseek-harness 同构的纪律，缺的是把它们提升到仓库层，并覆盖 `skills/` 和外部贡献：
 
-| deepseek-harness 机制 | 本仓库已有对应物 | 还需要补什么 |
+| deepseek-harness 机制 | 本仓库已有对应物 | 本 PR 补上的部分 |
 |---|---|---|
-| 冻结 evaluator / 可信策略 | `RSI/docs/permissions.md` 的写入边界；evaluator 只读；CI 每次跑契约与 redteam | 把边界提升到仓库层（CODEOWNERS + 分支保护），让外部 PR 也受约束 |
-| 证据分级 / negative controls | `RSI/docs/verification.md`、`anti-cheating.md`；`tests/run_all.py`；redteam | 把"真实入口/反例/可复现"也写进 skills 层的贡献要求 |
-| Agent Notes / 决策记录 | RSI 的 `docs/{guarantees,closures,disagreement-log,...}.md` 和 `_src/rsi-build-plan.md` | 建仓库级 `docs/decisions/`，供非 RSI 改动使用 |
+| 冻结 evaluator / 可信策略 | `RSI/docs/permissions.md` 的写入边界；evaluator 只读；CI 每次跑契约与 redteam | CODEOWNERS + `PR policy` 把边界提升到仓库层，外部 PR 也会被拦 |
+| 证据分级 / negative controls | `RSI/docs/verification.md`、`anti-cheating.md`；`tests/run_all.py`；redteam | `CONTRIBUTING.md` 把"真实入口/反例/可复现"写进 skills 层的贡献要求 |
+| Agent Notes / 决策记录 | RSI 的 `docs/{guarantees,closures,disagreement-log,...}.md` 和 `_src/rsi-build-plan.md` | `docs/decisions/` 作为仓库级决策记录位置 |
 | AGENTS.md 分层 | `RSI/docs/AUTHORING.md` + `RSI/docs/README.md` 的"该读哪份"索引 | 根 `AGENTS.md`、`RSI/AGENTS.md`、`skills/AGENTS.md` 三份入口 |
-| 窄钩子 + 全 CI | `rsi-checks.yml` 覆盖 RSI 契约、统计、状态机、redteam | PR 模板/政策检查 + 聚合 check；skills 层的最小验证命令 |
+| 窄钩子 + 全 CI | `rsi-checks.yml` 覆盖 RSI 契约、统计、状态机、redteam | `checks passed` 聚合 check + `PR policy`；skills 层的最小自动校验仍待补 |
 
-### 4.3 差距矩阵
+### 4.4 仍需人工完成的仓库设置
 
-| 层 | deepseek-harness | 本仓库现状 | 缺口 |
-|---|---|---|---|
-| 入口 | 不收外部 PR；Issue 模板 + Issue policy | 无 Issue 模板、无政策 | 外部 Agent 可以直接开 PR |
-| 指令 | 根 + 17 个子树/专题 AGENTS.md（共 18 个）；22 个 skill | 仅 RSI 内部文档 | 仓库根 / skills/ 没有 Agent 指令 |
-| PR 自证 | 模板 + description skill + AI Usage | 无模板 | Reviewer 要自己拼图 |
-| 评审 | 加权审批 + Policy checks | 无 CODEOWNERS、无 required checks | 谁都能改任何路径 |
-| 自动化 | 32 个 workflow；可信 base-branch 策略 | 1 个 RSI workflow | 没有 PR 政策检查 |
-| 证据 | 分层测试 + snapshot + negative controls | RSI 有；skills 层没有统一要求 | 外部 skill 修改缺证据门槛 |
-| 决策记录 | Agent Notes + 格式 gate | RSI 有 docs，仓库级无位置 | 外部改动没有"决策写在哪"的答案 |
+- **标签**：`kind/*`、`area/*`、`p0`–`p3`、`needs-*`、`accepted`、`external`、`stale`。创建命令见 `docs/maintainer-setup.md`。
+- **分支保护**：要求 PR、1 个 owner approval、CODEOWNERS review、stale approval dismissal、`PR policy / policy` 和 `RSI checks / checks passed`、禁止 force push。步骤见 `docs/maintainer-setup.md`。
+- 这两项是仓库设置，不能由本 PR 的代码完成；Agent 也不会替你改仓库设置。
 
-### 4.4 本仓库的特殊风险
+### 4.5 仍未覆盖的缺口
 
-1. **`skills/` 本身是可执行策略**：一个 skill 的 `SKILL.md` 会改变后续 Agent 的行为。外部 Agent 改 skill 等于改产品行为，不能当普通文档改动 review。
-2. **`RSI/evaluator/` 是冻结层**：`RSI/docs/permissions.md` 明确 evaluator 只能调 CLI，不能改；外部 PR 如果碰 evaluator，整个测量基线都要重跑。这条边界应在仓库层再声明一次，并让 CODEOWNERS/分支保护兜底。
-3. **CI workflow 是政策**：如果外部 PR 可以改 `.github/workflows/` 并让它在新分支上生效，就等于让被审查者改考试规则。deepseek-harness 的解法是"策略代码从 base 分支跑"；本仓库至少要做到"改 `.github/` 的 PR 必须单独 + owner 批准"。
-4. **单人维护带宽**：不能引入需要每天手工维护的看板/Project 自动化；优先选"一次配置、长期生效"的机制。
+- **change-scope 脚本**：deepseek-harness 的 `scripts/change-scope.ts` 能列出改动路径；本仓库还没有等价物。当前 `PR policy` 只能检查受保护路径和宽改阈值，不能严格比对"声明范围 vs 实际路径"。
+- **skills 层自动校验**：`skills/` 下每个 skill 的 frontmatter/触发描述/脚本测试还没有统一 gate；目前靠 review 和 `skills/AGENTS.md`。
+- **文档预算与链接 gate**：本报告的引用和链接靠人工检查；文档量上来后需要 `verify-md-links` 之类的 gate。
+- **Issue 生命周期自动化 / 加权审批 / i18n 配对**：见第 7 节，规模不够时不建议引入。
 
-## 5. 建议落地：三档路线
+## 5. 设计取舍
 
-### 5.1 v0：一天内能上完（入口 + 指令 + 模板 + 所有权）
+1. **外部作者强制 Issue，owner 与 owner 的 agent 豁免。** 外部贡献必须先有 accepted Issue；`z-zijie` 和 `zijie-super-agent` 不要求 Issue 引用，也不因受保护路径直接失败。原因是前者是纪律的目标对象，后者是维护者自己的日常通道；如果 owner 也被 Issue 卡住，纪律会先卡住维护者。模板段落、Scope 和 AI 声明对所有人都必填。
+2. **`PR policy` 用 `pull_request_target` + 只读 API。** 它从默认分支运行，只读 PR body 和 changed files，不 checkout/执行 PR 代码。这样外部 PR 不能通过修改 workflow 绕过检查；代价是 policy 变更要合并进默认分支才生效——这正是想要的。
+3. **受保护路径用“硬拦 + CODEOWNERS 双保险”。** `PR policy` 对外部作者的 `.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`RSI/evaluator/`、`RSI/schemas/` 直接失败；CODEOWNERS 在任何情况下都要求 owner review。两种机制覆盖不同层面：前者是自动闸门，后者是人工责任。
+4. **`RSI checks` 改成聚合 check。** 原来的 workflow 只在 RSI 路径变化时触发；如果把它直接设为 required check，docs-only PR 会永远等不到它。新增的 `checks passed` job 让所有 PR 都能得到一个确定的 check 结果：RSI 改动必须通过完整检查，非 RSI 改动快速成功。`PR policy / policy` 也是所有非 draft PR 都会运行。
+5. **不引入加权审批、Project 生命周期、i18n 配对、per-file 100% coverage。** 这些是 deepseek-harness 在团队和 monorepo 规模下的解；本仓库是单人维护，引入后维护成本大于收益。具体见第 7 节。
+6. **不配置 auto-merge。** 每个 PR 由人合并；Agent（包括 `zijie-super-agent`）不得合并自己的 PR。
 
-目标：**让外部 Agent 在动手之前先看到规则，让明显的散弹式 PR 在进入 Review 前被挡住。**
+## 6. 验证
 
-1. **`CONTRIBUTING.md`**：写清接受/不接受什么、Issue-first、一个 PR 只做一件事、AI 参与声明、证据要求、Review 与关闭规则。草案见 6.1。
-2. **根 `AGENTS.md` + `CLAUDE.md` 符号链接**：standing orders，控制在 ~150 行内。草案见 6.2。
-3. **子树 `AGENTS.md`**：`RSI/AGENTS.md`（指向 RSI docs、冻结层、测试命令）和 `skills/AGENTS.md`（skill 作者规则：frontmatter、触发描述、references、测试）。草案见 6.3。
-4. **`.github/PULL_REQUEST_TEMPLATE.md`**：四段 + Scope + Checklist。草案见 6.4。
-5. **`.github/ISSUE_TEMPLATE/{bug,feature,task}.md` + `config.yml`**：沿用 deepseek-harness 的最小字段，另加"建议的改动范围"和"你打算怎么验证"。
-6. **`.github/CODEOWNERS`**：默认 owner 是你；`.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`RSI/evaluator/`、`RSI/schemas/`、`skills/` 必须由 owner review。草案见 6.5。
-7. **标签**：`kind/*`（bug / feature / docs / chore / skill / rsi）、`area/*`（skills / rsi / ci / docs）、`p0`–`p3`、`needs-scope` / `needs-evidence` / `needs-ai-declaration` / `accepted` / `external` / `stale`。不要求机器强制，先用于人工分流。
-8. **分支保护**（GitHub 仓库设置里手动开）：
-   - 合并前必须走 PR；至少 1 个 owner approval；有新 commit 时 dismiss stale approval；
-   - 必须通过 `RSI checks`（现有）和后续的 `PR policy`（v1）；
-   - 禁止 force push 到 `main`；限制谁能 push；
-   - 开启 "Require review from Code Owners"。
+### 6.1 本 PR 的验证
 
-完成 v0 后，外部 Agent 打开 PR 时会先看到模板；没有 accepted Issue、没有填模板、碰了受保护路径的 PR 可以直接关闭并附上 6.7 的话术。
+- Markdown：所有新增 `.md` 代码围栏平衡、无行尾空白、本地路径引用存在。
+- YAML：两个 workflow 语法检查通过。
+- RSI：新增 `RSI/AGENTS.md` 会触发 `RSI checks`；本地 `python3 tests/run_all.py` 已通过（46 passed），其余 RSI gate 由 workflow 在 CI 中运行。
+- `PR policy` 只会在合并后对后续 PR 生效（`pull_request_target` 从 base 分支取 workflow）；本 PR 自身不由它检查。
+- 合并后按 `docs/maintainer-setup.md` 的第 6 节开三个测试 PR，验证通过、缺段落失败、外部作者碰受保护路径失败。
 
-### 5.2 v1：一周内（自证检查 + 范围检查 + 决策记录）
+### 6.2 观察指标
 
-目标：**让模板里的承诺可验证，让"散弹"自动暴露。**
-
-1. **PR 政策检查**（草案 6.6）：`pull_request_target` + GitHub API，只读 PR body 和 changed files，**不 checkout/执行 PR 代码**。检查：
-   - 四段 + Scope 是否齐全；
-   - 是否链接 Issue；
-   - 是否填了 AI Usage 块；
-   - 是否有 `Declared scope` / `Out of scope`；
-   - 对非 owner 作者：受保护路径直接 fail；文件数/area 数超过阈值先 warning，观察后再决定是否 fail。
-   - 注意：如果是"必须通过"的 required check，它自身也必须从 base 分支运行，且 action 固定到 SHA。
-   - "声明范围 vs 实际路径"的严格比对需要机器可读的格式（例如 `Declared scope: skills/kernel-perf/**, RSI/tools/**`），可以作为下一步；先做"存在声明 + 受保护路径 + 宽改提示"。
-2. **`scripts/change-scope`**：可以是 Python/Node 的轻量版（deepseek-harness 的实现是 MIT，可参考或直接移植，保留版权声明）。本地在 push 前跑一次，review 时也可以贴到 PR；v1 先不做强制。
-3. **聚合 check**：把现有 `rsi-checks` 和新的 `PR policy` 汇总成一个 `checks passed` job，供分支保护只要求一个名字，后续加检查不用改分支保护。
-4. **决策记录位置**：建 `docs/decisions/`，一决策一文件（`yyyy-mm-dd-topic.md`，Problem / Decision / Alternatives considered / Consequences）；机械/局部修改豁免。不要一开始就搞 `proposed/implemented/rejected/archived` 四态迁移，先能写、能搜即可。
-5. **Review checklist**：见 6.7，放在 `.github/PULL_REQUEST_TEMPLATE.md` 之外的 `docs/review-checklist.md` 或 CONTRIBUTING 里，reviewer 直接对照。
-6. **关闭模板与标签自动化**：无 Issue / 超范围 / 长期无响应的 PR，用固定话术关闭；`external` + `needs-*` 标签帮助分流。
-
-### 5.3 v2：多人或贡献流量上来后再考虑
-
-- **可信策略工作流**：把 PR 政策、审批、标签检查都搬到 `pull_request_target` + 默认分支代码 + 固定 SHA 的 action；需要时再引入专用 check App。
-- **加权审批 / 所有权加成 / `/delegate`**：只有多个 maintainer 且路径所有权有实际意义时才值得。
-- **文档预算与 verify-\* gates**：当文档开始膨胀、出现重复规则时再上。
-- **i18n 配对**：只有确定做双语文档时再上（deepseek-harness 用 `.i18n.yaml` + 配对 gate，成本不低）。
-- **Project / Issue 生命周期自动化**：贡献流量大到需要看板时再考虑。
-- **AI-DECLARATION 全量规范**：可以继续用简化版（AI 参与级别 + 关键决策记录），不必一开始就实现五阶段评分和徽章。
-
-## 6. 最小草案（可直接复制、按习惯调整语言）
-
-> 下面是草案，不是已生效的仓库政策。固定段名（`## Motivation` 等）建议保留英文，方便不同 Agent 识别；说明文字可以按你的偏好改成中文。
-
-### 6.1 `CONTRIBUTING.md`（草案）
-
-```markdown
-# 贡献指南
-
-本仓库接受外部贡献，但**贡献从 Issue 开始，而不是从 Pull Request 开始**。
-
-## 先提 Issue
-
-- 任何代码或文档改动，请先在 Issues 用对应模板提交，并说明：要解决的问题、建议的改动范围、你打算如何验证。
-- 维护者会在 Issue 中回复「接受 / 不接受 / 需要更多信息」。**没有获得接受的 PR 会被关闭**，并附上本指南链接。
-- 小修小补（typo、失效链接）也请先开 Issue，或确保一个 PR 只做这一类改动。
-
-## 我们接受什么
-
-- 修复明确 bug，且带复现与回归测试。
-- 新增或改进 skill：符合 `skills/writing-for-agents/SKILL.md` 的结构要求，带触发描述和自测用例。
-- RSI：符合 `RSI/docs/permissions.md` 的写入边界；修改 `RSI/evaluator/` 的 PR 默认不接受。
-- 文档：一个 PR 只改一个主题，不做顺带重排或格式化。
-
-## 我们不接受什么
-
-- 无 Issue，或 Issue 未被接受的 PR。
-- 一个 PR 混多个无关改动（重构 + 功能 + 格式化 + 依赖升级）。
-- 纯风格改写、大规模重命名、没有行为理由的目录搬迁。
-- 把 CI/政策文件（`.github/`、`AGENTS.md`、`CONTRIBUTING.md`）的修改和业务改动混在同一 PR。
-- 无法复现的「修复」、没有证据的性能优化。
-
-## AI 参与声明
-
-- 使用 AI/Agent 提交的 PR，必须在 PR 描述中填写 `## AI Usage`：每个阶段（问题拆解 / 方案设计 / 测试 / 实现 / 评审处理）由谁决策、AI 参与程度。
-- 人类贡献者仍然对提交内容负责；「Agent 写的」不是免责理由。
-
-## 证据要求
-
-- 行为修复：修复前失败、修复后通过的回归测试。
-- 性能：变更前后数字 + 测量条件 + 可复现命令。
-- 文档：链接检查和渲染检查说明。
-- RSI：`cd RSI && python3 tests/run_all.py`，以及对应 skill 的回归用例。
-
-## Review
-
-- Reviewer 按 `CODEOWNERS` 指定；没有 owner 的区域默认由维护者 review。
-- PR 描述不完整（缺 Issue、缺测试、缺 AI Usage）会被打回，补齐后再 review。
-- Review 只处理当前 diff；不要在同一 PR 里继续扩大范围。
-
-## 关闭规则
-
-- 30 天无响应，或与 Issue 结论不符的 PR 会被关闭；可以基于新 Issue 重新提交。
-```
-
-### 6.2 根 `AGENTS.md`（草案）
-
-```markdown
-# AGENTS.md
-
-This repository contains installable Agent Skills (`skills/`) and the RSI kernel-optimization scaffold (`RSI/`). Read `CONTRIBUTING.md` before changing anything. This file holds the standing orders an agent needs in every session; deeper rules live beside the code.
-
-## Before you start
-
-- Work only on an accepted Issue. No accepted Issue, no code change.
-- One PR does one thing. Split unrelated fixes, refactors, formatting, dependency bumps, and renames.
-- Declare the expected change scope in the PR: paths/directories, and what is explicitly out of scope.
-- Do not expand scope after review starts. If a fix needs a wider change, stop and comment on the Issue.
-
-## Repository layout
-
-- `skills/<name>/SKILL.md` — installable agent skills. Follow `skills/writing-for-agents/SKILL.md` and `skills/AGENTS.md`.
-- `RSI/` — self-improving kernel-optimization scaffold. Start at `RSI/README.md` and `RSI/docs/README.md`.
-- `.github/` — CI and repository policy. Protected: do not change it in a PR that is trying to pass it.
-
-## Commands
-
-- RSI checks: `cd RSI && python3 tests/run_all.py`
-- Evaluate a campaign: `cd RSI && python3 tools/demo.py --no-tests`
-- Documentation: verify local links and fenced blocks; no broken links.
-
-## Change discipline
-
-- Keep the change face equal to the review face: only lines the stated behavior change needs.
-- Mechanical or local edits need no design note; a durable design decision goes to `docs/decisions/`.
-- State only behavior the diff guarantees and the tests cover.
-- Comments state contracts, not reasoning transcripts.
-
-## Evidence
-
-- Run the smallest check that would fail for this regression; report only commands actually run.
-- Behavior change: a test that fails before and passes after.
-- Performance: before/after numbers with measurement conditions.
-- Documentation: link and render check.
-- CI owns the exhaustive matrix; do not run the full suite by default.
-
-## Safety
-
-- Never modify `RSI/evaluator/` from an agent PR; evaluator changes are human-only.
-- Never commit secrets or credentials.
-- Do not change `.github/workflows/` or policy files to make your own PR pass. Such a change needs a separate Issue and human approval.
-
-## Pull requests
-
-- Fill every section of `.github/PULL_REQUEST_TEMPLATE.md`; an incomplete description is a blocked PR.
-- Declare AI usage honestly.
-- Reply to every review thread with a fix or a reason; do not resolve threads you did not address.
-```
-
-### 6.3 子树 `AGENTS.md`（两个简版）
-
-`RSI/AGENTS.md`：
-
-```markdown
-# AGENTS.md — RSI
-
-Read `RSI/README.md`, `RSI/docs/README.md`, and `RSI/docs/permissions.md` before changing anything here.
-
-- `RSI/evaluator/` is frozen: agents call its CLI, never edit it. Evaluator changes are human-only.
-- Only `operators/*/workspace/` is writable by inner-loop agents; see `RSI/docs/permissions.md`.
-- Keep the canonical vocabulary from `RSI/docs/vocabulary.md`; do not name a vendor tool or metric as the thing to do.
-- A skill or playbook change must pass its own regression cases and `cd RSI && python3 tests/run_all.py`.
-- Record a durable design decision in `RSI/docs/` or `docs/decisions/`; mechanical edits are exempt.
-```
-
-`skills/AGENTS.md`：
-
-```markdown
-# AGENTS.md — skills
-
-Each skill is a directory with a `SKILL.md`; it is an executable instruction for agents, not ordinary prose.
-
-- Read `skills/writing-for-agents/SKILL.md` before creating or changing a skill.
-- The frontmatter `name` and `description` are the trigger; the description must say when the skill fires, and the body must stay under the writing guide's limits.
-- A skill that ships scripts must include a way to verify them (tests or a documented check command).
-- Do not change a skill's output contract without updating every consumer and the skill's tests.
-- Keep examples and long reference material in `references/`, reached by a pointer from `SKILL.md`.
-```
-
-### 6.4 `.github/PULL_REQUEST_TEMPLATE.md`（草案）
-
-```markdown
-<!-- 按 CONTRIBUTING.md 的 Review checklist 填写。 -->
-
-## Motivation
-
-<!-- 链接同仓库 Issue：Fixes #N（解决问题）或 Refs #N（提供上下文）。没有 Issue 的 PR 会被关闭。 -->
-
-## Scope
-
-- **Declared scope**（预期改动的路径/模块）：
-- **Out of scope**（明确不做的事）：
-
-## Changes
-
-- Interface changes（命令/配置/公共接口；没有写 None）：
-- Behavior changes（用户/Agent 可观察行为；没有写 None）：
-
-## Testing
-
-- Test design（为什么这些测试覆盖了上面的 Changes）：
-- Test entries（每条：命令 + 结果）：
-
-<details>
-<summary>Proof</summary>
-
-</details>
-
-## AI Usage
-
-| 阶段 | 级别 | AI 参与度 | 决策记录 |
-|:--|:--|--:|:--|
-| breakdown 问题拆解 |  |  |  |
-| design 方案设计 |  |  |  |
-| testing 验收测试 |  |  |  |
-| implementation 技术实现 |  |  |  |
-| review 评审处理 | n/a 暂不适用 | — | 尚无已处理的评审意见。 |
-
-## Checklist
-
-- [ ] 已链接被接受的 Issue
-- [ ] 一个 PR 只做一件事，变更路径没有超出 Declared scope
-- [ ] 测试/证据已填写，且命令实际运行过
-- [ ] 未修改 `.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`RSI/evaluator/`、`RSI/schemas/`（如需要，已在单独 Issue 讨论）
-- [ ] AI Usage 已如实填写
-- [ ] 本地相关检查已通过
-```
-
-### 6.5 `.github/CODEOWNERS`（草案）
-
-```text
-# 默认由维护者 review
-*                       @z-zijie
-
-# 政策与 Agent 指令：owner only
-/.github/               @z-zijie
-/AGENTS.md              @z-zijie
-/CONTRIBUTING.md        @z-zijie
-/docs/                  @z-zijie
-
-# RSI 冻结层与契约
-/RSI/evaluator/         @z-zijie
-/RSI/schemas/           @z-zijie
-/RSI/docs/              @z-zijie
-
-# 可执行策略：skill
-/skills/                @z-zijie
-```
-
-### 6.6 `.github/workflows/pr-policy.yml`（草案）
-
-```yaml
-name: PR policy
-
-on:
-  pull_request_target:
-    types: [opened, edited, synchronize, reopened, ready_for_review]
-
-permissions:
-  contents: read
-  issues: read
-  pull-requests: read
-
-jobs:
-  policy:
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    steps:
-      # 只读取 API 数据，绝不 checkout 或执行 PR 代码。
-      - uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            const body = pr.body || "";
-            const isOwner = pr.user.login === "z-zijie";
-            const problems = [];
-
-            for (const heading of ["## Motivation", "## Scope", "## Changes", "## Testing", "## AI Usage"]) {
-              if (!body.includes(heading)) problems.push(`missing section: ${heading}`);
-            }
-            if (!/(Fixes|Closes|Resolves|Refs)\s+#\d+/.test(body)) {
-              problems.push("missing Issue reference (Fixes/Closes/Resolves/Refs #N)");
-            }
-            if (!body.includes("ai-declaration:start")) {
-              problems.push("missing AI declaration block");
-            }
-            if (!/Declared scope/i.test(body) || !/Out of scope/i.test(body)) {
-              problems.push("missing Declared scope / Out of scope");
-            }
-
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              ...context.repo,
-              pull_number: pr.number,
-              per_page: 100,
-            });
-            const paths = files.map((f) => f.filename);
-            const protectedPaths = paths.filter((p) =>
-              /^(\.github\/|AGENTS\.md$|CONTRIBUTING\.md$|RSI\/(evaluator|schemas)\/)/.test(p)
-            );
-            if (!isOwner && protectedPaths.length > 0) {
-              problems.push(`protected paths touched: ${protectedPaths.join(", ")}`);
-            }
-            if (!isOwner && files.length > 20) {
-              core.warning(`wide change: ${files.length} files; split it or justify in Scope`);
-            }
-            const areas = new Set(paths.map((p) => p.split("/")[0]));
-            if (!isOwner && areas.size > 3) {
-              core.warning(`touches ${areas.size} areas: ${[...areas].join(", ")}`);
-            }
-
-            if (problems.length > 0) {
-              core.setFailed(problems.join("\n"));
-            }
-```
-
-使用注意：
-
-- 生产上把 `actions/github-script@v7` 固定到 commit SHA（status-writing 类 job 尤其应如此；deepseek-harness 的 approval publisher 就是这样做的）。
-- 这个 check 自身如果作为 required check，其代码来自默认分支（`pull_request_target` 的语义），外部 PR 改不了它；但 **owner 自己改政策** 时它仍会运行旧版本，这是有意的保护。
-- `files.length > 20` 和 `areas.size > 3` 只发出 warning，不阻断合并；观察一段时间、确认误报率后再决定是否改成 fail（把 `core.warning` 换成 `problems.push`）。
-- 如果以后引入更多检查，把它们汇总到一个 `checks passed` job，分支保护只要求那个名字。
-
-### 6.7 标签、关闭话术、Review checklist
-
-**标签**
-
-- `kind/bug`、`kind/feature`、`kind/docs`、`kind/chore`、`kind/skill`、`kind/rsi`（恰好一个）
-- `area/skills`、`area/rsi`、`area/ci`、`area/docs`（至少一个）
-- `p0`–`p3`（最多一个）
-- 流程：`accepted`、`external`、`needs-scope`、`needs-evidence`、`needs-ai-declaration`、`stale`
-
-**关闭话术（无 accepted Issue / 散弹式 PR）**
-
-> 这个 PR 缺少被接受的 Issue，或包含超出单一主题的改动，因此先关闭。请先用 Issue 模板描述问题、建议范围和验证方式；Issue 被接受后再提交一个引用它的 PR。谢谢。
-
-英文版：
-
-> This PR is closed because it has no accepted Issue, or it mixes changes beyond a single topic. Please open an Issue with the problem, the proposed scope, and how you will verify it; once the Issue is accepted, submit a new PR that references it.
-
-**Review checklist**
-
-- [ ] PR 有 accepted Issue，且 Motivation 与 Issue 一致。
-- [ ] 变更路径在 `Declared scope` 内；`Out of scope` 的事没有被顺手做掉。
-- [ ] 没有混入无关重构、格式化、依赖升级、重命名。
-- [ ] 行为变更带回归测试；性能变更有前后数字和测量条件；文档变更有链接检查。
-- [ ] 测试设计覆盖了 `Changes` 里的每一项；`Proof` 里是实际运行的证据。
-- [ ] AI Usage 与提交内容相符；高风险阶段（design/implementation 的 auto）加重审查。
-- [ ] 没有修改受保护路径，或修改已按规则走单独 PR + owner 批准。
-- [ ] 审查只针对当前 diff；超范围的意见要求拆分，不在本 PR 里继续扩大。
+- 无 Issue 的外部 PR 数（目标 0）。
+- 外部 PR 平均变更文件数 / 触碰的顶层目录数。
+- Reviewer 为搞清楚 scope/evidence 而追问的次数。
+- 同一 PR 的返工轮次。
+- `PR policy` / `RSI checks / checks passed` 的失败原因分布（用于调整阈值）。
 
 ## 7. 不建议照搬的部分
 
@@ -621,7 +302,7 @@ jobs:
 | Project / Issue 生命周期自动化 | 需要维护 Project 字段、App token 和事件驱动逻辑；容易坏 | 标签 + 手动状态；流量大了再上 |
 | i18n 配对（`.i18n.yaml` + 配对 gate） | 只有确定做双语时才值得；维护成本高 | 先单语；要双语时再建配对机制 |
 | per-file 100% coverage、32 个 workflow | 与 monorepo 的规模和团队配套；小仓库会变成维护负担 | 按 path 过滤的少量必需检查 + 一个聚合 check |
-| AI-DECLARATION 全量五阶段评分 | 规范很细，填写成本高；没有 CI 强制时容易流于形式 | 先用简化版：AI 参与级别 + 关键决策记录；需要时再细化 |
+| AI-DECLARATION 全量五阶段评分 | 规范很细，填写成本高；没有 CI 强制时容易流于形式 | 简化版：AI 参与级别 + 关键决策记录；需要时再细化 |
 | 18 个 AGENTS.md 一次建齐 | 没有对应目录就不需要 | 先根 + `RSI/` + `skills/` 三份，按需增加 |
 | 大型 monorepo 的 docs 预算/生成目录 gate | 文档量没到那个规模 | 先保证链接可点、代码块闭合、一个主题一份文档 |
 
@@ -639,33 +320,29 @@ jobs:
 | `.agents/skills/dsh-pr-description/SKILL.md` | PR 四段 + AI Usage + 评分规则 | 模板和规则的主要来源 |
 | `.agents/skills/dsh-code-review/SKILL.md` | Review 的 sources of truth、blocking requirements、manual checks | 改写成个人仓库的 review checklist |
 | `.agents/notes/README.md` | Agent Notes 的生命周期、格式、归档规则 | 先做简化版 `docs/decisions/` |
-| `.github/pull_request_template.md` | 四段模板 + AI Usage 表 | 见 6.4 草案 |
+| `.github/pull_request_template.md` | 四段模板 + AI Usage 表 | 见 `.github/PULL_REQUEST_TEMPLATE.md` |
 | `.github/review-ownership/README.md`、`approval-policy.json`、`weighted-approval.yml` | 加权审批、所有权、委托、可信发布 | 多人后再考虑；先 CODEOWNERS + 分支保护 |
 | `.github/workflows/ci.yml`、`ci-windows.yml`、`ci-python.yml`、`ci-master.yml` | PR/master 分层的 CI 与 verdict job | 用聚合 check + path filter |
 | `.github/workflows/issue-policy.yml`、`issue-lifecycle.yml` | 可信 base-branch 政策 + Project 生命周期 | 政策从默认分支跑；生命周期先不做 |
 | `.github/workflows/pr-check-on-head-branch.yml`、`pr-check-after-approve.yml`、`pr-check-on-base-branch.yml` | `Policy` 系列检查 | 参考其 off/report/block 模式和 trusted checkout |
 | `lefthook.yml`、`docs/development.md` | 窄钩子 + 全 CI 的分工 | 本地钩子只做快检查 |
-| `scripts/change-scope.ts` | 改动路径报告 | v1 的 change-scope 参考 |
+| `scripts/change-scope.ts` | 改动路径报告 | 后续可加的 change-scope |
 | `docs/testing.md` | 测试层级、coverage、verify-the-world、real entry path、negative controls | RSI 已有类似纪律；skills 层可借用"真实入口/反例"两条 |
-| `docs/defensive-patterns/README.md` | review 中强制执行的架构规则；"change face = review face" | 直接把这句话用于 scope 规则 |
-| `README.md` | 项目介绍与贡献入口 | 本仓库 README 可加一节"贡献" |
+| `docs/defensive-patterns/README.md` | review 中强制执行的架构规则；"change face = review face" | 已把这句话用于 scope 规则 |
+| `README.md` | 项目介绍与贡献入口 | 本仓库 README 已加 Contributing |
 | `.github/workflows/expected-filenames.yml`、`scripts/ci-workflow.spec.ts` | 小政策检查也可以用 workflow 测试保护 | 可选 |
 
-## 9. 下一步
+## 9. 后续路线
 
-如果这份整理要变成真正生效的规则，建议按下面顺序推进（可以作为后续 Issue）：
-
-1. **v0 文件**：`CONTRIBUTING.md`、根 `AGENTS.md` + `CLAUDE.md`、`RSI/AGENTS.md`、`skills/AGENTS.md`、PR 模板、Issue 模板、`CODEOWNERS`。
-2. **仓库设置**：分支保护、CODEOWNERS review、required checks。
-3. **v1 自动化**：`pr-policy.yml`、`change-scope`、聚合 check、`docs/decisions/`。
-4. **试运行**：用 2–3 个真实外部 PR 检验；统计"无 Issue PR 数、平均变更文件数、Review 追问次数、返工轮次"。
-5. **再决定 v2**：只有在贡献流量和 maintainer 数量支持时才上加权审批/文档预算/Project 自动化。
+1. **v0（已完成）**：`CONTRIBUTING.md`、根/RSI/skills `AGENTS.md`、PR/Issue 模板、CODEOWNERS、PR 模板、review checklist、决策记录、维护者设置文档。
+2. **v1（部分完成）**：`PR policy` 与 `RSI checks / checks passed` 已加入；剩余：`change-scope`、skills 层自动校验、文档链接 gate、PR policy 的“声明范围 vs 实际路径”严格比对。
+3. **v2（按需）**：加权审批/所有权、Project 生命周期、i18n 配对、docs 预算。只有在贡献流量和 maintainer 数量支持时才做。
 
 需要讨论的三个决策点：
 
-- **外部 PR 是完全不收，还是 Issue-first？** 前者最省 Review，后者保留社区。
-- **AI 全自主提交是否接受？** 可以接受，但要求 AI Usage 如实填写，并在 design/implementation 阶段加重审查。
-- **受保护路径的范围**：`.github/` + `AGENTS.md` + `RSI/evaluator/` 是底线；`skills/` 是否也算，取决于你是否接受外部 skill 贡献。
+- **外部 PR 是完全不收，还是 Issue-first？** 当前实现选 Issue-first；如果之后觉得 Review 仍然重，可以把 `CONTRIBUTING.md` 改成"暂不接受外部 PR"。
+- **AI 全自主提交是否接受？** 当前接受，但要求 AI Usage 如实填写，并在 design/implementation 阶段加重审查。
+- **受保护路径的范围**：当前是 `.github/` + `AGENTS.md`/`CLAUDE.md`/`CONTRIBUTING.md` + `RSI/evaluator/` + `RSI/schemas/`；`skills/` 由 CODEOWNERS 要求 owner review，但不在 `PR policy` 的硬拦列表里——取决于你是否接受外部 skill 贡献。
 
 ---
 

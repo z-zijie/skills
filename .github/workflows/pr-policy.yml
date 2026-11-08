@@ -1,0 +1,73 @@
+name: PR policy
+
+# The policy runs from the default branch (pull_request_target) and only reads API data; it never
+# checks out or executes pull-request code, so a contributor cannot change the policy that judges
+# the PR. The trusted accounts are the repository owner and the owner's automation account; they
+# still have to fill the template, but do not need an Issue reference and may change protected
+# paths. Everyone else gets the full gate.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: pr-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    name: policy
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || "";
+            const trusted = ["z-zijie", "zijie-super-agent"].includes(pr.user.login);
+            const problems = [];
+
+            for (const heading of ["## Motivation", "## Scope", "## Changes", "## Testing", "## AI Usage"]) {
+              if (!body.includes(heading)) problems.push(`missing section: ${heading}`);
+            }
+            if (!body.includes("ai-declaration:start")) {
+              problems.push("missing AI declaration block");
+            }
+            if (!/Declared scope/i.test(body) || !/Out of scope/i.test(body)) {
+              problems.push("missing Declared scope / Out of scope");
+            }
+            if (!trusted && !/(Fixes|Closes|Resolves|Refs)\s+#\d+/.test(body)) {
+              problems.push("missing Issue reference (Fixes/Closes/Resolves/Refs #N)");
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+            const paths = files.map((file) => file.filename);
+
+            if (!trusted) {
+              const protectedPaths = paths.filter((path) =>
+                /^(\.github\/|AGENTS\.md$|CLAUDE\.md$|CONTRIBUTING\.md$|RSI\/(evaluator|schemas)\/)/.test(path)
+              );
+              if (protectedPaths.length > 0) {
+                problems.push(`protected paths touched: ${protectedPaths.join(", ")}`);
+              }
+              if (files.length > 20) {
+                core.warning(`wide change: ${files.length} files; split it or justify in Scope`);
+              }
+              const areas = new Set(paths.map((path) => path.split("/")[0]));
+              if (areas.size > 3) {
+                core.warning(`touches ${areas.size} areas: ${[...areas].join(", ")}`);
+              }
+            }
+
+            if (problems.length > 0) core.setFailed(problems.join("\n"));
