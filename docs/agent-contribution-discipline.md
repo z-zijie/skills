@@ -485,7 +485,7 @@ Each skill is a directory with a `SKILL.md`; it is an executable instruction for
 - [ ] 已链接被接受的 Issue
 - [ ] 一个 PR 只做一件事，变更路径没有超出 Declared scope
 - [ ] 测试/证据已填写，且命令实际运行过
-- [ ] 未修改 `.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`RSI/evaluator/`（如需要，已在单独 Issue 讨论）
+- [ ] 未修改 `.github/`、`AGENTS.md`、`CONTRIBUTING.md`、`RSI/evaluator/`、`RSI/schemas/`（如需要，已在单独 Issue 讨论）
 - [ ] AI Usage 已如实填写
 - [ ] 本地相关检查已通过
 ```
@@ -565,11 +565,11 @@ jobs:
               problems.push(`protected paths touched: ${protectedPaths.join(", ")}`);
             }
             if (!isOwner && files.length > 20) {
-              problems.push(`wide change: ${files.length} files; split it or justify in Scope`);
+              core.warning(`wide change: ${files.length} files; split it or justify in Scope`);
             }
-            const areas = new Set(paths.map((p) => p.split("/").slice(0, 2).join("/")));
+            const areas = new Set(paths.map((p) => p.split("/")[0]));
             if (!isOwner && areas.size > 3) {
-              problems.push(`touches ${areas.size} areas: ${[...areas].join(", ")}`);
+              core.warning(`touches ${areas.size} areas: ${[...areas].join(", ")}`);
             }
 
             if (problems.length > 0) {
@@ -581,7 +581,7 @@ jobs:
 
 - 生产上把 `actions/github-script@v7` 固定到 commit SHA（status-writing 类 job 尤其应如此；deepseek-harness 的 approval publisher 就是这样做的）。
 - 这个 check 自身如果作为 required check，其代码来自默认分支（`pull_request_target` 的语义），外部 PR 改不了它；但 **owner 自己改政策** 时它仍会运行旧版本，这是有意的保护。
-- `files.length > 20` 和 `areas.size > 3` 只是启发式；先 warning 或只对 `external` 标签生效，观察一段时间再决定是否 fail。
+- `files.length > 20` 和 `areas.size > 3` 只发出 warning，不阻断合并；观察一段时间、确认误报率后再决定是否改成 fail（把 `core.warning` 换成 `problems.push`）。
 - 如果以后引入更多检查，把它们汇总到一个 `checks passed` job，分支保护只要求那个名字。
 
 ### 6.7 标签、关闭话术、Review checklist
