@@ -1,0 +1,156 @@
+/* =========================================================================
+   tokens.css — design tokens.
+   Palette, radii, type stacks and easing curves follow brief §4.10
+   ("Research decisions"), which overrides the starter values in §4.2/§4.7.
+   Small text is AA (>=4.5:1) on --bg / --surface / --bg-subtle; chart marks
+   clear the 3:1 graphics bar. --ink-faint and --line are non-text only.
+   ========================================================================= */
+
+:root {
+  /* ---- surfaces & rules ---- */
+  --bg: #faf9f5;
+  --bg-subtle: #f4f1ea;
+  --surface: #ffffff;
+  --surface-raised: #fffdf9;
+  --line: #e8e6dc;
+  --line-soft: #f0eee6;
+  --line-strong: #d6cfc2;
+
+  /* ---- ink ---- */
+  --ink: #141413;
+  --ink-2: #5c574c;
+  --ink-3: #6e6a5f;
+  --ink-faint: #8a8478; /* non-text only: axis rules, disabled, hairlines */
+  --ink-inverse: #faf9f5;
+
+  /* ---- accent (terracotta) ---- */
+  --accent: #d97757; /* fills, washes, >=19px numerals, status dots with a word */
+  --accent-text: #a84e30; /* small text + focus ring (AA 5.25:1) */
+  --accent-ink: #b85c3d; /* hover/active state of --accent-text */
+  --accent-wash: #f7e9e2;
+  --accent-wash-strong: #f1dad0;
+
+  /* ---- status (dot + word; text safe) ---- */
+  --ok: #4b7456;
+  --ok-text: #3e6248;
+  --ok-wash: #edf1ec;
+  --warn: #8e6320;
+  --warn-text: #7a5317;
+  --warn-wash: #f7efe1;
+  --danger: #b84b37;
+  --danger-text: #9e3b28;
+  --danger-wash: #f8eae6;
+  --info: #5f6e79;
+  --info-text: #4f5f6a;
+  --info-wash: #eef1f3;
+
+  /* ---- chart marks (>=3:1 on paper) ---- */
+  --chart-1: #c4694b;
+  --chart-2: #9e7f3c;
+  --chart-3: #788c5d;
+  --chart-4: #5c7f9b;
+  --chart-5: #7a7466;
+  --grid-line: #eeece4;
+  --grid-dot: #e7e3d9;
+
+  /* one terracotta ramp for part-to-whole composition */
+  --ramp-1: #a8502e;
+  --ramp-2: #c4694b;
+  --ramp-3: #d97757;
+  --ramp-4: #e0a38a;
+
+  /* ---- type ---- */
+  --font-display: ui-serif, Charter, "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, "SF Mono", monospace;
+
+  /* type scale: no UI text below 9.5px */
+  --fs-2xs: 9.5px;
+  --fs-xs: 10px;
+  --fs-sm: 11px;
+  --fs-md: 12px;
+  --fs-base: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 19px;
+  --fs-2xl: 21px;
+
+  --text-micro: var(--fs-2xs);
+  --text-caps: var(--fs-xs);
+  --text-body: var(--fs-base);
+  --text-title: var(--fs-lg);
+  --text-h2: var(--fs-2xl);
+  --text-display: var(--fs-2xl);
+
+  --track-caps: 0.08em;
+  --track-tight: -0.011em;
+
+  /* ---- spacing & radii ---- */
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 20px;
+  --sp-7: 24px;
+  --sp-8: 32px;
+  --radius-card: 10px;
+  --radius-sheet: 12px;
+  --radius-control: 8px;
+  --radius-sm: 6px;
+  --radius-chip: 999px;
+
+  /* ---- elevation ---- */
+  --shadow-card: 0 1px 0 rgba(20, 20, 19, 0.03);
+  --shadow-card-hover: 0 1px 0 rgba(20, 20, 19, 0.03), 0 8px 24px rgba(20, 20, 19, 0.06);
+  --shadow-pop: 0 2px 4px rgba(20, 20, 19, 0.05), 0 10px 28px rgba(20, 20, 19, 0.09);
+  --shadow-drawer: -1px 0 0 var(--line), -14px 0 40px rgba(20, 20, 19, 0.055);
+
+  /* ---- layout ---- */
+  --header-h: 64px;
+  --rail-w: 244px;
+  --drawer-w: 408px;
+  --footer-h: 28px;
+  --canvas-pad-x: 22px;
+  --canvas-pad-y: 18px;
+  --board-gap: 14px;
+  --card-min: 268px;
+  --focus-ring: var(--accent-text);
+  --z-drawer: 60;
+  --z-scrim: 50;
+  --z-tip: 80;
+
+  /* ---- motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* entrances, chart draw */
+  --ease-in: cubic-bezier(0.6, 0, 0.9, 0.35);     /* exits, chip removal */
+  --ease-state: cubic-bezier(0.65, 0, 0.35, 1);   /* FLIP, Board<->Topology */
+  --ease-panel: cubic-bezier(0.2, 0.8, 0.2, 1);   /* inspector */
+  --dur-micro: 90ms;
+  --dur-hover-in: 90ms;
+  --dur-hover-out: 160ms;
+  --dur-press: 80ms;
+  --dur-release: 150ms;
+  --dur-drawer: 280ms;
+  --dur-drawer-close: 200ms;
+  --dur-flip: 320ms;
+  --dur-draw: 600ms;
+  --dur-enter: 320ms;
+  --enter-stagger: 32ms;
+  --ambient: 2600ms;
+}
+
+/* Reduced motion: durations collapse; motion.css disables ambient loops. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 0.01ms;
+    --dur-hover-in: 0.01ms;
+    --dur-hover-out: 0.01ms;
+    --dur-press: 0.01ms;
+    --dur-release: 0.01ms;
+    --dur-drawer: 0.01ms;
+    --dur-drawer-close: 0.01ms;
+    --dur-flip: 0.01ms;
+    --dur-draw: 0.01ms;
+    --dur-enter: 0.01ms;
+    --enter-stagger: 0ms;
+  }
+}

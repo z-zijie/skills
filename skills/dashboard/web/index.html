@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>dashboard / fleet workbench</title>
+<meta name="color-scheme" content="light" />
+<meta name="description" content="Local read-only workbench for machines, agents and sessions." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg stroke='%23D97757' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9'/%3E%3C/g%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./css/tokens.css" />
+<link rel="stylesheet" href="./css/layout.css" />
+<link rel="stylesheet" href="./css/components.css" />
+<link rel="stylesheet" href="./css/motion.css" />
+</head>
+<body class="app" data-ready="false">
+
+<a class="skip-link" href="#board">Skip to sessions</a>
+
+<header class="topbar" role="banner">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+        <path d="M12 3.2v17.6" />
+        <path d="M4.38 7.6l15.24 8.8" />
+        <path d="M19.62 7.6L4.38 16.4" />
+      </g>
+    </svg>
+    <span class="brand-word">dashboard</span>
+    <span class="mode-badge" id="mode-badge" title="demo data, simulated in this browser">
+      <span class="mode-dot" aria-hidden="true"></span>
+      <span id="mode-label">demo</span>
+    </span>
+  </div>
+
+  <div class="metrics" id="fleet-metrics" aria-label="Fleet summary">
+    <div class="metric">
+      <span class="metric-k">machines</span>
+      <span class="metric-v" data-fleet="machines">—</span>
+    </div>
+    <div class="metric">
+      <span class="metric-k">agents</span>
+      <span class="metric-v" data-fleet="agents">—</span>
+    </div>
+    <div class="metric">
+      <span class="metric-k">sessions</span>
+      <span class="metric-v" data-fleet="sessions">—</span>
+    </div>
+    <div class="metric">
+      <span class="metric-k">requests</span>
+      <span class="metric-v" data-fleet="requests">—</span>
+    </div>
+    <div class="metric metric-wave">
+      <span class="metric-k">throughput</span>
+      <div class="wave-wrap" aria-hidden="true"></div>
+      <span class="metric-v metric-tps" data-fleet="tps">—</span>
+      <span class="metric-unit">t/s</span>
+      <span class="metric-delta" data-fleet="tps-delta" title="change against the 60s average" hidden></span>
+    </div>
+  </div>
+
+  <div class="topbar-end">
+    <div class="segmented" id="view-toggle" role="group" aria-label="View">
+      <button type="button" data-view="board" aria-pressed="true">Board</button>
+      <button type="button" data-view="topology" aria-pressed="false">Topology</button>
+    </div>
+  </div>
+</header>
+
+<main class="workbench">
+  <aside class="rail" id="rail" aria-label="Machines">
+    <div class="rail-head">
+      <span class="caps">fleet</span>
+      <span class="rail-count" id="rail-count">—</span>
+    </div>
+    <div class="rail-list" id="rail-list" role="group" aria-label="Filter by machine"></div>
+    <div class="rail-foot">
+      <span class="caps">read-only</span>
+      <span class="rail-foot-note">local snapshot</span>
+    </div>
+  </aside>
+
+  <section class="canvas" id="canvas" aria-label="Sessions">
+    <div class="toolbar" id="toolbar">
+      <div class="chip-group" id="status-filters" role="group" aria-label="Filter by status"></div>
+      <div class="toolbar-sep" aria-hidden="true"></div>
+      <div class="chip-group" id="agent-filters" role="group" aria-label="Filter by agent"></div>
+      <div class="toolbar-end">
+        <label class="search" for="search">
+          <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <circle cx="8.5" cy="8.5" r="5.2" fill="none" stroke="currentColor" stroke-width="1.4" />
+            <path d="M12.4 12.4l4.1 4.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+          </svg>
+          <input id="search" type="search" placeholder="search sessions" autocomplete="off" spellcheck="false" aria-label="Search sessions" />
+        </label>
+        <div class="sort" id="sort" role="group" aria-label="Sort sessions">
+          <span class="caps sort-k">sort</span>
+          <button type="button" data-sort="recent" aria-pressed="true">recent</button>
+          <button type="button" data-sort="context" aria-pressed="false">context</button>
+          <button type="button" data-sort="tps" aria-pressed="false">tps</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="view view-board" id="board-view">
+      <div class="board" id="board" role="region" aria-label="Session board"></div>
+      <div class="empty" id="empty" hidden>
+        <svg class="empty-mark" viewBox="0 0 120 80" aria-hidden="true" focusable="false">
+          <g fill="none" stroke="currentColor" stroke-width="1">
+            <rect x="18" y="18" width="30" height="20" rx="6" />
+            <rect x="58" y="24" width="30" height="20" rx="6" opacity=".55" />
+            <rect x="38" y="48" width="30" height="16" rx="6" opacity=".3" />
+          </g>
+        </svg>
+        <p class="empty-title">No sessions match</p>
+        <p class="empty-note" id="empty-note">Adjust the filters or search.</p>
+        <button type="button" class="empty-action" id="empty-reset">clear filters</button>
+      </div>
+    </div>
+
+    <div class="view view-topology" id="topology-view" hidden>
+      <svg id="topology" class="topology" role="img" aria-label="Fleet topology: machines, agents and sessions"></svg>
+      <div class="topo-legend" aria-hidden="true">
+        <span class="legend-item"><i class="dot status-running"></i>running</span>
+        <span class="legend-item"><i class="dot status-waiting"></i>waiting</span>
+        <span class="legend-item"><i class="dot status-done"></i>done</span>
+        <span class="legend-item"><i class="dot status-failed"></i>failed</span>
+        <span class="legend-note">node size = tokens</span>
+      </div>
+      <div class="topo-controls">
+        <button type="button" id="topo-zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+        <button type="button" id="topo-zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+        <button type="button" id="topo-reset" title="Reset view">reset</button>
+      </div>
+      <div class="topo-hint">scroll to zoom / drag to pan / esc clears filter</div>
+      <div class="topo-tip" id="topo-tip" role="status" hidden></div>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">
+  <span class="status-left">
+    <span class="status-key">read-only</span>
+    <span class="status-sep" aria-hidden="true">/</span>
+    <span id="status-mode">demo data</span>
+    <span class="status-sep" aria-hidden="true">/</span>
+    <span id="status-refresh">refresh simulated at 1s</span>
+  </span>
+  <span class="status-right">
+    <span id="status-count">—</span>
+    <span class="status-sep" aria-hidden="true">/</span>
+    <span id="status-updated">updated —</span>
+  </span>
+</footer>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<aside class="inspector" id="inspector" role="dialog" aria-modal="true" aria-labelledby="inspector-title" data-open="false" hidden>
+  <div class="insp-head">
+    <div class="insp-topline">
+      <span class="insp-status" id="insp-status"></span>
+      <button type="button" class="icon-btn" id="inspector-close" aria-label="Close inspector" title="Close (Esc)">
+        <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+    <h2 class="insp-title" id="inspector-title">—</h2>
+    <div class="insp-statusline" id="insp-statusline"></div>
+    <div class="insp-meta" id="insp-meta"></div>
+  </div>
+  <div class="insp-body" id="insp-body"></div>
+</aside>
+
+<div class="tooltip" id="tip" role="tooltip" hidden></div>
+<div class="sr-only" id="live-summary" aria-live="polite"></div>
+
+<noscript>
+  <div class="noscript">dashboard needs JavaScript enabled to render the fleet view.</div>
+</noscript>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
